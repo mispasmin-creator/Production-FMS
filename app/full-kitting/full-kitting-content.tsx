@@ -35,6 +35,10 @@ interface ProductionItem {
   note: string
   plannedDate?: string
   status: string
+  crmName?: string
+  quantityDelivered?: string
+  productionPending?: string
+  productRate?: string
 }
 
 interface KycProduct {
@@ -110,6 +114,7 @@ const DEFAULT_EXPECTED_PROPERTIES: ExpectedValueRow[] = [
 
 const PENDING_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
+  { header: "Timestamp", dataKey: "timestamp", toggleable: true },
   { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
@@ -118,6 +123,12 @@ const PENDING_COLUMNS_META = [
   { header: "Planned Date", dataKey: "plannedDate", toggleable: true },
   { header: "Exp. Delivery", dataKey: "expectedDeliveryDate", toggleable: true },
   { header: "Priority", dataKey: "priority", toggleable: true },
+  { header: "Status", dataKey: "status", toggleable: true },
+  { header: "CRM Name", dataKey: "crmName", toggleable: true },
+  { header: "Qty Del.", dataKey: "quantityDelivered", toggleable: true },
+  { header: "Prod Pend.", dataKey: "productionPending", toggleable: true },
+  { header: "Notes", dataKey: "note", toggleable: true },
+  { header: "Selling Price", dataKey: "productRate", toggleable: true },
 ]
 
 const HISTORY_COLUMNS_META = [
@@ -164,7 +175,7 @@ export default function CheckPage() {
     const init = (meta: any[]) => meta.reduce((acc, col) => ({ ...acc, [col.dataKey]: col.alwaysVisible !== false }), {})
     setVisiblePendingColumns(init(PENDING_COLUMNS_META))
     setVisibleHistoryColumns(init(HISTORY_COLUMNS_META))
-  }, [])
+  }, [user])
 
   // ---------- DATA LOADING ----------
   const loadData = useCallback(async () => {
@@ -180,7 +191,7 @@ export default function CheckPage() {
         dispatchSupabase.from("ORDER RECEIPT").select("*").eq("check_delivery_in_stock_or_not", "For Production Planning"),
         supabase.from(KYC_TABLE).select("*").order("id", { ascending: true }),
         supabase.from(COSTING_RESPONSE_TABLE).select("*").order("id", { ascending: false }),
-        supabase.from(PRODUCTION_TABLE).select('"Delivery Order No.", "Firm Name", "Planned 1", "Expected Delivery Date", "Priority"')
+        supabase.from(PRODUCTION_TABLE).select("*")
       ])
 
       if (orderReceiptErr) throw orderReceiptErr
@@ -189,37 +200,72 @@ export default function CheckPage() {
       if (allProdErr) throw allProdErr
 
       // Build a map of orderNo → production data (for enriching history)
+      const normalize = (value: any) => String(value || "").trim().toLowerCase()
+      const makeOrderProductKey = (orderNo: any, productName: any) => `${normalize(orderNo)}::${normalize(productName)}`
+      const pick = (row: any, keys: string[]) => {
+        for (const key of keys) {
+          const value = row?.[key]
+          if (value !== null && value !== undefined && String(value).trim() !== "") return value
+        }
+        return ""
+      }
+      const buildOrderMeta = (row: any) => ({
+        firmName: String(pick(row, ["Firm Name"])),
+        partyName: String(pick(row, ["Party Names", "Party Name"])),
+        productName: String(pick(row, ["Product Name"])).trim(),
+        orderQuantity: Number(pick(row, ["Quantity", "Order Quantity"]) || 0),
+        expectedDeliveryDate: pick(row, ["Expected Delivery Date"]),
+        note: String(pick(row, ["Specific Concern", "Note"])),
+        plannedDate: pick(row, ["check_delivery_actual", "Planned 1"]),
+        status: String(pick(row, ["Status"])),
+        crmName: String(pick(row, ["Crm For The Customer", "CRM Name"])),
+        quantityDelivered: String(pick(row, ["Delivered", "Quantity Delivered"])),
+        productionPending: String(pick(row, ["Pending Qty", "Production Pending"])),
+        productRate: String(pick(row, ["Rate Of Material", "Product Rate", "Selling Price"])),
+      })
+
       const prodMap = new Map<string, { plannedDate: string; expectedDeliveryDate: string; priority: string; firmName: string }>()
+      const productionKeys = new Set<string>()
       ;(allProdData || []).forEach((row: any) => {
         const doNo = String(row["Delivery Order No."] || "").trim()
+        const productName = String(row["Product Name"] || "").trim()
         if (doNo) {
-          prodMap.set(doNo, {
+          const prodInfo = {
             plannedDate: row["Planned 1"] || "",
             expectedDeliveryDate: row["Expected Delivery Date"] || "",
             priority: row["Priority"] || "",
             firmName: row["Firm Name"] || "",
-          })
+          }
+          prodMap.set(doNo, prodInfo)
+          prodMap.set(makeOrderProductKey(doNo, productName), prodInfo)
+          productionKeys.add(makeOrderProductKey(doNo, productName))
         }
       })
 
       // Build metadata map from orderReceiptData
-      const orderMetaMap = new Map<string, { firmName: string; partyName: string }>()
+      const orderMetaMap = new Map<string, ReturnType<typeof buildOrderMeta>>()
       ;(orderReceiptData || []).forEach((row: any) => {
         const doNo = String(row["DO-Delivery Order No."] || "").trim()
+        const meta = buildOrderMeta(row)
+        const productName = meta.productName
         if (doNo) {
-          orderMetaMap.set(doNo, {
-            firmName: String(row["Firm Name"] || ""),
-            partyName: String(row["Party Names"] || ""),
-          })
+          orderMetaMap.set(doNo, meta)
+          orderMetaMap.set(makeOrderProductKey(doNo, productName), meta)
         }
       })
 
       // Build set of verified DO numbers
-      const verifiedDos = new Set<string>()
+      const verifiedKeys = new Set<string>()
+      const verifiedDosWithoutProduct = new Set<string>()
       ;(costData || []).forEach((row: any) => {
         const orderNo = String(row["Order No."] || "").trim()
+        const productName = String(row["product name"] || "").trim()
         if (orderNo) {
-          verifiedDos.add(orderNo)
+          if (productName) {
+            verifiedKeys.add(makeOrderProductKey(orderNo, productName))
+          } else {
+            verifiedDosWithoutProduct.add(normalize(orderNo))
+          }
         }
       })
 
@@ -233,31 +279,72 @@ export default function CheckPage() {
         return String(val)
       }
 
-      const pending: ProductionItem[] = []
+      const isVerified = (orderNo: any, productName: any) => {
+        const key = makeOrderProductKey(orderNo, productName)
+        return verifiedKeys.has(key) || (verifiedDosWithoutProduct.has(normalize(orderNo)) && !normalize(productName))
+      }
+
+      const pendingMap = new Map<string, ProductionItem>()
+      ;(allProdData || []).forEach((row: any) => {
+        const doNo = String(row["Delivery Order No."] || "").trim()
+        const productName = String(row["Product Name"] || "").trim()
+        if (!doNo) return
+
+        if (row["Actual 1"] || row["Order Cancel"]) return
+        if (isVerified(doNo, productName)) return
+
+        const key = makeOrderProductKey(doNo, productName)
+        const meta = orderMetaMap.get(key) || orderMetaMap.get(doNo)
+
+        pendingMap.set(key, {
+          id: row.id,
+          timestamp: row["Timestamp"] || "",
+          firmName: row["Firm Name"] || meta?.firmName || "",
+          deliveryOrderNo: doNo,
+          partyName: row["Party Name"] || meta?.partyName || "",
+          productName,
+          orderQuantity: Number(row["Order Quantity"] || meta?.orderQuantity || 0),
+          expectedDeliveryDate: formatDate(row["Expected Delivery Date"] || meta?.expectedDeliveryDate),
+          priority: row["Priority"] || "",
+          note: row["Note"] || meta?.note || "",
+          plannedDate: formatDate(row["Planned 1"] || meta?.plannedDate),
+          status: row["Status"] || meta?.status || "",
+          crmName: meta?.crmName || "",
+          quantityDelivered: meta?.quantityDelivered || "",
+          productionPending: meta?.productionPending || "",
+          productRate: meta?.productRate || "",
+        })
+      })
+
       ;(orderReceiptData || []).forEach((row: any) => {
         const doNo = String(row["DO-Delivery Order No."] || "").trim()
-        if (!doNo) return
-        
-        // If it already has a costing response, it's not pending anymore
-        if (verifiedDos.has(doNo)) return
+        const productName = String(row["Product Name"] || "").trim()
+        const key = makeOrderProductKey(doNo, productName)
+        if (!doNo || pendingMap.has(key) || productionKeys.has(key) || isVerified(doNo, productName)) return
 
-        const enriched = prodMap.get(doNo) || { plannedDate: "", expectedDeliveryDate: "", priority: "", firmName: "" }
-        
-        pending.push({
+        const enriched = prodMap.get(key) || prodMap.get(doNo) || { plannedDate: "", expectedDeliveryDate: "", priority: "", firmName: "" }
+
+        pendingMap.set(key, {
           id: row.id,
           timestamp: row["Timestamp"] || "",
           firmName: enriched.firmName || row["Firm Name"] || "",
           deliveryOrderNo: doNo,
           partyName: row["Party Names"] || "",
-          productName: row["Product Name"] || "",
+          productName,
           orderQuantity: Number(row["Quantity"] || 0),
           expectedDeliveryDate: formatDate(enriched.expectedDeliveryDate || row["Expected Delivery Date"]),
           priority: enriched.priority || "",
           note: row["Specific Concern"] || "",
           plannedDate: formatDate(row["check_delivery_actual"] || enriched.plannedDate),
           status: row["Status"] || "",
+          crmName: String(row["Crm For The Customer"] || ""),
+          quantityDelivered: String(row["Delivered"] ?? ""),
+          productionPending: String(row["Pending Qty"] ?? ""),
+          productRate: String(row["Rate Of Material"] ?? ""),
         })
       })
+
+      const pending = Array.from(pendingMap.values())
 
       const products: KycProduct[] = (kycData || [])
         .filter((row: any) => row["Product name"])
@@ -285,15 +372,16 @@ export default function CheckPage() {
           rawMaterialCosts.push(Number(cost || 0))
         }
         const orderNo = String(row["Order No."] || "").trim()
-        const meta = orderMetaMap.get(orderNo)
-        const enriched = prodMap.get(orderNo) || { plannedDate: "", expectedDeliveryDate: "", priority: "", firmName: "" }
+        const productName = String(row["product name"] || "").trim()
+        const meta = orderMetaMap.get(makeOrderProductKey(orderNo, productName)) || orderMetaMap.get(orderNo)
+        const enriched = prodMap.get(makeOrderProductKey(orderNo, productName)) || prodMap.get(orderNo) || { plannedDate: "", expectedDeliveryDate: "", priority: "", firmName: "" }
         return {
           id: row.id,
           firmName: meta?.firmName || enriched.firmName || "",
           timestamp: row["TIMESTAMP"] ? format(new Date(row["TIMESTAMP"]), "dd/MM/yyyy HH:mm:ss") : "",
           compositionNo: row["Composition No."] || "",
           orderNo,
-          productName: row["product name"] || "",
+          productName,
           alumina: Number(row["alumina"] || 0),
           iron: Number(row["iron"] || 0),
           bd: Number(row["BD"] || 0),
@@ -569,12 +657,67 @@ export default function CheckPage() {
 
       if (insertErr) throw insertErr
 
-      // Update production record: set Actual 1 to now to mark it done
+      // Update or create the production record for this exact order/product.
       if (selectedCheck?.deliveryOrderNo) {
-        await supabase
+        const completedAt = new Date().toISOString().slice(0, 10)
+        const toNumberOrNull = (value: any) => {
+          if (value === null || value === undefined || String(value).trim() === "") return null
+          const parsed = Number(value)
+          return Number.isNaN(parsed) ? null : parsed
+        }
+        const toDateOrNull = (value: any) => {
+          if (!value || String(value).trim() === "-") return null
+          const text = String(value).trim()
+          if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text
+
+          const ddmmyyyy = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/)
+          if (ddmmyyyy) {
+            const [, dd, mm, yy] = ddmmyyyy
+            const yyyy = yy.length === 2 ? `20${yy}` : yy
+            return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`
+          }
+
+          const parsed = new Date(text)
+          return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10)
+        }
+        const productionPayload = {
+          "Delivery Order No.": selectedCheck.deliveryOrderNo,
+          "Firm Name": selectedCheck.firmName || null,
+          "Party Name": selectedCheck.partyName || null,
+          "Product Name": selectedCheck.productName || null,
+          "Order Quantity": toNumberOrNull(selectedCheck.orderQuantity),
+          "Expected Delivery Date": toDateOrNull(selectedCheck.expectedDeliveryDate),
+          "Priority": selectedCheck.priority || null,
+          "Note": selectedCheck.note || null,
+          "Crm Name": selectedCheck.crmName || null,
+          "Quantity Delivered": toNumberOrNull(selectedCheck.quantityDelivered),
+          "Production Pending": toNumberOrNull(selectedCheck.productionPending),
+          "Status": selectedCheck.status || null,
+          "Planned 1": toDateOrNull(selectedCheck.plannedDate),
+          "Actual 1": completedAt,
+          product_rate: toNumberOrNull(selectedCheck.productRate),
+        }
+
+        let updateQuery = supabase
           .from(PRODUCTION_TABLE)
-          .update({ "Actual 1": new Date().toISOString() })
+          .update(productionPayload)
           .eq("Delivery Order No.", selectedCheck.deliveryOrderNo)
+          .eq("Product Name", selectedCheck.productName)
+
+        if (selectedCheck.firmName) {
+          updateQuery = updateQuery.eq("Firm Name", selectedCheck.firmName)
+        }
+
+        const { data: updatedRows, error: updateErr } = await updateQuery.select("id")
+        if (updateErr) throw updateErr
+
+        if (!updatedRows || updatedRows.length === 0) {
+          const { error: insertProdErr } = await supabase
+            .from(PRODUCTION_TABLE)
+            .insert([productionPayload])
+
+          if (insertProdErr) throw insertProdErr
+        }
       }
 
       setIsKittingDialogOpen(false)
