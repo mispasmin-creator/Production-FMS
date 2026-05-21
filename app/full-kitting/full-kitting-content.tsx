@@ -1,0 +1,972 @@
+"use client"
+
+import type React from "react"
+
+import { useState, useEffect, useCallback, useMemo } from "react"
+import { Loader2, AlertTriangle, CheckCircle, Settings, Plus, X, Eye, Edit, Zap } from "lucide-react"
+import { format } from "date-fns"
+import { supabase, dispatchSupabase } from "@/lib/supabase"
+import { useAuth } from "@/lib/auth"
+import { Toaster } from "@/components/ui/toaster"
+import { useToast } from "@/components/ui/use-toast"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Badge } from "@/components/ui/badge"
+
+// --- Type Definitions ---
+interface ProductionItem {
+  id: number
+  timestamp: string
+  firmName: string
+  deliveryOrderNo: string
+  partyName: string
+  productName: string
+  orderQuantity: number
+  expectedDeliveryDate: string
+  priority: string
+  note: string
+  plannedDate?: string
+  status: string
+}
+
+interface KycProduct {
+  id: number // Added id
+  productName: string
+  alumina: number
+  iron: number
+  bd: number
+  ap: number
+  price: number // Added price
+  firmName: string // Added firm name
+}
+
+interface KittingFormRow {
+  id: number
+  productName: string
+  percentage: string
+  baseAlumina: number
+  baseIron: number
+  baseBd: number
+  baseAp: number
+  basePrice: number // Added base price
+  al: number
+  fe: number
+  bd: number
+  ap: number
+  cost: number // Added calculated cost
+}
+
+// Expected Values table — one row per property (single product at a time)
+interface ExpectedValueRow {
+  property: string
+  unit: string
+  value: string // expected value for the selected product
+}
+
+interface CostingHistoryItem {
+  id: number
+  timestamp: string
+  compositionNo: string
+  orderNo: string
+  productName: string
+  alumina: number
+  iron: number
+  bd: number
+  ap: number
+  rawMaterials: string[]    // RM1..RM20
+  rawMaterialQtys: string[] // QTY1..QTY20
+  rawMaterialCosts: number[] // COST1..COST20
+  plannedDate?: string
+  expectedDeliveryDate?: string
+  priority?: string
+  status?: string
+  firmName: string
+}
+
+// --- Constants ---
+const PRODUCTION_TABLE = "production"
+const KYC_TABLE = "kyc"
+const COSTING_RESPONSE_TABLE = "costing_response"
+
+const DEFAULT_EXPECTED_PROPERTIES: ExpectedValueRow[] = [
+  { property: "W/C (%)", unit: "%", value: "" },
+  { property: "Sticky / Flow", unit: "", value: "" },
+  { property: "IST (min)", unit: "min", value: "" },
+  { property: "FST (min)", unit: "min", value: "" },
+  { property: "BD at 110°C (g/cc)", unit: "g/cc", value: "" },
+  { property: "BD at 1100°C (g/cc)", unit: "g/cc", value: "" },
+  { property: "CCS at 110°C (kg/cm²)", unit: "kg/cm²", value: "" },
+  { property: "CCS at 1100°C (kg/cm²)", unit: "kg/cm²", value: "" },
+  { property: "PLC at 1100°C (%)", unit: "%", value: "" },
+]
+
+const PENDING_COLUMNS_META = [
+  { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
+  { header: "Firm Name", dataKey: "firmName", toggleable: true },
+  { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
+  { header: "Party Name", dataKey: "partyName", toggleable: true },
+  { header: "Product Name", dataKey: "productName", toggleable: true },
+  { header: "Order Qty", dataKey: "orderQuantity", toggleable: true },
+  { header: "Planned Date", dataKey: "plannedDate", toggleable: true },
+  { header: "Exp. Delivery", dataKey: "expectedDeliveryDate", toggleable: true },
+  { header: "Priority", dataKey: "priority", toggleable: true },
+]
+
+const HISTORY_COLUMNS_META = [
+  { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
+  { header: "Timestamp", dataKey: "timestamp", toggleable: true },
+  { header: "Composition No.", dataKey: "compositionNo", toggleable: true },
+  { header: "Order No.", dataKey: "orderNo", toggleable: true },
+  { header: "Product Name", dataKey: "productName", toggleable: true },
+  { header: "Total AL", dataKey: "alumina", toggleable: true },
+  { header: "Total FE", dataKey: "iron", toggleable: true },
+  { header: "Total BD", dataKey: "bd", toggleable: true },
+  { header: "Total AP", dataKey: "ap", toggleable: true },
+  { header: "Raw Materials", dataKey: "rawMaterials", toggleable: true },
+]
+
+export default function CheckPage() {
+  const { user } = useAuth()
+  const [pendingChecks, setPendingChecks] = useState<ProductionItem[]>([])
+  const [historyChecks, setHistoryChecks] = useState<CostingHistoryItem[]>([])
+  const [kycProducts, setKycProducts] = useState<KycProduct[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const { toast } = useToast()
+
+  // Dialog state
+  const [isKittingDialogOpen, setIsKittingDialogOpen] = useState(false)
+  const [selectedCheck, setSelectedCheck] = useState<ProductionItem | null>(null)
+  const [selectedHistoryItem, setSelectedHistoryItem] = useState<CostingHistoryItem | null>(null)
+  const [kittingFormRows, setKittingFormRows] = useState<KittingFormRow[]>([])
+
+  // Expected Values state
+  const [expectedValues, setExpectedValues] = useState<ExpectedValueRow[]>(DEFAULT_EXPECTED_PROPERTIES)
+
+  // Raw Materials view dialog
+  const [viewingMaterials, setViewingMaterials] = useState<{ names: string[]; qtys: string[] } | null>(null)
+
+  const [activeTab, setActiveTab] = useState("pending")
+  const [visiblePendingColumns, setVisiblePendingColumns] = useState<Record<string, boolean>>({})
+  const [visibleHistoryColumns, setVisibleHistoryColumns] = useState<Record<string, boolean>>({})
+
+  // Initialize column visibility
+  useEffect(() => {
+    const init = (meta: any[]) => meta.reduce((acc, col) => ({ ...acc, [col.dataKey]: col.alwaysVisible !== false }), {})
+    setVisiblePendingColumns(init(PENDING_COLUMNS_META))
+    setVisibleHistoryColumns(init(HISTORY_COLUMNS_META))
+  }, [])
+
+  // ---------- DATA LOADING ----------
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const [
+        { data: orderReceiptData, error: orderReceiptErr },
+        { data: kycData, error: kycErr },
+        { data: costData, error: costErr },
+        { data: allProdData, error: allProdErr }
+      ] = await Promise.all([
+        dispatchSupabase.from("ORDER RECEIPT").select("*").eq("check_delivery_in_stock_or_not", "For Production Planning"),
+        supabase.from(KYC_TABLE).select("*").order("id", { ascending: true }),
+        supabase.from(COSTING_RESPONSE_TABLE).select("*").order("id", { ascending: false }),
+        supabase.from(PRODUCTION_TABLE).select('"Delivery Order No.", "Firm Name", "Planned 1", "Expected Delivery Date", "Priority"')
+      ])
+
+      if (orderReceiptErr) throw orderReceiptErr
+      if (kycErr) throw kycErr
+      if (costErr) throw costErr
+      if (allProdErr) throw allProdErr
+
+      // Build a map of orderNo → production data (for enriching history)
+      const prodMap = new Map<string, { plannedDate: string; expectedDeliveryDate: string; priority: string; firmName: string }>()
+      ;(allProdData || []).forEach((row: any) => {
+        const doNo = String(row["Delivery Order No."] || "").trim()
+        if (doNo) {
+          prodMap.set(doNo, {
+            plannedDate: row["Planned 1"] || "",
+            expectedDeliveryDate: row["Expected Delivery Date"] || "",
+            priority: row["Priority"] || "",
+            firmName: row["Firm Name"] || "",
+          })
+        }
+      })
+
+      // Build metadata map from orderReceiptData
+      const orderMetaMap = new Map<string, { firmName: string; partyName: string }>()
+      ;(orderReceiptData || []).forEach((row: any) => {
+        const doNo = String(row["DO-Delivery Order No."] || "").trim()
+        if (doNo) {
+          orderMetaMap.set(doNo, {
+            firmName: String(row["Firm Name"] || ""),
+            partyName: String(row["Party Names"] || ""),
+          })
+        }
+      })
+
+      // Build set of verified DO numbers
+      const verifiedDos = new Set<string>()
+      ;(costData || []).forEach((row: any) => {
+        const orderNo = String(row["Order No."] || "").trim()
+        if (orderNo) {
+          verifiedDos.add(orderNo)
+        }
+      })
+
+      const formatDate = (val: any) => {
+        if (!val) return ""
+        const d = new Date(val)
+        if (!isNaN(d.getTime())) {
+          const pad = (num: number) => String(num).padStart(2, '0')
+          return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+        }
+        return String(val)
+      }
+
+      const pending: ProductionItem[] = []
+      ;(orderReceiptData || []).forEach((row: any) => {
+        const doNo = String(row["DO-Delivery Order No."] || "").trim()
+        if (!doNo) return
+        
+        // If it already has a costing response, it's not pending anymore
+        if (verifiedDos.has(doNo)) return
+
+        const enriched = prodMap.get(doNo) || { plannedDate: "", expectedDeliveryDate: "", priority: "", firmName: "" }
+        
+        pending.push({
+          id: row.id,
+          timestamp: row["Timestamp"] || "",
+          firmName: enriched.firmName || row["Firm Name"] || "",
+          deliveryOrderNo: doNo,
+          partyName: row["Party Names"] || "",
+          productName: row["Product Name"] || "",
+          orderQuantity: Number(row["Quantity"] || 0),
+          expectedDeliveryDate: formatDate(enriched.expectedDeliveryDate || row["Expected Delivery Date"]),
+          priority: enriched.priority || "",
+          note: row["Specific Concern"] || "",
+          plannedDate: formatDate(row["check_delivery_actual"] || enriched.plannedDate),
+          status: row["Status"] || "",
+        })
+      })
+
+      const products: KycProduct[] = (kycData || [])
+        .filter((row: any) => row["Product name"])
+        .map((row: any) => ({
+          id: row.id,
+          productName: row["Product name"] || "",
+          alumina: Number(row["Alumina"] || 0),
+          iron: Number(row["Iron"] || 0),
+          bd: Number(row["Bd"] || 0),
+          ap: Number(row["Ap"] || 0),
+          price: Number(row["Price"] || 0),
+          firmName: row["Firm Name"] || "",
+        }))
+
+      const history: CostingHistoryItem[] = (costData || []).map((row: any) => {
+        const rawMaterials: string[] = []
+        const rawMaterialQtys: string[] = []
+        const rawMaterialCosts: number[] = []
+        for (let i = 1; i <= 20; i++) {
+          const rm = row[`RM${i}`]
+          const qty = row[`QTY${i}`]
+          const cost = row[`COST${i}`]
+          if (rm && String(rm).trim()) rawMaterials.push(String(rm))
+          if (qty !== null && qty !== undefined && String(qty).trim()) rawMaterialQtys.push(String(qty))
+          rawMaterialCosts.push(Number(cost || 0))
+        }
+        const orderNo = String(row["Order No."] || "").trim()
+        const meta = orderMetaMap.get(orderNo)
+        const enriched = prodMap.get(orderNo) || { plannedDate: "", expectedDeliveryDate: "", priority: "", firmName: "" }
+        return {
+          id: row.id,
+          firmName: meta?.firmName || enriched.firmName || "",
+          timestamp: row["TIMESTAMP"] ? format(new Date(row["TIMESTAMP"]), "dd/MM/yyyy HH:mm:ss") : "",
+          compositionNo: row["Composition No."] || "",
+          orderNo,
+          productName: row["product name"] || "",
+          alumina: Number(row["alumina"] || 0),
+          iron: Number(row["iron"] || 0),
+          bd: Number(row["BD"] || 0),
+          ap: Number(row["AP"] || 0),
+          rawMaterials,
+          rawMaterialQtys,
+          rawMaterialCosts,
+          plannedDate: enriched.plannedDate,
+          expectedDeliveryDate: enriched.expectedDeliveryDate,
+          priority: enriched.priority,
+          status: row["Status"] || "",
+        }
+      })
+
+      const firmSearch = user?.firm?.toLowerCase() || ""
+      const isAdmin = user?.role?.toLowerCase() === "admin"
+      const filterByFirm = (list: any[]) => {
+        if (isAdmin || !firmSearch) return list
+        return list.filter((item) => (item.firmName || "").toLowerCase().includes(firmSearch))
+      }
+
+      setPendingChecks(filterByFirm(pending))
+      setHistoryChecks(filterByFirm(history))
+      setKycProducts(products)
+    } catch (err: any) {
+      setError(`Failed to load data: ${err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  // ---------- FORM LOGIC ----------
+  const resetKittingForm = () => {
+    setKittingFormRows([{
+      id: 1, productName: "", percentage: "",
+      baseAlumina: 0, baseIron: 0, baseBd: 0, baseAp: 0, basePrice: 0,
+      al: 0, fe: 0, bd: 0, ap: 0, cost: 0,
+    }])
+    setExpectedValues(DEFAULT_EXPECTED_PROPERTIES.map(r => ({ ...r, value: "" })))
+  }
+
+  const handleOpenKittingForm = (item: ProductionItem) => {
+    setSelectedCheck(item)
+    setSelectedHistoryItem(null)
+    resetKittingForm()
+    setIsKittingDialogOpen(true)
+  }
+
+  const loadHistoryItemForRevision = (item: CostingHistoryItem) => {
+    setSelectedHistoryItem(item)
+    // Find the matching production item or build a mock
+    const prodItem = pendingChecks.find(p => p.deliveryOrderNo === item.orderNo) || {
+      id: 0,
+      timestamp: "",
+      firmName: "",
+      deliveryOrderNo: item.orderNo,
+      partyName: "",
+      productName: item.productName,
+      orderQuantity: 0,
+      expectedDeliveryDate: item.expectedDeliveryDate || "",
+      priority: item.priority || "",
+      note: "",
+      plannedDate: item.plannedDate,
+      status: "",
+    }
+    setSelectedCheck(prodItem)
+
+    const rows: KittingFormRow[] = item.rawMaterials.map((mat, idx) => {
+      const qty = item.rawMaterialQtys[idx] || "0"
+      const productData = kycProducts.find(p => p.productName === mat) || { alumina: 0, iron: 0, bd: 0, ap: 0, price: 0 }
+      const pct = Number.parseFloat(qty) || 0
+      return {
+        id: idx + 1,
+        productName: mat,
+        percentage: qty,
+        baseAlumina: productData.alumina,
+        baseIron: productData.iron,
+        baseBd: productData.bd,
+        baseAp: productData.ap,
+        basePrice: productData.price,
+        al: (productData.alumina * pct) / 100,
+        fe: (productData.iron * pct) / 100,
+        bd: (productData.bd * pct) / 100,
+        ap: (productData.ap * pct) / 100,
+        cost: (productData.price * pct) / 100,
+      }
+    })
+
+    setKittingFormRows(rows)
+    setExpectedValues(DEFAULT_EXPECTED_PROPERTIES.map(r => ({ ...r, value: "" })))
+    setIsKittingDialogOpen(true)
+  }
+
+  const addKittingFormRow = () => {
+    if (kittingFormRows.length < 20) {
+      setKittingFormRows(prev => [
+        ...prev,
+        {
+          id: (prev[prev.length - 1]?.id || 0) + 1,
+          productName: "", percentage: "",
+          baseAlumina: 0, baseIron: 0, baseBd: 0, baseAp: 0, basePrice: 0,
+          al: 0, fe: 0, bd: 0, ap: 0, cost: 0,
+        },
+      ])
+    }
+  }
+
+  const removeKittingFormRow = (id: number) => {
+    if (kittingFormRows.length > 1) {
+      setKittingFormRows(prev => prev.filter(r => r.id !== id))
+    }
+  }
+
+  const handleKittingRowChange = (id: number, field: keyof KittingFormRow, value: any) => {
+    setKittingFormRows(prev => prev.map(row => {
+      if (row.id !== id) return row
+      const updated = { ...row, [field]: value }
+      if (field === "productName") {
+        const p = kycProducts.find(p => p.productName === value)
+        if (p) { 
+          updated.baseAlumina = p.alumina; 
+          updated.baseIron = p.iron; 
+          updated.baseBd = p.bd; 
+          updated.baseAp = p.ap;
+          updated.basePrice = p.price;
+        }
+      }
+      const pct = Number.parseFloat(updated.percentage) || 0
+      updated.al = (updated.baseAlumina * pct) / 100
+      updated.fe = (updated.baseIron * pct) / 100
+      updated.bd = (updated.baseBd * pct) / 100
+      updated.ap = (updated.baseAp * pct) / 100
+      updated.cost = (updated.basePrice * pct) / 100
+      return updated
+    }))
+  }
+
+  // Expected Values — simple single-value per property
+  const handleExpectedValueChange = (propIdx: number, value: string) => {
+    setExpectedValues(prev => {
+      const updated = [...prev]
+      updated[propIdx] = { ...updated[propIdx], value }
+      return updated
+    })
+  }
+
+  const kittingTotals = useMemo(() =>
+    kittingFormRows.reduce(
+      (acc, row) => {
+        acc.al += row.al; acc.fe += row.fe; acc.bd += row.bd; acc.ap += row.ap; acc.variableCost += row.cost
+        acc.percentage += Number.parseFloat(row.percentage) || 0
+        return acc
+      },
+      { al: 0, fe: 0, bd: 0, ap: 0, percentage: 0, variableCost: 0 }
+    ), [kittingFormRows]
+  )
+
+  // ---------- GENERATE COMPOSITION NUMBER ----------
+  const generateCompositionNumber = async (): Promise<string> => {
+    const { data, error } = await supabase
+      .from(COSTING_RESPONSE_TABLE)
+      .select('"Composition No."')
+      .order("id", { ascending: false })
+      .limit(100)
+
+    if (error) throw error
+
+    let maxNumber = 0
+    ;(data || []).forEach((row: any) => {
+      const cn = row["Composition No."]
+      if (cn && typeof cn === "string" && cn.startsWith("CN-")) {
+        const num = Number.parseInt(cn.substring(3))
+        if (!isNaN(num) && num > maxNumber) maxNumber = num
+      }
+    })
+    return `CN-${String(maxNumber + 1).padStart(3, "0")}`
+  }
+
+  // ---------- AUTOFILL DUMMY DATA (DEV ONLY) ----------
+  const autofillDummyData = () => {
+    if (kycProducts.length < 2) {
+      toast({ title: "Dev Tool", description: "Not enough products in KYC to autofill.", variant: "destructive" })
+      return
+    }
+
+    // Pick 3 random materials
+    const selected: KycProduct[] = []
+    const available = [...kycProducts]
+    for (let i = 0; i < 3; i++) {
+      if (available.length === 0) break
+      const idx = Math.floor(Math.random() * available.length)
+      selected.push(available.splice(idx, 1)[0])
+    }
+
+    // Assign percentages (e.g., 50, 30, 20)
+    const pcts = [50, 30, 20]
+    const rows: KittingFormRow[] = selected.map((p, i) => {
+      const pct = pcts[i] || 0
+      return {
+        id: i + 1,
+        productName: p.productName,
+        percentage: String(pct),
+        baseAlumina: p.alumina,
+        baseIron: p.iron,
+        baseBd: p.bd,
+        baseAp: p.ap,
+        basePrice: p.price,
+        al: (p.alumina * pct) / 100,
+        fe: (p.iron * pct) / 100,
+        bd: (p.bd * pct) / 100,
+        ap: (p.ap * pct) / 100,
+        cost: (p.price * pct) / 100,
+      }
+    })
+    setKittingFormRows(rows)
+
+    // Fill expected values with realistic dummy data
+    const dummyExpected = [
+      "12-14", "Sticky", "45", "120", "2.10", "2.05", "450", "400", "0.2"
+    ]
+    setExpectedValues(prev => prev.map((r, i) => ({ ...r, value: dummyExpected[i] || "" })))
+    
+    toast({ title: "Dev Tool", description: "Dummy data autofilled successfully." })
+  }
+
+  // ---------- SAVE ----------
+  const handleSaveKittingForm = async () => {
+    if (!selectedCheck) return
+    setIsSubmitting(true)
+    try {
+      const compositionNumber = await generateCompositionNumber()
+
+      // Build RM1..RM20 / QTY1..QTY20 fields
+      const rmFields: Record<string, any> = {}
+      for (let i = 1; i <= 20; i++) {
+        const row = kittingFormRows[i - 1]
+        rmFields[`RM${i}`] = row?.productName || null
+        rmFields[`QTY${i}`] = row?.percentage ? Number(row.percentage) : null
+        rmFields[`COST${i}`] = row?.cost ? Number(row.cost) : null
+      }
+
+      const insertPayload = {
+        "Composition No.": compositionNumber,
+        "Order No.": selectedCheck.deliveryOrderNo,
+        "product name": selectedCheck.productName,
+        "alumina": kittingTotals.al,
+        "iron": kittingTotals.fe,
+        "BD": kittingTotals.bd,
+        "AP": kittingTotals.ap,
+        "VARIABLE COST": kittingTotals.variableCost,
+        "SELLING PRICE": kittingTotals.variableCost, // Defaulting selling price to variable cost for now
+        ...rmFields,
+        // Expected Values (mapped by index to DB columns)
+        "Expected WC %":        expectedValues[0]?.value || null,
+        "Expected Sticky Flow": expectedValues[1]?.value || null,
+        "Expected IST":         expectedValues[2]?.value || null,
+        "Expected FST":         expectedValues[3]?.value || null,
+        "Expected BD 110C":     expectedValues[4]?.value || null,
+        "Expected BD 1100C":    expectedValues[5]?.value || null,
+        "Expected CCS 110C":    expectedValues[6]?.value || null,
+        "Expected CCS 1100C":   expectedValues[7]?.value || null,
+        "Expected PLC 1100C":   expectedValues[8]?.value || null,
+      }
+
+
+      const { error: insertErr } = await supabase
+        .from(COSTING_RESPONSE_TABLE)
+        .insert([insertPayload])
+
+      if (insertErr) throw insertErr
+
+      // Update production record: set Actual 1 to now to mark it done
+      if (selectedCheck?.deliveryOrderNo) {
+        await supabase
+          .from(PRODUCTION_TABLE)
+          .update({ "Actual 1": new Date().toISOString() })
+          .eq("Delivery Order No.", selectedCheck.deliveryOrderNo)
+      }
+
+      setIsKittingDialogOpen(false)
+      setSelectedCheck(null)
+      setSelectedHistoryItem(null)
+      await loadData()
+      toast({ title: "Success!", description: "Full Kitting data submitted successfully.", duration: 2000 })
+    } catch (err: any) {
+      toast({ title: "Error!", description: err.message, variant: "destructive", duration: 3000 })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // ---------- COLUMN TOGGLING ----------
+  const handleToggleColumn = (tab: "pending" | "history", dataKey: string, checked: boolean) => {
+    const setter = tab === "pending" ? setVisiblePendingColumns : setVisibleHistoryColumns
+    setter(prev => ({ ...prev, [dataKey]: checked }))
+  }
+
+  const handleSelectAllColumns = (tab: "pending" | "history", meta: any[], checked: boolean) => {
+    const setter = tab === "pending" ? setVisiblePendingColumns : setVisibleHistoryColumns
+    setter(prev => ({
+      ...prev,
+      ...meta.reduce((acc, col) => { if (col.toggleable) acc[col.dataKey] = checked; return acc }, {} as Record<string, boolean>)
+    }))
+  }
+
+  const visiblePendingMeta = useMemo(() => PENDING_COLUMNS_META.filter(c => visiblePendingColumns[c.dataKey]), [visiblePendingColumns])
+  const visibleHistoryMeta = useMemo(() => HISTORY_COLUMNS_META.filter(c => visibleHistoryColumns[c.dataKey]), [visibleHistoryColumns])
+
+  // ---------- RENDER ----------
+  if (loading)
+    return <div className="flex justify-center items-center h-screen"><Loader2 className="h-12 w-12 animate-spin text-olive-600" /></div>
+
+  if (error)
+    return (
+      <div className="p-8 text-center text-red-600 bg-red-50 rounded-md">
+        <AlertTriangle className="h-12 w-12 mx-auto mb-4" />
+        <p className="text-lg font-semibold">Error Loading Data</p>
+        <p>{error}</p>
+        <Button onClick={loadData} className="mt-4 bg-olive-600 text-white hover:bg-olive-700">Retry</Button>
+      </div>
+    )
+
+  return (
+    <div className="space-y-6 p-4 md:p-6 bg-white min-h-screen">
+      <Toaster />
+
+      <Card className="shadow-md border-none">
+        <CardHeader className="bg-gradient-to-r from-olive-50 to-olive-100 rounded-t-lg">
+          <CardTitle className="flex items-center gap-2 text-gray-800">
+            <CheckCircle className="h-6 w-6 text-olive-600" />
+            Full Kitting Verification
+          </CardTitle>
+          <CardDescription>Verify items after the full kitting process.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 sm:p-6">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="grid w-full sm:w-[450px] grid-cols-2 mb-6">
+              <TabsTrigger value="pending" className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4" /> Pending
+                <Badge variant="secondary" className="ml-1 px-1.5 py-0.5 text-xs">{pendingChecks.length}</Badge>
+              </TabsTrigger>
+              <TabsTrigger value="history" className="flex items-center gap-2">
+                <Eye className="h-4 w-4" /> History
+                <Badge variant="secondary" className="ml-1 px-1.5 py-0.5 text-xs">{historyChecks.length}</Badge>
+              </TabsTrigger>
+            </TabsList>
+
+            {/* ──── PENDING ──── */}
+            <TabsContent value="pending">
+              <Card>
+                <CardHeader className="py-3 px-4 bg-muted/30">
+                  <div className="flex justify-between items-center">
+                    <CardTitle className="text-base">Pending Items</CardTitle>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8 text-xs">
+                          <Settings className="mr-2 h-4 w-4" /> Columns
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="end" className="w-56">
+                        <h4 className="font-medium text-sm mb-2">Toggle Columns</h4>
+                        <div className="flex justify-between mb-2">
+                          <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={() => handleSelectAllColumns("pending", PENDING_COLUMNS_META, true)}>Select All</Button>
+                          <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={() => handleSelectAllColumns("pending", PENDING_COLUMNS_META, false)}>Deselect All</Button>
+                        </div>
+                        <hr className="mb-2" />
+                        {PENDING_COLUMNS_META.filter(c => c.toggleable).map(col => (
+                          <div key={col.dataKey} className="flex items-center space-x-2 my-1">
+                            <Checkbox
+                              id={`p-${col.dataKey}`}
+                              checked={!!visiblePendingColumns[col.dataKey]}
+                              onCheckedChange={v => handleToggleColumn("pending", col.dataKey, !!v)}
+                            />
+                            <Label htmlFor={`p-${col.dataKey}`} className="font-normal text-sm">{col.header}</Label>
+                          </div>
+                        ))}
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="relative max-h-[600px] overflow-auto rounded-lg border">
+                    <Table>
+                      <TableHeader className="sticky top-0 z-10 bg-slate-100">
+                        <TableRow>{visiblePendingMeta.map(c => <TableHead key={c.dataKey}>{c.header}</TableHead>)}</TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pendingChecks.length > 0 ? pendingChecks.map(item => (
+                          <TableRow key={item.id}>
+                            {visiblePendingMeta.map(col => (
+                              <TableCell key={col.dataKey}>
+                                {col.dataKey === "actionColumn" ? (
+                                  <Button size="sm" onClick={() => handleOpenKittingForm(item)} className="bg-olive-600 text-white hover:bg-olive-700">
+                                    <CheckCircle className="mr-2 h-4 w-4" /> Verify
+                                  </Button>
+                                ) : col.dataKey === "priority" ? (
+                                  <Badge className={item.priority === "Urgent" ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"}>{item.priority || "-"}</Badge>
+                                ) : (
+                                  String((item as any)[col.dataKey] ?? "-")
+                                )}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        )) : (
+                          <TableRow><TableCell colSpan={visiblePendingMeta.length} className="h-24 text-center text-gray-400">No pending items.</TableCell></TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* ──── HISTORY ──── */}
+            <TabsContent value="history">
+              <Card>
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <CardTitle className="text-base">Costing Response History</CardTitle>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm"><Settings className="mr-2 h-4 w-4" /> Columns</Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="end" className="w-56">
+                        <h4 className="font-medium text-sm mb-2">Toggle Columns</h4>
+                        <div className="flex justify-between mb-2">
+                          <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={() => handleSelectAllColumns("history", HISTORY_COLUMNS_META, true)}>Select All</Button>
+                          <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={() => handleSelectAllColumns("history", HISTORY_COLUMNS_META, false)}>Deselect All</Button>
+                        </div>
+                        <hr className="mb-2" />
+                        {HISTORY_COLUMNS_META.filter(c => c.toggleable).map(col => (
+                          <div key={col.dataKey} className="flex items-center space-x-2 my-1">
+                            <Checkbox
+                              id={`h-${col.dataKey}`}
+                              checked={!!visibleHistoryColumns[col.dataKey]}
+                              onCheckedChange={v => handleToggleColumn("history", col.dataKey, !!v)}
+                            />
+                            <Label htmlFor={`h-${col.dataKey}`} className="font-normal text-sm">{col.header}</Label>
+                          </div>
+                        ))}
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="relative max-h-[600px] overflow-auto rounded-lg border">
+                    <Table>
+                      <TableHeader className="sticky top-0 z-10 bg-slate-100">
+                        <TableRow>{visibleHistoryMeta.map(c => <TableHead key={c.dataKey}>{c.header}</TableHead>)}</TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {historyChecks.length > 0 ? historyChecks.map(item => (
+                          <TableRow key={item.id}>
+                            {visibleHistoryMeta.map(col => (
+                              <TableCell key={col.dataKey}>
+                                {col.dataKey === "actionColumn" ? (
+                                  <Button size="sm" variant="outline" onClick={() => loadHistoryItemForRevision(item)} className="h-8">
+                                    <Edit className="h-4 w-4 mr-1" /> Revise
+                                  </Button>
+                                ) : col.dataKey === "rawMaterials" ? (
+                                  <Button variant="outline" size="sm" onClick={() => setViewingMaterials({ names: item.rawMaterials, qtys: item.rawMaterialQtys })} className="h-7 text-xs">
+                                    <Eye className="h-3.5 w-3.5 mr-1" /> View ({item.rawMaterials.length})
+                                  </Button>
+                                ) : col.dataKey === "alumina" ? item.alumina.toFixed(4)
+                                  : col.dataKey === "iron" ? item.iron.toFixed(4)
+                                  : col.dataKey === "bd" ? item.bd.toFixed(4)
+                                  : col.dataKey === "ap" ? item.ap.toFixed(4)
+                                  : String((item as any)[col.dataKey] ?? "-")}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        )) : (
+                          <TableRow><TableCell colSpan={visibleHistoryMeta.length} className="h-24 text-center text-gray-400">No history items found.</TableCell></TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+
+      {/* ──── Raw Materials Dialog ──── */}
+      <Dialog open={!!viewingMaterials} onOpenChange={() => setViewingMaterials(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Raw Materials Used</DialogTitle>
+            <DialogDescription>Detailed list of raw materials and their percentages.</DialogDescription>
+          </DialogHeader>
+          <Table>
+            <TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Quantity (%)</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {viewingMaterials?.names.map((name, i) => (
+                <TableRow key={i}><TableCell>{name}</TableCell><TableCell>{viewingMaterials.qtys[i] || "0"}</TableCell></TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </DialogContent>
+      </Dialog>
+
+      {/* ──── Full Kitting Dialog ──── */}
+      <Dialog open={isKittingDialogOpen} onOpenChange={setIsKittingDialogOpen}>
+        <DialogContent className="max-w-7xl w-full max-h-[95vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Full Kitting Details {selectedHistoryItem ? `— Revising ${selectedHistoryItem.compositionNo}` : ""}</DialogTitle>
+            <DialogDescription>Review and verify the raw material composition and expected values.</DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto space-y-6 p-1 pr-2">
+            {/* Order Info */}
+            <div className="grid grid-cols-3 gap-4 px-1">
+              <div>
+                <Label className="text-xs text-gray-500">Delivery Order No.</Label>
+                <Input value={selectedCheck?.deliveryOrderNo || ""} readOnly className="bg-gray-50 mt-1" />
+              </div>
+              <div>
+                <Label className="text-xs text-gray-500">Product Name</Label>
+                <Input value={selectedCheck?.productName || ""} readOnly className="bg-gray-50 mt-1" />
+              </div>
+              <div>
+                <Label className="text-xs text-gray-500">Planned Date</Label>
+                <Input value={selectedCheck?.plannedDate || "-"} readOnly className="bg-gray-50 mt-1" />
+              </div>
+            </div>
+
+            {/* Raw Materials Composition Table */}
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="font-semibold text-sm text-gray-700">Raw Materials Composition</h3>
+                <div className="flex gap-2">
+                  {process.env.NODE_ENV === 'development' && (
+                    <Button onClick={autofillDummyData} size="sm" variant="outline" className="text-amber-600 border-amber-200 hover:bg-amber-50">
+                      <Zap className="h-4 w-4 mr-1" /> Autofill (Dev)
+                    </Button>
+                  )}
+                  <Button onClick={addKittingFormRow} disabled={kittingFormRows.length >= 20} size="sm" className="bg-olive-600 text-white hover:bg-olive-700">
+                    <Plus className="h-4 w-4 mr-1" /> Add Row
+                  </Button>
+                </div>
+              </div>
+              <div className="overflow-x-auto border rounded-lg">
+                <Table>
+                  <TableHeader className="bg-slate-100">
+                    <TableRow>
+                      <TableHead className="w-10 p-2">#</TableHead>
+                      <TableHead className="min-w-[180px] p-2">Material</TableHead>
+                      <TableHead className="p-2">AL</TableHead>
+                      <TableHead className="p-2">FE</TableHead>
+                      <TableHead className="p-2">BD</TableHead>
+                      <TableHead className="p-2">AP</TableHead>
+                      <TableHead className="bg-yellow-100 min-w-[110px] p-2">% (Input)</TableHead>
+                      <TableHead className="p-2">AL (Calc)</TableHead>
+                      <TableHead className="p-2">FE (Calc)</TableHead>
+                      <TableHead className="p-2">BD (Calc)</TableHead>
+                      <TableHead className="p-2">AP (Calc)</TableHead>
+                      <TableHead className="p-2">Del</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {kittingFormRows.map((row, idx) => (
+                      <TableRow key={row.id}>
+                        <TableCell className="p-2 text-sm">{idx + 1}</TableCell>
+                        <TableCell className="p-2">
+                          <Select value={row.productName} onValueChange={v => handleKittingRowChange(row.id, "productName", v)}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select material" /></SelectTrigger>
+                            <SelectContent>
+                              {kycProducts
+                                .filter(p => !selectedCheck?.firmName || p.firmName === selectedCheck.firmName)
+                                .map(p => <SelectItem key={`${p.id}-${p.productName}`} value={p.productName}>{p.productName}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell className="p-2 text-xs">{row.baseAlumina.toFixed(2)}</TableCell>
+                        <TableCell className="p-2 text-xs">{row.baseIron.toFixed(2)}</TableCell>
+                        <TableCell className="p-2 text-xs">{row.baseBd.toFixed(2)}</TableCell>
+                        <TableCell className="p-2 text-xs">{row.baseAp.toFixed(2)}</TableCell>
+                        <TableCell className="bg-yellow-50 p-2">
+                          <Input
+                            type="number" value={row.percentage}
+                            onChange={e => handleKittingRowChange(row.id, "percentage", e.target.value)}
+                            placeholder="e.g. 30" className="h-8 text-xs"
+                          />
+                        </TableCell>
+                        <TableCell className="p-2 text-xs">{row.al.toFixed(4)}</TableCell>
+                        <TableCell className="p-2 text-xs">{row.fe.toFixed(4)}</TableCell>
+                        <TableCell className="p-2 text-xs">{row.bd.toFixed(4)}</TableCell>
+                        <TableCell className="p-2 text-xs">{row.ap.toFixed(4)}</TableCell>
+                        <TableCell className="p-2">
+                          <Button variant="ghost" size="icon" onClick={() => removeKittingFormRow(row.id)}>
+                            <X className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                  <TableFooter>
+                    <TableRow className="bg-slate-50 font-bold text-sm">
+                      <TableCell colSpan={6} className="text-right p-2">Total</TableCell>
+                      <TableCell className="bg-yellow-100 p-2">{kittingTotals.percentage.toFixed(2)}%</TableCell>
+                      <TableCell className="p-2">{kittingTotals.al.toFixed(4)}</TableCell>
+                      <TableCell className="p-2">{kittingTotals.fe.toFixed(4)}</TableCell>
+                      <TableCell className="p-2">{kittingTotals.bd.toFixed(4)}</TableCell>
+                      <TableCell className="p-2">{kittingTotals.ap.toFixed(4)}</TableCell>
+                      <TableCell className="p-2" />
+                    </TableRow>
+                  </TableFooter>
+                </Table>
+              </div>
+            </div>
+
+            {/* Expected Values Table */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold text-sm text-gray-700">Expected Values</h3>
+                <span className="text-xs text-gray-500 bg-olive-50 border border-olive-200 rounded px-2 py-0.5">
+                  Product: <strong>{selectedCheck?.productName || "—"}</strong>
+                </span>
+              </div>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-olive-50">
+                      <th className="border border-gray-200 p-2.5 text-left font-semibold text-gray-700 w-[65%]">
+                        Property / Parameter
+                      </th>
+                      <th className="border border-gray-200 p-2.5 text-center font-semibold text-olive-700 w-[35%]">
+                        Expected Value
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {expectedValues.map((evRow, rowIdx) => (
+                      <tr key={evRow.property} className="hover:bg-gray-50 transition-colors">
+                        <td className="border border-gray-200 p-2 font-medium text-gray-700">
+                          {evRow.property}
+                        </td>
+                        <td className="border border-gray-200 p-1">
+                          <Input
+                            value={evRow.value}
+                            onChange={e => handleExpectedValueChange(rowIdx, e.target.value)}
+                            placeholder="e.g. 10–12"
+                            className="h-8 text-xs text-center border-dashed border-gray-300 focus:border-olive-400 bg-white"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">
+                💡 Supports ranges (e.g. <code className="bg-gray-100 px-1 rounded">10–12</code>) and exact values (e.g. <code className="bg-gray-100 px-1 rounded">0.5</code>)
+              </p>
+            </div>
+
+
+          </div>
+
+          {/* Footer */}
+          <div className="flex justify-end gap-2 p-4 border-t bg-white">
+            <Button variant="outline" onClick={() => setIsKittingDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
+            <Button onClick={handleSaveKittingForm} disabled={isSubmitting} className="bg-olive-600 text-white hover:bg-olive-700">
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
