@@ -39,6 +39,7 @@ interface ProductionItem {
   quantityDelivered?: string
   productionPending?: string
   productRate?: string
+  uploadSo?: string
 }
 
 interface KycProduct {
@@ -222,9 +223,10 @@ export default function CheckPage() {
         quantityDelivered: String(pick(row, ["Delivered", "Quantity Delivered"])),
         productionPending: String(pick(row, ["Pending Qty", "Production Pending"])),
         productRate: String(pick(row, ["Rate Of Material", "Product Rate", "Selling Price"])),
+        uploadSo: String(pick(row, ["Upload SO"]) || ""),
       })
 
-      const prodMap = new Map<string, { plannedDate: string; expectedDeliveryDate: string; priority: string; firmName: string }>()
+      const prodMap = new Map<string, { plannedDate: string; expectedDeliveryDate: string; priority: string; firmName: string; uploadSo?: string }>()
       const productionKeys = new Set<string>()
       ;(allProdData || []).forEach((row: any) => {
         const doNo = String(row["Delivery Order No."] || "").trim()
@@ -235,6 +237,7 @@ export default function CheckPage() {
             expectedDeliveryDate: row["Expected Delivery Date"] || "",
             priority: row["Priority"] || "",
             firmName: row["Firm Name"] || "",
+            uploadSo: row["Upload SO"] || "",
           }
           prodMap.set(doNo, prodInfo)
           prodMap.set(makeOrderProductKey(doNo, productName), prodInfo)
@@ -313,6 +316,7 @@ export default function CheckPage() {
           quantityDelivered: meta?.quantityDelivered || "",
           productionPending: meta?.productionPending || "",
           productRate: meta?.productRate || "",
+          uploadSo: row["Upload SO"] || meta?.uploadSo || "",
         })
       })
 
@@ -322,7 +326,7 @@ export default function CheckPage() {
         const key = makeOrderProductKey(doNo, productName)
         if (!doNo || pendingMap.has(key) || productionKeys.has(key) || isVerified(doNo, productName)) return
 
-        const enriched = prodMap.get(key) || prodMap.get(doNo) || { plannedDate: "", expectedDeliveryDate: "", priority: "", firmName: "" }
+        const enriched = prodMap.get(key) || prodMap.get(doNo) || { plannedDate: "", expectedDeliveryDate: "", priority: "", firmName: "", uploadSo: "" }
 
         pendingMap.set(key, {
           id: row.id,
@@ -341,6 +345,7 @@ export default function CheckPage() {
           quantityDelivered: String(row["Delivered"] ?? ""),
           productionPending: String(row["Pending Qty"] ?? ""),
           productRate: String(row["Rate Of Material"] ?? ""),
+          uploadSo: row["Upload SO"] || enriched.uploadSo || "",
         })
       })
 
@@ -450,6 +455,7 @@ export default function CheckPage() {
       note: "",
       plannedDate: item.plannedDate,
       status: "",
+      uploadSo: "",
     }
     setSelectedCheck(prodItem)
 
@@ -696,12 +702,13 @@ export default function CheckPage() {
           "Planned 1": toDateOrNull(selectedCheck.plannedDate),
           "Actual 1": completedAt,
           product_rate: toNumberOrNull(selectedCheck.productRate),
+          "Upload SO": selectedCheck.uploadSo || null,
         }
 
         let updateQuery = supabase
           .from(PRODUCTION_TABLE)
           .update(productionPayload)
-          .eq("Delivery Order No.", selectedCheck.deliveryOrderNo)
+          .eq('"Delivery Order No."', selectedCheck.deliveryOrderNo)
           .eq("Product Name", selectedCheck.productName)
 
         if (selectedCheck.firmName) {
