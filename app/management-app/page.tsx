@@ -79,7 +79,9 @@ interface LabItem {
   id: number;
   compositionNo: string;
   orderNo: string;
+  partyName: string;
   productName: string;
+  orderQuantity: number;
   sellingPrice: number;     // from costing_response (spec/reference)
   productRate: number;      // from production table (actual selling price)
   gpPercentage: number;
@@ -117,7 +119,9 @@ const PENDING_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
   { header: "Composition No.", dataKey: "compositionNo", toggleable: true },
   { header: "Order No.", dataKey: "orderNo", toggleable: true },
+  { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
+  { header: "Qty", dataKey: "orderQuantity", toggleable: true },
   { header: "PI Approved At", dataKey: "piApprovedAt", toggleable: true },
   { header: "PI Remarks", dataKey: "piRemarks", toggleable: true },
   { header: "GP% Actual", dataKey: "gpActual", toggleable: true },
@@ -131,7 +135,9 @@ const HISTORY_COLUMNS_META = [
   { header: "Decision", dataKey: "managementApprovalStatus", toggleable: true },
   { header: "Composition No.", dataKey: "compositionNo", toggleable: true },
   { header: "Order No.", dataKey: "orderNo", toggleable: true },
+  { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
+  { header: "Qty", dataKey: "orderQuantity", toggleable: true },
   { header: "GP% Actual", dataKey: "gpActual", toggleable: true },
   { header: "Total Cost", dataKey: "materialCostActual", toggleable: true },
   { header: "Approved At", dataKey: "managementApprovedAt", toggleable: true },
@@ -181,7 +187,7 @@ export default function ManagementApp() {
         { data: prodData, error: prodErr }
       ] = await Promise.all([
         supabase.from(KYC_TABLE).select("*"),
-        supabase.from(PRODUCTION_TABLE).select('"Delivery Order No.", product_rate, "Firm Name"'),
+        supabase.from(PRODUCTION_TABLE).select('"Delivery Order No.", product_rate, "Firm Name", "Party Name", "Order Quantity"'),
       ]);
       
       if (kycErr) throw kycErr;
@@ -194,11 +200,15 @@ export default function ManagementApp() {
 
       const productRateMap = new Map<string, number>();
       const firmMap = new Map<string, string>();
+      const partyMap = new Map<string, string>();
+      const quantityMap = new Map<string, number>();
       (prodData || []).forEach((p: any) => {
         const key = String(p["Delivery Order No."] || "").trim();
         if (key) {
           productRateMap.set(key, Number(p.product_rate || 0));
           firmMap.set(key, p["Firm Name"] || "");
+          partyMap.set(key, String(p["Party Name"] || ""));
+          quantityMap.set(key, Number(p["Order Quantity"] || 0));
         }
       });
 
@@ -243,7 +253,9 @@ export default function ManagementApp() {
           id: row.id,
           compositionNo: row["Composition No."] || "",
           orderNo,
+          partyName: partyMap.get(String(orderNo).trim()) || "",
           productName: row["product name"] || "",
+          orderQuantity: quantityMap.get(String(orderNo).trim()) || 0,
           sellingPrice: Number(row["SELLING PRICE"] || 0),
           productRate,
           gpPercentage: Number(row["GP %AGE"] || 0),
@@ -639,7 +651,9 @@ export default function ManagementApp() {
                   {[
                     { label: "Composition No.", value: selectedItem.compositionNo },
                     { label: "Order No.", value: selectedItem.orderNo },
+                    { label: "Party Name", value: selectedItem.partyName },
                     { label: "Product Name", value: selectedItem.productName },
+                    { label: "Qty", value: selectedItem.orderQuantity ? selectedItem.orderQuantity.toLocaleString("en-IN") : "—" },
                     { label: "Planned Date", value: selectedItem.planned1 },
                   ].map(({ label, value }) => (
                     <InfoCard key={label} label={label} value={value} />

@@ -243,11 +243,24 @@ export default function ProductionPage() {
 
       // 2. Process Pending Job Cards
       // Condition: Actual 1 is NOT null AND Time Delay 1 IS null (as per original logic)
+      const findProductionInfo = (deliveryOrderNo: string, productName: string) => {
+        const normalizedDo = deliveryOrderNo.trim().toLowerCase()
+        const normalizedProduct = productName.trim().toLowerCase()
+        return (productionData || []).find((p: any) => {
+          const pDo = String(p["Delivery Order No."] || "").trim().toLowerCase()
+          const pProduct = String(p["Product Name"] || "").trim().toLowerCase()
+          return pDo === normalizedDo && pProduct === normalizedProduct
+        }) || (productionData || []).find(
+          (p: any) => String(p["Delivery Order No."] || "").trim().toLowerCase() === normalizedDo
+        )
+      }
+
       const pending = (jobCardsData || [])
         .filter(row => row["Status"] !== "cancelled" && !row["Time Delay 1"])
         .map((row: any) => {
-          const prodInfo = (productionData || []).find(
-            p => String(p["Delivery Order No."] || "").trim() === String(row["Delivery Order No."] || "").trim()
+          const prodInfo = findProductionInfo(
+            String(row["Delivery Order No."] || ""),
+            String(row["Product Name"] || "")
           )
           return {
             _rowIndex: row.id,
@@ -255,7 +268,7 @@ export default function ProductionPage() {
             firmName: String(row["Firm Name"] || ""),
             supervisorName: String(row["Supervisor Name"] || ""),
             deliveryOrderNo: String(row["Delivery Order No."] || ""),
-            partyName: String(row["Party Name"] || ""),
+            partyName: String(row["Party Name"] || prodInfo?.["Party Name"] || ""),
             productName: String(row["Product Name"] || ""),
             orderQuantity: Number(row["Quantity"] || 0),
             totalMade: Number(row["Total Made"] || 0),
@@ -276,7 +289,7 @@ export default function ProductionPage() {
           const jcNo = String(row["JC-Job Card Number"] || "").trim()
           const doNo = String(row["Delivery Order No."] || "").trim()
           const productionRecord = productionRecordsMap.get(jcNo)
-          const prodInfo = (productionData || []).find(p => String(p["Delivery Order No."] || "").trim() === doNo)
+          const prodInfo = findProductionInfo(doNo, String(row["Product Name"] || ""))
 
           return {
             _rowIndex: row.id,
@@ -294,7 +307,7 @@ export default function ProductionPage() {
             machineHours: String(productionRecord?.machineHours || "-"),
             remarks: productionRecord?.remarks || "",
             firmName: productionRecord?.firmName || String(row["Firm Name"] || ""),
-            partyName: String(row["Party Name"] || ""),
+            partyName: String(row["Party Name"] || prodInfo?.["Party Name"] || ""),
             productName: productionRecord?.productName || String(row["Product Name"] || ""),
             orderQuantity: Number(row["Quantity"] || 0),
             quantity: Number(row["Quantity"] || 0),
@@ -437,6 +450,7 @@ export default function ProductionPage() {
         "Name Of Supervisor": selectedJobCard.supervisorName,
         "Product Name": selectedJobCard.productName,
         "Quantity Of FG": fgQtyNum,
+        "Party Name": selectedJobCard.partyName,
         "Serial Number": String(newSerialNumber),
         "Machine Running hour": Number(formData.machineRunningHour) || 0,
         "Remarks1": formData.remarks || "",

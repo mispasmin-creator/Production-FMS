@@ -32,12 +32,15 @@ import { cn } from "@/lib/utils"
 
 // --- Constants ---
 const COSTING_RESPONSE_TABLE = "costing_response"
+const PRODUCTION_TABLE = "production"
 
 interface SampleItem {
   id: number
   compositionNo: string
   orderNo: string
+  partyName: string
   productName: string
+  orderQuantity: number
   status: string
   managementApprovalType: string
   sampleTestStatus?: string
@@ -68,13 +71,33 @@ export default function SampleTestPage() {
     setLoading(true)
     setError(null)
     try {
-      const { data, error: dbErr } = await supabase
-        .from(COSTING_RESPONSE_TABLE)
-        .select("*")
-        .or(`Status.eq.Sample Test Pending,Status.eq.Management Approved`)
-        .order("id", { ascending: false })
+      const [
+        { data, error: dbErr },
+        { data: prodData, error: prodErr },
+      ] = await Promise.all([
+        supabase
+          .from(COSTING_RESPONSE_TABLE)
+          .select("*")
+          .or(`Status.eq.Sample Test Pending,Status.eq.Management Approved`)
+          .order("id", { ascending: false }),
+        supabase
+          .from(PRODUCTION_TABLE)
+          .select('"Delivery Order No.", "Party Name", "Order Quantity"'),
+      ])
 
       if (dbErr) throw dbErr
+      if (prodErr) throw prodErr
+
+      const productionMeta = new Map<string, { partyName: string; orderQuantity: number }>()
+      ;(prodData || []).forEach((p: any) => {
+        const key = String(p["Delivery Order No."] || "").trim()
+        if (key) {
+          productionMeta.set(key, {
+            partyName: String(p["Party Name"] || ""),
+            orderQuantity: Number(p["Order Quantity"] || 0),
+          })
+        }
+      })
 
       const mapped: SampleItem[] = (data || []).map((row) => {
         const rmValues: { rm: string; qty: number; cost: number }[] = []
@@ -90,11 +113,16 @@ export default function SampleTestPage() {
             })
           }
         }
+        const orderNo = row["Order No."] || ""
+        const meta = productionMeta.get(String(orderNo).trim())
+
         return {
           id: row.id,
           compositionNo: row["Composition No."] || "",
-          orderNo: row["Order No."] || "",
+          orderNo,
+          partyName: meta?.partyName || "",
           productName: row["product name"] || "",
+          orderQuantity: meta?.orderQuantity || 0,
           status: row.Status || "",
           managementApprovalType: row["Management Approval Type"] || "",
           sampleTestStatus: row["Sample Test Status"],
@@ -255,7 +283,9 @@ export default function SampleTestPage() {
                        <TableRow>
                          <TableHead>Composition No.</TableHead>
                          <TableHead>Order No.</TableHead>
+                         <TableHead>Party Name</TableHead>
                          <TableHead>Product Name</TableHead>
+                         <TableHead>Qty</TableHead>
                          <TableHead className="text-right">Action</TableHead>
                        </TableRow>
                      </TableHeader>
@@ -264,7 +294,9 @@ export default function SampleTestPage() {
                          <TableRow key={item.id} className="hover:bg-slate-50/50 transition-colors">
                            <TableCell className="font-bold text-olive-600">{item.compositionNo}</TableCell>
                            <TableCell className="font-medium text-slate-700">{item.orderNo}</TableCell>
+                           <TableCell className="font-medium text-slate-700">{item.partyName || "-"}</TableCell>
                            <TableCell className="font-semibold text-slate-900">{item.productName}</TableCell>
+                           <TableCell className="font-medium text-slate-700">{item.orderQuantity || "-"}</TableCell>
                            <TableCell className="text-right">
                              <Button 
                                onClick={() => openTestDialog(item)}
@@ -288,6 +320,9 @@ export default function SampleTestPage() {
                      <TableRow>
                        <TableHead>Composition No.</TableHead>
                        <TableHead>Order No.</TableHead>
+                       <TableHead>Party Name</TableHead>
+                       <TableHead>Product Name</TableHead>
+                       <TableHead>Qty</TableHead>
                        <TableHead>Result</TableHead>
                        <TableHead>Completed At</TableHead>
                        <TableHead className="text-right">Details</TableHead>
@@ -298,6 +333,9 @@ export default function SampleTestPage() {
                        <TableRow key={item.id}>
                          <TableCell className="font-bold text-slate-600">{item.compositionNo}</TableCell>
                          <TableCell className="text-slate-600">{item.orderNo}</TableCell>
+                         <TableCell className="text-slate-600">{item.partyName || "-"}</TableCell>
+                         <TableCell className="font-medium text-slate-700">{item.productName}</TableCell>
+                         <TableCell className="text-slate-600">{item.orderQuantity || "-"}</TableCell>
                          <TableCell>
                             <Badge className={cn("px-2 py-1", item.sampleTestStatus === "OK" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700")}>
                               {item.sampleTestStatus}
@@ -327,7 +365,7 @@ export default function SampleTestPage() {
               {selectedItem?.status === "Sample Test Pending" ? "Submit Sample Test" : "Sample Test Details"}
             </DialogTitle>
             <DialogDescription>
-              Order: {selectedItem?.orderNo} | Product: {selectedItem?.productName}
+              Order: {selectedItem?.orderNo} | Party: {selectedItem?.partyName || "-"} | Product: {selectedItem?.productName} | Qty: {selectedItem?.orderQuantity || "-"}
             </DialogDescription>
           </DialogHeader>
 

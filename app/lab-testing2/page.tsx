@@ -29,6 +29,7 @@ interface ProductionItem {
   id: string | number
   jobCardNo: string
   deliveryOrderNo: string
+  partyName: string
   productName: string
   quantity: number
   expectedDeliveryDate: string
@@ -47,6 +48,7 @@ interface HistoryItem {
   id: string | number
   jobCardNo: string
   deliveryOrderNo: string
+  partyName: string
   productName: string
   quantity: number
   test1Status: string
@@ -96,6 +98,7 @@ const formatMachineHours = (hours: any) => {
 const PENDING_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
+  { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
   { header: "Quantity", dataKey: "quantity", toggleable: true },
@@ -113,6 +116,7 @@ const PENDING_COLUMNS_META = [
 const HISTORY_COLUMNS_META = [
   { header: "Completed At", dataKey: "test2CompletedAt", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
+  { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Quantity", dataKey: "quantity", toggleable: true },
@@ -244,6 +248,7 @@ export default function LabTesting2Page() {
             id: row.id,
             jobCardNo: jobCardNo,
             deliveryOrderNo: deliveryOrderNo,
+            partyName: String(row["Party Name"] || ""),
             productName: costingData.productName || String(row["Product Name"] || ""),
             quantity: Number(row["Quantity"] || 0),
             expectedDeliveryDate: productionRow?.["Expected Delivery Date"] ? format(new Date(productionRow["Expected Delivery Date"]), "dd/MM/yyyy") : "",
@@ -284,6 +289,7 @@ export default function LabTesting2Page() {
             id: row.id,
             jobCardNo: jobCardNo,
             deliveryOrderNo: deliveryOrderNo,
+            partyName: String(row["Party Name"] || ""),
             productName: costingData.productName || String(row["Product Name"] || ""),
             quantity: Number(row["Quantity"] || 0),
             test1Status: String(row["Status 2"] || "N/A"),

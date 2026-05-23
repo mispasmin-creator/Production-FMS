@@ -30,6 +30,7 @@ interface ProductionItem {
   _rowIndex: number | string
   jobCardNo: string
   deliveryOrderNo: string
+  partyName: string
   productName: string
   quantity: number
   expectedDeliveryDate: string
@@ -54,6 +55,7 @@ interface HistoryItem {
   _rowIndex: number | string
   jobCardNo: string
   deliveryOrderNo: string
+  partyName: string
   productName: string
   quantity: number
   testStatus: string
@@ -116,7 +118,9 @@ const formatMachineHours = (hours: any) => {
 const PENDING_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
+  { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
+  { header: "Quantity", dataKey: "quantity", toggleable: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Planned Date", dataKey: "plannedDate", toggleable: true },
   { header: "Expected Delivery Date", dataKey: "expectedDeliveryDate", toggleable: true },
@@ -130,6 +134,7 @@ const PENDING_COLUMNS_META = [
 
 const HISTORY_COLUMNS_META = [
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
+  { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Planned Date", dataKey: "plannedDate", toggleable: true },
@@ -281,6 +286,7 @@ export default function LabTesting1Page() {
             _rowIndex: row.id,
             jobCardNo: jobCardNo.trim(),
             deliveryOrderNo: deliveryOrderNo.trim(),
+            partyName: String(row["Party Name"] || ""),
             productName: costingData.productName || String(row["Product Name"] || ""),
             quantity: Number(row["Quantity"] || 0),
             dateOfProduction: row["Date Of Production"] ? format(new Date(row["Date Of Production"]), "dd/MM/yyyy") : "",
@@ -325,6 +331,7 @@ export default function LabTesting1Page() {
             _rowIndex: row.id,
             jobCardNo: jobCardNo,
             deliveryOrderNo: String(row["Delivery Order No."] || ""),
+            partyName: String(row["Party Name"] || ""),
             productName: costingData.productName || String(row["Product Name"] || ""),
             quantity: Number(row["Quantity"] || 0),
             testStatus: String(row["Status 2"] || ""),

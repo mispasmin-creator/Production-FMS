@@ -50,6 +50,7 @@ interface QCRecord {
 // ─── Constants ────────────────────────────────────────────────────────────────
 const JOBCARDS_TABLE        = "jobcards"
 const ACTUAL_PROD_TABLE     = "actual_production"
+const PRODUCTION_TABLE      = "production"
 const COSTING_TABLE         = "costing_response"
 const KYC_TABLE             = "kyc"
 
@@ -95,33 +96,58 @@ export default function CompositionQCPage() {
       const [
         { data: jcData,     error: jcErr },
         { data: apData,     error: apErr },
+        { data: prodData,   error: prodErr },
         { data: costData,   error: costErr },
         { data: kycData,    error: kycErr },
         { data: orderReceiptData, error: orderReceiptErr },
       ] = await Promise.all([
         supabase.from(JOBCARDS_TABLE).select("*").not("Time Delay 1", "is", null),
         supabase.from(ACTUAL_PROD_TABLE).select("*"),
+        supabase.from(PRODUCTION_TABLE).select("*"),
         supabase.from(COSTING_TABLE).select("*").order("id", { ascending: false }),
         supabase.from(KYC_TABLE).select("*"),
         dispatchSupabase.from("ORDER RECEIPT").select('"DO-Delivery Order No.", "Rate Of Material", "Firm Name", "Party Names", "Product Name", check_delivery_in_stock_or_not'),
       ])
       if (jcErr)   throw jcErr
       if (apErr)   throw apErr
+      if (prodErr) throw prodErr
       if (costErr) throw costErr
       if (kycErr)  throw kycErr
       if (orderReceiptErr) throw orderReceiptErr
 
       // Build product metadata lookup: DO No. → { rate, firm, checkDeliveryInStockOrNot }
-      const prodMetaMap = new Map<string, { rate: number; firm: string; checkDeliveryInStockOrNot: string }>()
+      const normalize = (value: any) => String(value || "").trim().toLowerCase()
+      const makeOrderProductKey = (orderNo: any, productName: any) => `${normalize(orderNo)}::${normalize(productName)}`
+
+      const orderReceiptMetaMap = new Map<string, { rate: number; firm: string; party: string; checkDeliveryInStockOrNot: string }>()
       ;(orderReceiptData || []).forEach((p: any) => {
-        const key = String(p["DO-Delivery Order No."] || "").trim()
-        if (key) {
-          prodMetaMap.set(key, {
+        const doNo = String(p["DO-Delivery Order No."] || "").trim()
+        const productName = String(p["Product Name"] || "").trim()
+        if (doNo) {
+          const meta = {
             rate: Number(p["Rate Of Material"] || 0),
             firm: String(p["Firm Name"] || ""),
+            party: String(p["Party Names"] || ""),
             checkDeliveryInStockOrNot: String(p["check_delivery_in_stock_or_not"] || ""),
-          })
+          }
+          orderReceiptMetaMap.set(makeOrderProductKey(doNo, productName), meta)
+          if (!orderReceiptMetaMap.has(doNo)) orderReceiptMetaMap.set(doNo, meta)
         }
+      })
+
+      const productionMetaMap = new Map<string, { rate: number; firm: string; party: string; productName: string }>()
+      ;(prodData || []).forEach((p: any) => {
+        const doNo = String(p["Delivery Order No."] || "").trim()
+        const productName = String(p["Product Name"] || "").trim()
+        if (!doNo) return
+        const meta = {
+          rate: Number(p["product_rate"] || 0),
+          firm: String(p["Firm Name"] || ""),
+          party: String(p["Party Name"] || ""),
+          productName,
+        }
+        productionMetaMap.set(makeOrderProductKey(doNo, productName), meta)
+        if (!productionMetaMap.has(doNo)) productionMetaMap.set(doNo, meta)
       })
 
       // Build price lookup: product name → price per unit
@@ -142,29 +168,31 @@ export default function CompositionQCPage() {
       const costMap = new Map<string, any>()
       ;(costData || []).forEach((r: any) => {
         const on = String(r["Order No."] || "").trim()
-        if (on && !costMap.has(on)) costMap.set(on, r)
+        const productName = String(r["product name"] || "").trim()
+        if (!on) return
+        const key = makeOrderProductKey(on, productName)
+        if (!costMap.has(key)) costMap.set(key, r)
+        if (!costMap.has(on)) costMap.set(on, r)
       })
 
       const result: QCRecord[] = []
-      const processedDos = new Set<string>()
 
       for (const jc of (jcData || []) as any[]) {
         const jobCardNo = String(jc["JC-Job Card Number"] || "").trim()
         const doNo      = String(jc["Delivery Order No."] || "").trim()
+        const productName = String(jc["Product Name"] || "").trim()
         const apRow     = apMap.get(jobCardNo)
-        const costRow   = costMap.get(doNo)
+        const costRow   = costMap.get(makeOrderProductKey(doNo, productName)) || costMap.get(doNo)
 
         if (!apRow || !costRow) continue // can't compare without both sides
 
-        const meta               = prodMetaMap.get(doNo)
-        if (!meta || meta.checkDeliveryInStockOrNot !== "For Production Planning") continue
+        const orderMeta          = orderReceiptMetaMap.get(makeOrderProductKey(doNo, productName)) || orderReceiptMetaMap.get(doNo)
+        if (!orderMeta || orderMeta.checkDeliveryInStockOrNot !== "For Production Planning") continue
 
-        processedDos.add(doNo)
-
-        const firmName           = meta?.firm || String(jc["Firm Name"] || "")
+        const productionMeta     = productionMetaMap.get(makeOrderProductKey(doNo, productName)) || productionMetaMap.get(doNo)
+        const firmName           = productionMeta?.firm || orderMeta?.firm || String(jc["Firm Name"] || "")
         const fgQty              = Number(apRow["Quantity Of FG"] || 0)
-        // Use job-card product_rate as selling price; fall back to costing SELLING PRICE
-        const productRate         = meta?.rate || Number(costRow["SELLING PRICE"] || 0)
+        const productRate         = productionMeta?.rate || orderMeta?.rate || Number(costRow["SELLING PRICE"] || 0)
         const sellingPriceTotal   = productRate * fgQty
         const manufacturingCostTotal = Number(costRow["Manufacturing Cost"] || 0) * fgQty
 
@@ -222,8 +250,8 @@ export default function CompositionQCPage() {
 
         result.push({
           jobCardNo, doNo,
-          partyName:   String(jc["Party Name"] || ""),
-          productName: String(jc["Product Name"] || ""),
+          partyName:   String(jc["Party Name"] || productionMeta?.party || orderMeta?.party || ""),
+          productName: String(jc["Product Name"] || productionMeta?.productName || costRow["product name"] || ""),
           fgQty,
           productRate,
           sellingPriceTotal,
@@ -239,57 +267,6 @@ export default function CompositionQCPage() {
           materials,
           firmName,
           productionDate: apRow["Timestamp"] ? format(new Date(apRow["Timestamp"]), "dd/MM/yyyy") : "",
-        })
-      }
-
-      // Now add all other orders from ORDER RECEIPT that were NOT processed via job cards
-      for (const order of (orderReceiptData || []) as any[]) {
-        const doNo = String(order["DO-Delivery Order No."] || "").trim()
-        if (order["check_delivery_in_stock_or_not"] !== "For Production Planning") continue
-        if (processedDos.has(doNo)) continue // already processed as logged jobcard
-
-        const costRow = costMap.get(doNo)
-        const partyName = String(order["Party Names"] || "").trim()
-        const productName = String(order["Product Name"] || "").trim()
-        const firmName = String(order["Firm Name"] || "").trim()
-        const productRate = Number(order["Rate Of Material"] || 0)
-
-        // Build composition materials if costRow exists
-        const materials: MaterialRow[] = []
-        let manufacturingCostTotal = 0
-        if (costRow) {
-          manufacturingCostTotal = Number(costRow["Manufacturing Cost"] || 0) * 0 // fgQty = 0
-          for (let i = 1; i <= 20; i++) {
-            const name = String(costRow[`RM${i}`] || "").trim()
-            const pctVal = Number(costRow[`QTY${i}`] || 0)
-            if (!name) continue
-            materials.push({
-              name, expectedPct: pctVal, expectedQty: 0, actualQty: 0, pricePerUnit: priceMap.get(name.toLowerCase()) ?? 0,
-              expectedCost: 0, actualCost: 0, qtyDiffPct: null, costDiffPct: null
-            })
-          }
-        }
-
-        result.push({
-          jobCardNo: "",
-          doNo,
-          partyName,
-          productName,
-          fgQty: 0,
-          productRate,
-          sellingPriceTotal: 0,
-          manufacturingCostTotal: 0,
-          expectedCostTotal: 0,
-          actualCostTotal: 0,
-          matDiffPct: null,
-          costDiffPct: null,
-          expectedProfit: null,
-          actualProfit: null,
-          profitVariance: null,
-          profitLoss: null,
-          materials,
-          firmName,
-          productionDate: "",
         })
       }
 

@@ -30,6 +30,7 @@ interface PendingApprovalItem {
   productName: string
   firmName: string
   partyName: string
+  quantityOfFG: number
   planned4: string
   // Lab Test 1 fields from jobcards
   lt1Status: string
@@ -70,6 +71,7 @@ interface HistoryApprovalItem {
   productName: string
   firmName: string
   partyName: string
+  quantityOfFG: number
   approvalDate: string
   remarks: string
   // Lab Test 1 fields
@@ -109,6 +111,7 @@ const PENDING_COLUMNS_META = [
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
+  { header: "Quantity", dataKey: "quantityOfFG", toggleable: true },
   { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Planned 4", dataKey: "planned4", toggleable: true },
@@ -119,6 +122,7 @@ const HISTORY_COLUMNS_META = [
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
+  { header: "Quantity", dataKey: "quantityOfFG", toggleable: true },
   { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Approval Date", dataKey: "approvalDate", toggleable: true },
@@ -197,6 +201,7 @@ export default function ManagementApprovalPage() {
           productName: String(row["Product Name"] || jobCard?.["Product Name"] || ""),
           firmName: String(row["FIRM Name"] || jobCard?.["Firm Name"] || ""),
           partyName: String(row["Party Name"] || jobCard?.["Party Name"] || ""),
+          quantityOfFG: Number(row["Quantity Of FG"] || jobCard?.["Quantity"] || 0),
           planned4: formatDateValue(row["Planned4"]),
           lt1Status: String(jobCard?.["Status 2"] || "-"),
           lt1DateOfTest: formatDateValue(jobCard?.["Date Of Test 1"]),

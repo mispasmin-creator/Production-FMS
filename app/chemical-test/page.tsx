@@ -33,6 +33,7 @@ interface PendingChemicalTestItem {
   id: number
   jobCardNo: string
   deliveryOrderNo: string
+  partyName: string
   productName: string
   plannedDate: string
   quantity: number
@@ -50,6 +51,8 @@ interface HistoryChemicalTestItem {
   id: number
   jobCardNo: string
   deliveryOrderNo: string
+  partyName: string
+  productName: string
   quantity: number
   labTest2Status: string
   dateOfChemicalTest: string
@@ -100,6 +103,7 @@ const formatMachineHours = (hours: any) => {
 const PENDING_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
+  { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Quantity", dataKey: "quantity", toggleable: true },
@@ -117,6 +121,8 @@ const PENDING_COLUMNS_META = [
 const HISTORY_COLUMNS_META = [
   { header: "Completed At", dataKey: "chemicalTestCompletedAt", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
+  { header: "Party Name", dataKey: "partyName", toggleable: true },
+  { header: "Product Name", dataKey: "productName", toggleable: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Quantity", dataKey: "quantity", toggleable: true },
   { header: "Lab Test 2 Status", dataKey: "labTest2Status", toggleable: true },
@@ -254,6 +260,7 @@ export default function ChemicalTestPage() {
             id: row.id,
             jobCardNo: jobCardNo,
             deliveryOrderNo: deliveryOrderNo,
+            partyName: String(row["Party Name"] || ""),
             productName: costingData.productName || String(row["Product Name"] || ""),
             quantity: Number(row["Quantity"] || 0),
             expectedDeliveryDate: productionRow?.["Expected Delivery Date"] ? format(new Date(productionRow["Expected Delivery Date"]), "dd/MM/yyyy") : "",
@@ -286,6 +293,8 @@ export default function ChemicalTestPage() {
             id: row.id,
             jobCardNo: jobCardNo,
             deliveryOrderNo: deliveryOrderNo,
+            partyName: String(row["Party Name"] || ""),
+            productName: costingData.productName || String(row["Product Name"] || ""),
             quantity: Number(row["Quantity"] || 0),
             labTest2Status: String(row["Status 3"] || "N/A"),
             dateOfChemicalTest: row["Date Of Test 2"] ? format(new Date(row["Date Of Test 2"]), "dd/MM/yyyy") : "",

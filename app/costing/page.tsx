@@ -92,6 +92,7 @@ interface PendingCostingItem {
   productName: string
   firmName: string
   partyName: string
+  quantityOfFG: number
   planned3: string
   completeDetails?: CompleteProductionDetails
 }
@@ -103,6 +104,7 @@ interface HistoryCostingItem {
   productName: string
   firmName: string
   partyName: string
+  quantityOfFG: number
   costingAmount: number
   costingDate: string
   completeDetails?: CompleteProductionDetails
@@ -114,6 +116,7 @@ const PENDING_COLUMNS_META = [
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
+  { header: "Quantity", dataKey: "quantityOfFG", toggleable: true },
   { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Planned 3", dataKey: "planned3", toggleable: true },
@@ -123,6 +126,7 @@ const HISTORY_COLUMNS_META = [
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
+  { header: "Quantity", dataKey: "quantityOfFG", toggleable: true },
   { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Costing Amount", dataKey: "costingAmount", toggleable: true },
@@ -272,6 +276,7 @@ export default function CostingPage() {
           productName: String(row["Product Name"] || jobCard?.["Product Name"] || ""),
           firmName: String(row["FIRM Name"] || jobCard?.["Firm Name"] || ""),
           partyName: String(row["Party Name"] || jobCard?.["Party Name"] || ""),
+          quantityOfFG: Number(row["Quantity Of FG"] || jobCard?.["Quantity"] || 0),
           planned3: formatDateValue(row["Planned3"]),
           completeDetails: processCompleteDetails(row),
         }

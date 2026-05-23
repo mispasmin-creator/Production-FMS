@@ -188,11 +188,22 @@ export default function JobCardsPage() {
         return isApproved && emptyActual3
       })
 
+      const findProductionRow = (deliveryOrderNo: string, productName: string) => {
+        const normalizedDo = deliveryOrderNo.trim().toLowerCase()
+        const normalizedProduct = productName.trim().toLowerCase()
+        return allProductionData.find((p) => {
+          const pDo = String(p["Delivery Order No."] || "").trim().toLowerCase()
+          const pProduct = String(p["Product Name"] || "").trim().toLowerCase()
+          return pDo === normalizedDo && pProduct === normalizedProduct
+        }) || allProductionData.find(
+          (p) => String(p["Delivery Order No."] || "").trim().toLowerCase() === normalizedDo
+        )
+      }
+
       const processedOrders: Order[] = filteredRows.map((row) => {
         const deliveryOrderNo = String(row["Order No."] || "").trim()
-        const prodRow = allProductionData.find(
-          (p) => String(p["Delivery Order No."] || "").trim() === deliveryOrderNo
-        )
+        const productName = String(row["product name"] || "").trim()
+        const prodRow = findProductionRow(deliveryOrderNo, productName)
         const orderQty = prodRow ? Number(prodRow["Order Quantity"] || 0) : 0
 
         const matchingJobCards = allJobCardsData.filter(
@@ -212,7 +223,7 @@ export default function JobCardsPage() {
           deliveryOrderNo,
           firmName: prodRow ? String(prodRow["Firm Name"] || "") : "",
           partyName: prodRow ? String(prodRow["Party Name"] || "") : "",
-          productName: String(row["product name"] || "").trim(),
+          productName,
           orderQuantity: orderQty,
           expectedDeliveryDate: prodRow && prodRow["Expected Delivery Date"] ? format(new Date(prodRow["Expected Delivery Date"]), "dd/MM/yyyy") : "",
           plannedDate: row["Planned 2"] ? format(new Date(row["Planned 2"]), "dd/MM/yy") : "",
@@ -229,8 +240,9 @@ export default function JobCardsPage() {
           const prodDate = row["Date Of Production"] ? new Date(row["Date Of Production"]) : null
           const createdAt = row["Timestamp"] ? new Date(row["Timestamp"]) : null
           
-          const productionRow = allProductionData.find(
-            (prodRow) => String(prodRow["Delivery Order No."] || "").trim() === String(row["Delivery Order No."] || "").trim(),
+          const productionRow = findProductionRow(
+            String(row["Delivery Order No."] || ""),
+            String(row["Product Name"] || "")
           )
 
           return {
@@ -241,7 +253,7 @@ export default function JobCardsPage() {
             firmName: String(row["Firm Name"] || ""),
             supervisorName: String(row["Supervisor Name"] || ""),
             deliveryOrderNo: String(row["Delivery Order No."] || ""),
-            partyName: String(row["Party Name"] || ""),
+            partyName: String(row["Party Name"] || productionRow?.["Party Name"] || ""),
             productName: String(row["Product Name"] || ""),
             orderQuantity: Number(row["Quantity"] || 0),
             dateOfProduction: prodDate ? format(prodDate, "dd/MM/yyyy") : "",
