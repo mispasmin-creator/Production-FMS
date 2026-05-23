@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useMemo } from "react"
 import { Loader2, AlertTriangle, CheckCircle, Settings, Plus, X, Eye, Edit, Zap } from "lucide-react"
 import { format } from "date-fns"
 import { supabase, dispatchSupabase } from "@/lib/supabase"
-import { useAuth } from "@/lib/auth"
+import { useAuth, FIRM_MAP } from "@/lib/auth"
 import { Toaster } from "@/components/ui/toaster"
 import { useToast } from "@/components/ui/use-toast"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -164,6 +164,21 @@ export default function CheckPage() {
   // Expected Values state
   const [expectedValues, setExpectedValues] = useState<ExpectedValueRow[]>(DEFAULT_EXPECTED_PROPERTIES)
 
+  // Admin firm filter
+  const [adminFirmFilter, setAdminFirmFilter] = useState<string>("")
+
+  // Derived: filter kyc products by login firm (or admin selection)
+  const filteredKycProducts = useMemo(() => {
+    const isAdmin = user?.role?.toLowerCase() === "admin"
+    if (isAdmin) {
+      if (!adminFirmFilter) return kycProducts
+      return kycProducts.filter(p => p.firmName === adminFirmFilter)
+    }
+    if (!user?.firm) return kycProducts
+    const mappedFirm = FIRM_MAP[user.firm] || user.firm
+    return kycProducts.filter(p => p.firmName === mappedFirm)
+  }, [kycProducts, user?.firm, user?.role, adminFirmFilter])
+
   // Raw Materials view dialog
   const [viewingMaterials, setViewingMaterials] = useState<{ names: string[]; qtys: string[] } | null>(null)
 
@@ -227,6 +242,7 @@ export default function CheckPage() {
       })
 
       const prodMap = new Map<string, { plannedDate: string; expectedDeliveryDate: string; priority: string; firmName: string; uploadSo?: string }>()
+      const prodDoCounts = new Map<string, number>()
       const productionKeys = new Set<string>()
       ;(allProdData || []).forEach((row: any) => {
         const doNo = String(row["Delivery Order No."] || "").trim()
@@ -239,21 +255,43 @@ export default function CheckPage() {
             firmName: row["Firm Name"] || "",
             uploadSo: row["Upload SO"] || "",
           }
-          prodMap.set(doNo, prodInfo)
           prodMap.set(makeOrderProductKey(doNo, productName), prodInfo)
+          prodDoCounts.set(normalize(doNo), (prodDoCounts.get(normalize(doNo)) || 0) + 1)
           productionKeys.add(makeOrderProductKey(doNo, productName))
         }
+      })
+      ;(allProdData || []).forEach((row: any) => {
+        const doNo = String(row["Delivery Order No."] || "").trim()
+        if (!doNo || (prodDoCounts.get(normalize(doNo)) || 0) > 1) return
+
+        prodMap.set(doNo, {
+          plannedDate: row["Planned 1"] || "",
+          expectedDeliveryDate: row["Expected Delivery Date"] || "",
+          priority: row["Priority"] || "",
+          firmName: row["Firm Name"] || "",
+          uploadSo: row["Upload SO"] || "",
+        })
       })
 
       // Build metadata map from orderReceiptData
       const orderMetaMap = new Map<string, ReturnType<typeof buildOrderMeta>>()
+      const orderDoCounts = new Map<string, number>()
       ;(orderReceiptData || []).forEach((row: any) => {
         const doNo = String(row["DO-Delivery Order No."] || "").trim()
         const meta = buildOrderMeta(row)
         const productName = meta.productName
         if (doNo) {
-          orderMetaMap.set(doNo, meta)
           orderMetaMap.set(makeOrderProductKey(doNo, productName), meta)
+          orderDoCounts.set(normalize(doNo), (orderDoCounts.get(normalize(doNo)) || 0) + 1)
+        }
+      })
+      ;(orderReceiptData || []).forEach((row: any) => {
+        const doNo = String(row["DO-Delivery Order No."] || "").trim()
+        if (!doNo || (orderDoCounts.get(normalize(doNo)) || 0) > 1) return
+
+        const meta = buildOrderMeta(row)
+        if (doNo) {
+          orderMetaMap.set(doNo, meta)
         }
       })
 
@@ -302,7 +340,7 @@ export default function CheckPage() {
         pendingMap.set(key, {
           id: row.id,
           timestamp: row["Timestamp"] || "",
-          firmName: row["Firm Name"] || meta?.firmName || "",
+          firmName: meta?.firmName || row["Firm Name"] || "",
           deliveryOrderNo: doNo,
           partyName: row["Party Name"] || meta?.partyName || "",
           productName,
@@ -331,7 +369,7 @@ export default function CheckPage() {
         pendingMap.set(key, {
           id: row.id,
           timestamp: row["Timestamp"] || "",
-          firmName: enriched.firmName || row["Firm Name"] || "",
+          firmName: row["Firm Name"] || enriched.firmName || "",
           deliveryOrderNo: doNo,
           partyName: row["Party Names"] || "",
           productName,
@@ -423,6 +461,69 @@ export default function CheckPage() {
   }, [loadData])
 
   // ---------- FORM LOGIC ----------
+  const normalizeLookupValue = (value: any) => String(value || "").trim().toLowerCase()
+
+  const findKycProduct = useCallback((productName: string, firmName?: string) => {
+    const normalizedProductName = normalizeLookupValue(productName)
+    const normalizedFirmName = normalizeLookupValue(firmName)
+
+    if (!normalizedProductName) return null
+
+    const firmMatch = normalizedFirmName
+      ? kycProducts.find(p =>
+          normalizeLookupValue(p.productName) === normalizedProductName &&
+          normalizeLookupValue(p.firmName) === normalizedFirmName
+        )
+      : null
+
+    return firmMatch || kycProducts.find(p => normalizeLookupValue(p.productName) === normalizedProductName) || null
+  }, [kycProducts])
+
+  const getActiveKycFirm = useCallback((firmOverride?: string) => {
+    if (firmOverride !== undefined) return firmOverride
+    if (user?.role?.toLowerCase() === "admin") return adminFirmFilter || selectedCheck?.firmName || ""
+    if (!user?.firm) return selectedCheck?.firmName || ""
+    return FIRM_MAP[user.firm] || user.firm
+  }, [adminFirmFilter, selectedCheck?.firmName, user?.firm, user?.role])
+
+  const refreshKittingRowsForFirm = useCallback((firmName: string) => {
+    setKittingFormRows(prev => prev.map(row => {
+      if (!row.productName) return row
+
+      const productData = findKycProduct(row.productName, firmName)
+      if (!productData) {
+        return {
+          ...row,
+          baseAlumina: 0,
+          baseIron: 0,
+          baseBd: 0,
+          baseAp: 0,
+          basePrice: 0,
+          al: 0,
+          fe: 0,
+          bd: 0,
+          ap: 0,
+          cost: 0,
+        }
+      }
+
+      const pct = Number.parseFloat(row.percentage) || 0
+      return {
+        ...row,
+        baseAlumina: productData.alumina,
+        baseIron: productData.iron,
+        baseBd: productData.bd,
+        baseAp: productData.ap,
+        basePrice: productData.price,
+        al: (productData.alumina * pct) / 100,
+        fe: (productData.iron * pct) / 100,
+        bd: (productData.bd * pct) / 100,
+        ap: (productData.ap * pct) / 100,
+        cost: (productData.price * pct) / 100,
+      }
+    }))
+  }, [findKycProduct])
+
   const resetKittingForm = () => {
     setKittingFormRows([{
       id: 1, productName: "", percentage: "",
@@ -435,8 +536,15 @@ export default function CheckPage() {
   const handleOpenKittingForm = (item: ProductionItem) => {
     setSelectedCheck(item)
     setSelectedHistoryItem(null)
+    setAdminFirmFilter("")
     resetKittingForm()
     setIsKittingDialogOpen(true)
+  }
+
+  const handleAdminFirmFilterChange = (value: string) => {
+    const firmName = value === "all" ? "" : value
+    setAdminFirmFilter(firmName)
+    refreshKittingRowsForFirm(getActiveKycFirm(firmName))
   }
 
   const loadHistoryItemForRevision = (item: CostingHistoryItem) => {
@@ -461,7 +569,7 @@ export default function CheckPage() {
 
     const rows: KittingFormRow[] = item.rawMaterials.map((mat, idx) => {
       const qty = item.rawMaterialQtys[idx] || "0"
-      const productData = kycProducts.find(p => p.productName === mat) || { alumina: 0, iron: 0, bd: 0, ap: 0, price: 0 }
+      const productData = findKycProduct(mat, getActiveKycFirm(item.firmName || prodItem.firmName || "")) || { alumina: 0, iron: 0, bd: 0, ap: 0, price: 0 }
       const pct = Number.parseFloat(qty) || 0
       return {
         id: idx + 1,
@@ -509,8 +617,14 @@ export default function CheckPage() {
     setKittingFormRows(prev => prev.map(row => {
       if (row.id !== id) return row
       const updated = { ...row, [field]: value }
+
+      // If user directly edits calculated fields, just set the value, don't recalculate
+      if (field === "al" || field === "fe" || field === "bd" || field === "ap" || field === "cost") {
+        return updated
+      }
+
       if (field === "productName") {
-        const p = kycProducts.find(p => p.productName === value)
+        const p = findKycProduct(value, getActiveKycFirm())
         if (p) { 
           updated.baseAlumina = p.alumina; 
           updated.baseIron = p.iron; 
@@ -975,6 +1089,24 @@ export default function CheckPage() {
               </div>
             </div>
 
+            {/* Admin Firm Filter */}
+            {user?.role?.toLowerCase() === "admin" && (
+              <div className="flex items-center gap-3 px-1">
+                <Label className="text-xs font-semibold text-gray-600 whitespace-nowrap">Filter by Firm:</Label>
+                <Select value={adminFirmFilter} onValueChange={handleAdminFirmFilterChange}>
+                  <SelectTrigger className="h-8 w-56 text-xs">
+                    <SelectValue placeholder="All Firms" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Firms</SelectItem>
+                    {[...new Set(kycProducts.map(p => p.firmName).filter(Boolean))].map(f => (
+                      <SelectItem key={f} value={f}>{f}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             {/* Raw Materials Composition Table */}
             <div>
               <div className="flex justify-between items-center mb-2">
@@ -1005,6 +1137,7 @@ export default function CheckPage() {
                       <TableHead className="p-2">FE (Calc)</TableHead>
                       <TableHead className="p-2">BD (Calc)</TableHead>
                       <TableHead className="p-2">AP (Calc)</TableHead>
+                      <TableHead className="bg-green-50 min-w-[110px] p-2">Cost (₹)</TableHead>
                       <TableHead className="p-2">Del</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1016,8 +1149,8 @@ export default function CheckPage() {
                           <Select value={row.productName} onValueChange={v => handleKittingRowChange(row.id, "productName", v)}>
                             <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select material" /></SelectTrigger>
                             <SelectContent>
-                              {kycProducts
-                                .filter(p => !selectedCheck?.firmName || p.firmName === selectedCheck.firmName)
+                              {filteredKycProducts
+                                .filter(p => adminFirmFilter || !selectedCheck?.firmName || p.firmName === selectedCheck.firmName)
                                 .map(p => <SelectItem key={`${p.id}-${p.productName}`} value={p.productName}>{p.productName}</SelectItem>)}
                             </SelectContent>
                           </Select>
@@ -1033,10 +1166,41 @@ export default function CheckPage() {
                             placeholder="e.g. 30" className="h-8 text-xs"
                           />
                         </TableCell>
-                        <TableCell className="p-2 text-xs">{row.al.toFixed(4)}</TableCell>
-                        <TableCell className="p-2 text-xs">{row.fe.toFixed(4)}</TableCell>
-                        <TableCell className="p-2 text-xs">{row.bd.toFixed(4)}</TableCell>
-                        <TableCell className="p-2 text-xs">{row.ap.toFixed(4)}</TableCell>
+                        <TableCell className="p-2">
+                          <Input
+                            type="number" value={row.al}
+                            onChange={e => handleKittingRowChange(row.id, "al", Number(e.target.value))}
+                            className="h-8 text-xs"
+                          />
+                        </TableCell>
+                        <TableCell className="p-2">
+                          <Input
+                            type="number" value={row.fe}
+                            onChange={e => handleKittingRowChange(row.id, "fe", Number(e.target.value))}
+                            className="h-8 text-xs"
+                          />
+                        </TableCell>
+                        <TableCell className="p-2">
+                          <Input
+                            type="number" value={row.bd}
+                            onChange={e => handleKittingRowChange(row.id, "bd", Number(e.target.value))}
+                            className="h-8 text-xs"
+                          />
+                        </TableCell>
+                        <TableCell className="p-2">
+                          <Input
+                            type="number" value={row.ap}
+                            onChange={e => handleKittingRowChange(row.id, "ap", Number(e.target.value))}
+                            className="h-8 text-xs"
+                          />
+                        </TableCell>
+                        <TableCell className="bg-green-50 p-2">
+                          <Input
+                            type="number" value={row.cost}
+                            onChange={e => handleKittingRowChange(row.id, "cost", Number(e.target.value))}
+                            className="h-8 text-xs font-semibold"
+                          />
+                        </TableCell>
                         <TableCell className="p-2">
                           <Button variant="ghost" size="icon" onClick={() => removeKittingFormRow(row.id)}>
                             <X className="h-4 w-4 text-red-500" />
@@ -1053,6 +1217,7 @@ export default function CheckPage() {
                       <TableCell className="p-2">{kittingTotals.fe.toFixed(4)}</TableCell>
                       <TableCell className="p-2">{kittingTotals.bd.toFixed(4)}</TableCell>
                       <TableCell className="p-2">{kittingTotals.ap.toFixed(4)}</TableCell>
+                      <TableCell className="bg-green-50 p-2">{kittingTotals.variableCost.toFixed(2)}</TableCell>
                       <TableCell className="p-2" />
                     </TableRow>
                   </TableFooter>
