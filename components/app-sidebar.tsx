@@ -23,6 +23,7 @@ import {
   Hammer,
   ShieldCheck,
   GitMerge,
+  BadgeCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -133,6 +134,7 @@ export function AppSidebar() {
         href: "/mark-done",
       },
       { id: "crushing", title: "Crushing", icon: Hammer, href: "/crushing" },
+      { id: "kyc", title: "KYC", icon: BadgeCheck, href: "/kyc" },
       { id: "settings", title: "Settings", icon: Settings, href: "/settings" },
     ],
     [],

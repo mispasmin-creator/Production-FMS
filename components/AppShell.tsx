@@ -26,6 +26,7 @@ import {
   ChevronDown,
   Layers,
   GitMerge,
+  BadgeCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -98,6 +99,7 @@ const topNavItems = [
   },
   { id: "costing", href: "/costing", label: "Costing", icon: DollarSign },
   { id: "tally", href: "/tally", label: "Tally", icon: Boxes },
+  { id: "kyc", href: "/kyc", label: "KYC", icon: BadgeCheck },
 ];
 
 const sfNavItems = [

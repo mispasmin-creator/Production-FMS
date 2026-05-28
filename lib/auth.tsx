@@ -71,6 +71,7 @@ const PAGES_AVAILABLE = [
   { pageid: "production-entry", pagename: "Production Entry" },
   { pageid: "mark-done", pagename: "Mark Done" },
   { pageid: "crushing", pagename: "Crushing" },
+  { pageid: "kyc", pagename: "KYC" },
   { pageid: "settings", pagename: "Settings" },
 ];
 
