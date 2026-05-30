@@ -168,6 +168,14 @@ const initialFormState = {
   ccsAt100: "",
 }
 
+const hasValue = (value: any) => {
+  if (value === null || value === undefined) return false
+  const normalized = String(value).trim().toLowerCase()
+  return normalized !== "" && normalized !== "-" && normalized !== "null" && normalized !== "undefined"
+}
+
+const isCancelledStatus = (value: any) => String(value || "").trim().toLowerCase() === "cancelled"
+
 export default function LabTesting1Page() {
   const { user } = useAuth()
   const [pendingTests, setPendingTests] = useState<ProductionItem[]>([])
@@ -267,7 +275,7 @@ export default function LabTesting1Page() {
 
       const pendingData = (jobCardsData || [])
         .filter(
-          (row: any) => (row["Actual 1"] !== null && row["Actual 1"] !== "") && row["Actual 2"] === null && row["Status"] !== "cancelled",
+          (row: any) => hasValue(row["Actual 1"]) && !hasValue(row["Actual 2"]) && !isCancelledStatus(row["Status"]),
         )
         .map((row: any) => {
           const jobCardNo = String(row["JC-Job Card Number"] || "")
@@ -319,7 +327,7 @@ export default function LabTesting1Page() {
       setPendingTests(filterByFirm(pendingData))
 
       const historyFiltered = (jobCardsData || [])
-        .filter((row: any) => (row["Actual 1"] !== null && row["Actual 1"] !== "") && (row["Actual 2"] !== null && row["Actual 2"] !== ""))
+        .filter((row: any) => hasValue(row["Actual 1"]) && hasValue(row["Actual 2"]))
         .map((row: any) => {
           const jobCardNo = String(row["JC-Job Card Number"] || "").trim()
           const deliveryOrderNo = String(row["Delivery Order No."] || "").trim()

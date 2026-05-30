@@ -139,6 +139,14 @@ const initialFormState = {
   testedBy: "",
 }
 
+const hasValue = (value: any) => {
+  if (value === null || value === undefined) return false
+  const normalized = String(value).trim().toLowerCase()
+  return normalized !== "" && normalized !== "-" && normalized !== "null" && normalized !== "undefined"
+}
+
+const isCancelledStatus = (value: any) => String(value || "").trim().toLowerCase() === "cancelled"
+
 export default function LabTesting2Page() {
   const { user } = useAuth()
   const [pendingTests, setPendingTests] = useState<ProductionItem[]>([])
@@ -229,7 +237,7 @@ export default function LabTesting2Page() {
       // Filter pending tests: Actual 2 filled and Actual 3 empty
       const pendingData = (jobCardsData || [])
         .filter(
-          (row: any) => (row["Actual 2"] !== null && row["Actual 2"] !== "") && (row["Actual 3"] === null || row["Actual 3"] === "") && row["Status"] !== "cancelled",
+          (row: any) => hasValue(row["Actual 2"]) && !hasValue(row["Actual 3"]) && !isCancelledStatus(row["Status"]),
         )
         .map((row: any) => {
           const jobCardNo = String(row["JC-Job Card Number"] || "").trim()
@@ -276,7 +284,7 @@ export default function LabTesting2Page() {
       // Filter history: Actual 3 filled
       const historyData = (jobCardsData || [])
         .filter(
-          (row: any) => (row["Actual 3"] !== null && row["Actual 3"] !== ""),
+          (row: any) => hasValue(row["Actual 3"]),
         )
         .map((row: any) => {
           const jobCardNo = String(row["JC-Job Card Number"] || "").trim()

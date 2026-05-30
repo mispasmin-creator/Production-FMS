@@ -143,6 +143,14 @@ const initialFormState = {
   testedBy: "",
 }
 
+const hasValue = (value: any) => {
+  if (value === null || value === undefined) return false
+  const normalized = String(value).trim().toLowerCase()
+  return normalized !== "" && normalized !== "-" && normalized !== "null" && normalized !== "undefined"
+}
+
+const isCancelledStatus = (value: any) => String(value || "").trim().toLowerCase() === "cancelled"
+
 export default function ChemicalTestPage() {
   const [pendingTests, setPendingTests] = useState<PendingChemicalTestItem[]>([])
   const [historyTests, setHistoryTests] = useState<HistoryChemicalTestItem[]>([])
@@ -241,7 +249,7 @@ export default function ChemicalTestPage() {
       // Filter pending tests: Actual 3 filled and Actual 4 empty
       const pendingData = (jobCardsData || [])
         .filter(
-          (row: any) => (row["Actual 3"] !== null && row["Actual 3"] !== "") && (row["Actual 4"] === null || row["Actual 4"] === "") && row["Status"] !== "cancelled",
+          (row: any) => hasValue(row["Actual 3"]) && !hasValue(row["Actual 4"]) && !isCancelledStatus(row["Status"]),
         )
         .map((row: any) => {
           const jobCardNo = String(row["JC-Job Card Number"] || "").trim()
@@ -280,7 +288,7 @@ export default function ChemicalTestPage() {
       // Filter history: Actual 4 filled
       const historyData = (jobCardsData || [])
         .filter(
-          (row: any) => (row["Actual 4"] !== null && row["Actual 4"] !== ""),
+          (row: any) => hasValue(row["Actual 4"]),
         )
         .map((row: any) => {
           const jobCardNo = String(row["JC-Job Card Number"] || "").trim()
@@ -371,7 +379,7 @@ export default function ChemicalTestPage() {
       const { error: planSupervisorErr } = await supabase
         .from(ACTUAL_PRODUCTION_TABLE)
         .update({ "Planned5": format(new Date(), "yyyy-MM-dd") })
-        .eq('"Job Card No."', selectedTest.jobCardNo)
+        .eq("Job Card No.", selectedTest.jobCardNo)
 
       if (planSupervisorErr) throw planSupervisorErr
 

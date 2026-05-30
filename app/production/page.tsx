@@ -155,6 +155,16 @@ const initialFormData = {
   remarks: "",
 }
 
+const hasValue = (value: any) => {
+  if (value === null || value === undefined) return false
+  const normalized = String(value).trim().toLowerCase()
+  return normalized !== "" && normalized !== "-" && normalized !== "null" && normalized !== "undefined"
+}
+
+const isCancelledStatus = (value: any) => String(value || "").trim().toLowerCase() === "cancelled"
+
+const normalizeKey = (value: any) => String(value || "").trim().toLowerCase()
+
 export default function ProductionPage() {
   const { user } = useAuth()
   const [pendingProductions, setPendingProductions] = useState<ProductionItem[]>([])
@@ -248,19 +258,20 @@ export default function ProductionPage() {
       // 2. Process Pending Job Cards
       // Condition: Actual 1 is NOT null AND Time Delay 1 IS null (as per original logic)
       const findProductionInfo = (deliveryOrderNo: string, productName: string) => {
-        const normalizedDo = deliveryOrderNo.trim().toLowerCase()
-        const normalizedProduct = productName.trim().toLowerCase()
-        return (productionData || []).find((p: any) => {
-          const pDo = String(p["Delivery Order No."] || "").trim().toLowerCase()
-          const pProduct = String(p["Product Name"] || "").trim().toLowerCase()
-          return pDo === normalizedDo && pProduct === normalizedProduct
-        }) || (productionData || []).find(
-          (p: any) => String(p["Delivery Order No."] || "").trim().toLowerCase() === normalizedDo
+        const normalizedDo = normalizeKey(deliveryOrderNo)
+        const normalizedProduct = normalizeKey(productName)
+        const matchingDoRows = (productionData || []).filter(
+          (p: any) => normalizeKey(p["Delivery Order No."]) === normalizedDo
         )
+        return matchingDoRows.find((p: any) => {
+          const pDo = normalizeKey(p["Delivery Order No."])
+          const pProduct = normalizeKey(p["Product Name"])
+          return pDo === normalizedDo && pProduct === normalizedProduct
+        }) || (matchingDoRows.length === 1 ? matchingDoRows[0] : null)
       }
 
       const pending = (jobCardsData || [])
-        .filter(row => row["Status"] !== "cancelled" && !row["Time Delay 1"])
+        .filter(row => !isCancelledStatus(row["Status"]) && !hasValue(row["Time Delay 1"]))
         .map((row: any) => {
           const prodInfo = findProductionInfo(
             String(row["Delivery Order No."] || ""),
@@ -288,7 +299,7 @@ export default function ProductionPage() {
           }
         })
       const history = (jobCardsData || [])
-        .filter(row => row["Time Delay 1"])
+        .filter(row => hasValue(row["Time Delay 1"]))
         .map((row: any) => {
           const jcNo = String(row["JC-Job Card Number"] || "").trim()
           const doNo = String(row["Delivery Order No."] || "").trim()
@@ -312,7 +323,7 @@ export default function ProductionPage() {
             remarks: productionRecord?.remarks || "",
             firmName: productionRecord?.firmName || String(row["Firm Name"] || ""),
             partyName: String(row["Party Name"] || prodInfo?.["Party Name"] || ""),
-            productName: productionRecord?.productName || String(row["Product Name"] || ""),
+            productName: String(row["Product Name"] || productionRecord?.productName || ""),
             orderQuantity: Number(row["Quantity"] || 0),
             quantity: Number(row["Quantity"] || 0),
             plannedDate: "",
@@ -392,6 +403,17 @@ export default function ProductionPage() {
     setFormData((prev) => ({ ...prev, rawMaterials: prev.rawMaterials.filter((_, i) => i !== index) }))
   }
 
+  const findMatchingComposition = (orderNo?: string, productName?: string) => {
+    const normalizedOrderNo = normalizeKey(orderNo)
+    const normalizedProductName = normalizeKey(productName)
+    const matchingOrderRows = compositions.filter((c) => normalizeKey(c.orderNo) === normalizedOrderNo)
+    return matchingOrderRows.find(
+      (c) => normalizeKey(c.orderNo) === normalizedOrderNo && normalizeKey(c.productName) === normalizedProductName
+    ) || compositions.find(
+      (c) => normalizeKey(c.productName) === normalizedProductName
+    ) || (matchingOrderRows.length === 1 ? matchingOrderRows[0] : undefined)
+  }
+
   const validateForm = () => {
     const errors: Record<string, string> = {}
     if (!formData.quantityFG || Number(formData.quantityFG) <= 0)
@@ -429,9 +451,7 @@ export default function ProductionPage() {
       // 2. Compute cost & profit fields
       const fgQtyNum = Number(formData.quantityFG) || 0
       const currentOrderNo = selectedJobCard.deliveryOrderNo?.trim()
-      const currentProductName = selectedJobCard.productName?.trim().toLowerCase()
-      const matchedComp = compositions.find(c => c.orderNo === currentOrderNo) ||
-                          compositions.find(c => c.productName.toLowerCase() === currentProductName)
+      const matchedComp = findMatchingComposition(currentOrderNo, selectedJobCard.productName)
 
       const expectedRMCost = (matchedComp?.materials || []).reduce((sum, m) => {
         return sum + (fgQtyNum * (m.percentage / 100) * (kycPriceMap[m.name] || 0))
@@ -500,18 +520,23 @@ export default function ProductionPage() {
       if (updateJCErr) throw updateJCErr
 
       // 5. Update Production table (Total Done)
-      const { data: currentProd } = await supabase
+      const { data: currentProdRows } = await supabase
         .from(PRODUCTION_TABLE)
-        .select("Actual Production Done")
-        .eq('"Delivery Order No."', selectedJobCard.deliveryOrderNo)
-        .single()
+        .select("*")
+        .eq("Delivery Order No.", selectedJobCard.deliveryOrderNo)
+
+      const currentProd = (currentProdRows || []).find(
+        (row: any) => normalizeKey(row["Product Name"]) === normalizeKey(selectedJobCard.productName)
+      ) || ((currentProdRows || []).length === 1 ? (currentProdRows as any[])[0] : null)
       
       const newTotalDone = Number((currentProd as any)?.["Actual Production Done"] || 0) + Number(formData.quantityFG)
       
-      await supabase
-        .from(PRODUCTION_TABLE)
-        .update({ "Actual Production Done": newTotalDone })
-        .eq('"Delivery Order No."', selectedJobCard.deliveryOrderNo)
+      if ((currentProd as any)?.id) {
+        await supabase
+          .from(PRODUCTION_TABLE)
+          .update({ "Actual Production Done": newTotalDone })
+          .eq("id", (currentProd as any).id)
+      }
 
       alert("Production data saved successfully!")
       setIsDialogOpen(false)
@@ -865,9 +890,7 @@ export default function ProductionPage() {
             {/* Consumption Comparison Section */}
             {(() => {
               const currentOrderNo = selectedJobCard?.deliveryOrderNo?.trim();
-              const currentProductName = selectedJobCard?.productName?.trim().toLowerCase();
-              const comp = compositions.find(c => c.orderNo === currentOrderNo) ||
-                           compositions.find(c => c.productName.toLowerCase() === currentProductName);
+              const comp = findMatchingComposition(currentOrderNo, selectedJobCard?.productName);
               const fgQty = Number(formData.quantityFG) || 0;
               const compMaterials = comp?.materials || [];
 

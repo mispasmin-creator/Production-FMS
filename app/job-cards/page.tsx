@@ -232,7 +232,7 @@ export default function JobCardsPage() {
           pending: orderQty - totalMadeSum,
           note: "",
         }
-      })
+      }).filter((order) => Number(order.pending || 0) > 0)
 
       // Process job cards history
       const processedHistory: JobCard[] = allJobCardsData
