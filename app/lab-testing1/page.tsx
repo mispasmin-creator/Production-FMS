@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react"
 import { Loader2, AlertTriangle, CalendarIcon, TestTube, History, Settings, Eye } from "lucide-react"
 import { format } from "date-fns"
 import { supabase } from "@/lib/supabase"
-import { useAuth } from "@/lib/auth"
+import { useAuth, FIRM_MAP } from "@/lib/auth"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -176,6 +176,23 @@ const hasValue = (value: any) => {
 
 const isCancelledStatus = (value: any) => String(value || "").trim().toLowerCase() === "cancelled"
 
+const normalizeKey = (value: any) => String(value || "").trim().toLowerCase()
+
+const makeOrderProductKey = (orderNo: any, productName: any) => `${normalizeKey(orderNo)}::${normalizeKey(productName)}`
+
+const makeProductionRecordKey = (jobCardNo: any, orderNo: any, productName: any) =>
+  `${normalizeKey(jobCardNo)}::${normalizeKey(orderNo)}::${normalizeKey(productName)}`
+
+const getFirmMatchValues = (firm?: string) => {
+  const rawFirm = String(firm || "").trim()
+  const mappedFirm = Object.entries(FIRM_MAP).find(
+    ([key, value]) => normalizeKey(key) === normalizeKey(rawFirm) || normalizeKey(value) === normalizeKey(rawFirm)
+  )?.[1] || ""
+  return [rawFirm, mappedFirm]
+    .map((value) => normalizeKey(value))
+    .filter(Boolean)
+}
+
 export default function LabTesting1Page() {
   const { user } = useAuth()
   const [pendingTests, setPendingTests] = useState<ProductionItem[]>([])
@@ -232,13 +249,15 @@ export default function LabTesting1Page() {
       if (costingErr) throw costingErr
 
       const costingDataMap = new Map()
+      const costingDataByOrder = new Map()
       ;(costingResponseData || []).forEach((row: any) => {
         const orderNo = row["Order No."] ? String(row["Order No."]).trim() : ""
+        const productName = row["product name"] ? String(row["product name"]).trim() : ""
         if (orderNo) {
-          costingDataMap.set(orderNo, {
+          const costingInfo = {
             compositionNo: row["Composition No."] ? String(row["Composition No."]).trim() : "",
             orderNo: orderNo,
-            productName: row["product name"] ? String(row["product name"]).trim() : "",
+            productName,
             gpPercentage: row["GP %AGE"] ? String(row["GP %AGE"]) : "",
             alumina: row["alumina"] ? String(row["alumina"]) : "",
             iron: row["iron"] ? String(row["iron"]) : "",
@@ -248,13 +267,38 @@ export default function LabTesting1Page() {
             aluminaPercentage: row["Alumina Percentage %"] ? String(row["Alumina Percentage %"]) : "",
             ironPercentage: row["Iron Percentage %"] ? String(row["Iron Percentage %"]) : "",
             plannedDate: row["Planned 1"] ? format(new Date(row["Planned 1"]), "dd/MM/yyyy") : "",
-          })
+          }
+          costingDataMap.set(makeOrderProductKey(orderNo, productName), costingInfo)
+          if (!costingDataByOrder.has(orderNo)) costingDataByOrder.set(orderNo, [])
+          costingDataByOrder.get(orderNo).push(costingInfo)
         }
       })
 
+      const findCostingData = (orderNo: string, productName: string) => {
+        const exact = costingDataMap.get(makeOrderProductKey(orderNo, productName))
+        if (exact) return exact
+        const orderRows = costingDataByOrder.get(orderNo) || []
+        if (orderRows.length === 1) return orderRows[0]
+        return Array.from(costingDataMap.values()).find(
+          (c: any) => normalizeKey(c.productName) === normalizeKey(productName)
+        ) || {}
+      }
+
+      const findProductionRow = (orderNo: string, productName: string) => {
+        const orderRows = (productionData || []).filter(
+          (prodRow: any) => normalizeKey(prodRow["Delivery Order No."]) === normalizeKey(orderNo)
+        )
+        return orderRows.find(
+          (prodRow: any) => normalizeKey(prodRow["Product Name"]) === normalizeKey(productName)
+        ) || (orderRows.length === 1 ? orderRows[0] : null)
+      }
+
       const productionDataMap = new Map()
+      const productionDataByJobCard = new Map()
       ;(actualProductionData || []).forEach((row: any) => {
         const jobCardNo = String(row["Job Card No."] || "").trim()
+        const orderNo = String(row["Order No."] || "").trim()
+        const productName = String(row["Product Name"] || "").trim()
         if (jobCardNo) {
           const materials = []
           for (let i = 1; i <= 20; i++) {
@@ -265,13 +309,29 @@ export default function LabTesting1Page() {
             }
           }
 
-          productionDataMap.set(jobCardNo, {
+          const productionInfo = {
             jobCardNo: jobCardNo,
+            orderNo,
+            productName,
             machineHours: String(row["Machine Running hour"] || "-").trim(),
             rawMaterials: materials,
-          })
+          }
+          productionDataMap.set(makeProductionRecordKey(jobCardNo, orderNo, productName), productionInfo)
+          if (!productionDataByJobCard.has(jobCardNo)) productionDataByJobCard.set(jobCardNo, [])
+          productionDataByJobCard.get(jobCardNo).push(productionInfo)
         }
       })
+
+      const findActualProductionInfo = (jobCardNo: string, orderNo: string, productName: string) => {
+        const exact = productionDataMap.get(makeProductionRecordKey(jobCardNo, orderNo, productName))
+        if (exact) return exact
+        const jobCardRows = productionDataByJobCard.get(jobCardNo) || []
+        return jobCardRows.find(
+          (record: any) => normalizeKey(record.orderNo) === normalizeKey(orderNo) && normalizeKey(record.productName) === normalizeKey(productName)
+        ) || jobCardRows.find(
+          (record: any) => normalizeKey(record.productName) === normalizeKey(productName)
+        ) || (jobCardRows.length === 1 ? jobCardRows[0] : null)
+      }
 
       const pendingData = (jobCardsData || [])
         .filter(
@@ -280,22 +340,18 @@ export default function LabTesting1Page() {
         .map((row: any) => {
           const jobCardNo = String(row["JC-Job Card Number"] || "")
           const deliveryOrderNo = String(row["Delivery Order No."] || "")
+          const jobCardProductName = String(row["Product Name"] || "")
+          const productionRow = findProductionRow(deliveryOrderNo, jobCardProductName)
 
-          const productionRow = (productionData || []).find(
-            (prodRow: any) => String(prodRow["Delivery Order No."] || "").trim() === deliveryOrderNo.trim(),
-          )
-
-          const productionDataInfo = productionDataMap.get(jobCardNo.trim())
-          const costingData = costingDataMap.get(deliveryOrderNo.trim()) || 
-                              Array.from(costingDataMap.values()).find(c => c.productName.toLowerCase() === String(row["Product Name"] || "").trim().toLowerCase()) || 
-                              {}
+          const productionDataInfo = findActualProductionInfo(jobCardNo.trim(), deliveryOrderNo.trim(), jobCardProductName.trim())
+          const costingData = findCostingData(deliveryOrderNo.trim(), jobCardProductName.trim())
 
           return {
             _rowIndex: row.id,
             jobCardNo: jobCardNo.trim(),
             deliveryOrderNo: deliveryOrderNo.trim(),
             partyName: String(row["Party Name"] || ""),
-            productName: costingData.productName || String(row["Product Name"] || ""),
+            productName: jobCardProductName,
             quantity: Number(row["Quantity"] || 0),
             dateOfProduction: row["Date Of Production"] ? format(new Date(row["Date Of Production"]), "dd/MM/yyyy") : "",
             supervisorName: String(row["Supervisor Name"] || ""),
@@ -317,11 +373,14 @@ export default function LabTesting1Page() {
           }
         })
 
-      const firmSearch = user?.firm?.toLowerCase() || ""
+      const firmSearchValues = getFirmMatchValues(user?.firm)
       const isAdmin = user?.role?.toLowerCase() === "admin"
       const filterByFirm = (list: any[]) => {
-        if (isAdmin || !firmSearch) return list
-        return list.filter(item => (item.firmName || "").toLowerCase().includes(firmSearch))
+        if (isAdmin || firmSearchValues.length === 0) return list
+        return list.filter(item => {
+          const fName = normalizeKey(item.firmName)
+          return firmSearchValues.some((firmSearch) => fName.includes(firmSearch) || firmSearch.includes(fName))
+        })
       }
 
       setPendingTests(filterByFirm(pendingData))
@@ -331,16 +390,15 @@ export default function LabTesting1Page() {
         .map((row: any) => {
           const jobCardNo = String(row["JC-Job Card Number"] || "").trim()
           const deliveryOrderNo = String(row["Delivery Order No."] || "").trim()
-          const costingData = costingDataMap.get(deliveryOrderNo) || 
-                              Array.from(costingDataMap.values()).find(c => c.productName.toLowerCase() === String(row["Product Name"] || "").trim().toLowerCase()) || 
-                              {}
+          const jobCardProductName = String(row["Product Name"] || "").trim()
+          const costingData = findCostingData(deliveryOrderNo, jobCardProductName)
 
           return {
             _rowIndex: row.id,
             jobCardNo: jobCardNo,
             deliveryOrderNo: String(row["Delivery Order No."] || ""),
             partyName: String(row["Party Name"] || ""),
-            productName: costingData.productName || String(row["Product Name"] || ""),
+            productName: jobCardProductName,
             quantity: Number(row["Quantity"] || 0),
             testStatus: String(row["Status 2"] || ""),
             dateOfTest: row["Date Of Test 1"] ? format(new Date(row["Date Of Test 1"]), "dd/MM/yy") : "",
@@ -381,7 +439,7 @@ export default function LabTesting1Page() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [user?.firm, user?.role])
 
   useEffect(() => {
     loadAllData()

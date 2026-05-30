@@ -165,6 +165,21 @@ const isCancelledStatus = (value: any) => String(value || "").trim().toLowerCase
 
 const normalizeKey = (value: any) => String(value || "").trim().toLowerCase()
 
+const hasCompletedProductionFlag = (value: any) => hasValue(value) && normalizeKey(value) !== "0"
+
+const makeProductionRecordKey = (jobCardNo: any, orderNo: any, productName: any) =>
+  `${normalizeKey(jobCardNo)}::${normalizeKey(orderNo)}::${normalizeKey(productName)}`
+
+const getFirmMatchValues = (firm?: string) => {
+  const rawFirm = String(firm || "").trim()
+  const mappedFirm = Object.entries(FIRM_MAP).find(
+    ([key, value]) => normalizeKey(key) === normalizeKey(rawFirm) || normalizeKey(value) === normalizeKey(rawFirm)
+  )?.[1] || ""
+  return [rawFirm, mappedFirm]
+    .map((value) => normalizeKey(value))
+    .filter(Boolean)
+}
+
 export default function ProductionPage() {
   const { user } = useAuth()
   const [pendingProductions, setPendingProductions] = useState<ProductionItem[]>([])
@@ -242,6 +257,7 @@ export default function ProductionPage() {
           dateOfProduction: row["Date Of Production"] ? format(new Date(row["Date Of Production"]), "dd/MM/yyyy") : "",
           supervisorName: String(row["Name Of Supervisor"] || "").trim(),
           productName: String(row["Product Name"] || "").trim(),
+          orderNo: String(row["Order No."] || "").trim(),
           quantityFG: String(row["Quantity Of FG"] || ""),
           serialNumber: String(row["Serial Number"] || ""),
           machineHours: row["Machine Running hour"] || "-",
@@ -251,9 +267,23 @@ export default function ProductionPage() {
       }).filter(r => r.jobCardNo)
 
       const productionRecordsMap = new Map()
+      const productionRecordsByJobCard = new Map()
       actualProductionRecords.forEach(record => {
-        productionRecordsMap.set(record.jobCardNo, record)
+        productionRecordsMap.set(makeProductionRecordKey(record.jobCardNo, record.orderNo, record.productName), record)
+        if (!productionRecordsByJobCard.has(record.jobCardNo)) productionRecordsByJobCard.set(record.jobCardNo, [])
+        productionRecordsByJobCard.get(record.jobCardNo).push(record)
       })
+
+      const findActualProductionRecord = (jobCardNo: string, orderNo: string, productName: string) => {
+        const exact = productionRecordsMap.get(makeProductionRecordKey(jobCardNo, orderNo, productName))
+        if (exact) return exact
+        const jobCardRows = productionRecordsByJobCard.get(jobCardNo) || []
+        return jobCardRows.find(
+          (record: any) => normalizeKey(record.orderNo) === normalizeKey(orderNo) && normalizeKey(record.productName) === normalizeKey(productName)
+        ) || jobCardRows.find(
+          (record: any) => normalizeKey(record.productName) === normalizeKey(productName)
+        ) || (jobCardRows.length === 1 ? jobCardRows[0] : null)
+      }
 
       // 2. Process Pending Job Cards
       // Condition: Actual 1 is NOT null AND Time Delay 1 IS null (as per original logic)
@@ -271,7 +301,7 @@ export default function ProductionPage() {
       }
 
       const pending = (jobCardsData || [])
-        .filter(row => !isCancelledStatus(row["Status"]) && !hasValue(row["Time Delay 1"]))
+        .filter(row => !isCancelledStatus(row["Status"]) && !hasCompletedProductionFlag(row["Time Delay 1"]))
         .map((row: any) => {
           const prodInfo = findProductionInfo(
             String(row["Delivery Order No."] || ""),
@@ -299,11 +329,11 @@ export default function ProductionPage() {
           }
         })
       const history = (jobCardsData || [])
-        .filter(row => hasValue(row["Time Delay 1"]))
+        .filter(row => hasCompletedProductionFlag(row["Time Delay 1"]))
         .map((row: any) => {
           const jcNo = String(row["JC-Job Card Number"] || "").trim()
           const doNo = String(row["Delivery Order No."] || "").trim()
-          const productionRecord = productionRecordsMap.get(jcNo)
+          const productionRecord = findActualProductionRecord(jcNo, doNo, String(row["Product Name"] || ""))
           const prodInfo = findProductionInfo(doNo, String(row["Product Name"] || ""))
 
           return {
@@ -334,10 +364,10 @@ export default function ProductionPage() {
       // Filter by Firm
       const filterByFirm = (data: any[]) => {
         if (!user?.firm || user?.role?.toLowerCase() === 'admin') return data;
-        const firmSearch = user.firm.toLowerCase();
+        const firmSearchValues = getFirmMatchValues(user.firm);
         return data.filter(item => {
-          const fName = String(item.firmName || "").toLowerCase();
-          return fName.includes(firmSearch);
+          const fName = normalizeKey(item.firmName);
+          return firmSearchValues.some((firmSearch) => fName.includes(firmSearch) || firmSearch.includes(fName));
         });
       };
 
@@ -386,7 +416,7 @@ export default function ProductionPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [user?.firm, user?.role])
 
   useEffect(() => {
     loadAllData()
@@ -523,7 +553,7 @@ export default function ProductionPage() {
       const { data: currentProdRows } = await supabase
         .from(PRODUCTION_TABLE)
         .select("*")
-        .eq("Delivery Order No.", selectedJobCard.deliveryOrderNo)
+        .eq('"Delivery Order No."', selectedJobCard.deliveryOrderNo)
 
       const currentProd = (currentProdRows || []).find(
         (row: any) => normalizeKey(row["Product Name"]) === normalizeKey(selectedJobCard.productName)
