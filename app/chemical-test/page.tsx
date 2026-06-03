@@ -31,6 +31,7 @@ interface RawMaterial {
 
 interface PendingChemicalTestItem {
   id: number
+  productionId?: number | string
   jobCardNo: string
   deliveryOrderNo: string
   partyName: string
@@ -49,6 +50,7 @@ interface PendingChemicalTestItem {
 
 interface HistoryChemicalTestItem {
   id: number
+  productionId?: number | string
   jobCardNo: string
   deliveryOrderNo: string
   partyName: string
@@ -102,6 +104,7 @@ const formatMachineHours = (hours: any) => {
 // Column Definitions
 const PENDING_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
+  { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
@@ -120,6 +123,7 @@ const PENDING_COLUMNS_META = [
 
 const HISTORY_COLUMNS_META = [
   { header: "Completed At", dataKey: "chemicalTestCompletedAt", toggleable: true },
+  { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
@@ -150,6 +154,9 @@ const hasValue = (value: any) => {
 }
 
 const isCancelledStatus = (value: any) => String(value || "").trim().toLowerCase() === "cancelled"
+const normalizeKey = (value: any) => String(value || "").trim().toLowerCase()
+const makeOrderProductKey = (orderNo: any, productName: any) =>
+  `${normalizeKey(orderNo)}::${normalizeKey(productName)}`
 
 export default function ChemicalTestPage() {
   const [pendingTests, setPendingTests] = useState<PendingChemicalTestItem[]>([])
@@ -217,11 +224,14 @@ export default function ChemicalTestPage() {
       const costingDataMap = new Map()
       ;(costingResponseData || []).forEach((row: any) => {
         const orderNo = row["Order No."] ? String(row["Order No."]).trim() : ""
+        const productName = row["product name"] ? String(row["product name"]).trim() : ""
         if (orderNo) {
-          costingDataMap.set(orderNo, {
-            productName: row["product name"] ? String(row["product name"]).trim() : "",
+          const costingInfo = {
+            productName,
             plannedDate: row["Planned 4"] ? format(new Date(row["Planned 4"]), "dd/MM/yyyy") : "",
-          })
+          }
+          costingDataMap.set(makeOrderProductKey(orderNo, productName), costingInfo)
+          if (!costingDataMap.has(normalizeKey(orderNo))) costingDataMap.set(normalizeKey(orderNo), costingInfo)
         }
       })
 
@@ -254,18 +264,25 @@ export default function ChemicalTestPage() {
         .map((row: any) => {
           const jobCardNo = String(row["JC-Job Card Number"] || "").trim()
           const deliveryOrderNo = String(row["Delivery Order No."] || "").trim()
+          const productName = String(row["Product Name"] || "").trim()
 
           const productionRow = (productionData || []).find(
-            (prodRow: any) => String(prodRow["Delivery Order No."] || "").trim() === deliveryOrderNo,
+            (prodRow: any) =>
+              normalizeKey(prodRow["Delivery Order No."]) === normalizeKey(deliveryOrderNo) &&
+              normalizeKey(prodRow["Product Name"]) === normalizeKey(productName),
+          ) || (productionData || []).find(
+            (prodRow: any) => normalizeKey(prodRow["Delivery Order No."]) === normalizeKey(deliveryOrderNo),
           )
 
           const productionInfo = productionDataMap.get(jobCardNo)
-          const costingData = costingDataMap.get(deliveryOrderNo) || 
+          const costingData = costingDataMap.get(makeOrderProductKey(deliveryOrderNo, productName)) ||
+                              costingDataMap.get(normalizeKey(deliveryOrderNo)) ||
                               Array.from(costingDataMap.values()).find(c => c.productName.toLowerCase() === String(row["Product Name"] || "").trim().toLowerCase()) || 
                               {}
 
           return {
             id: row.id,
+            productionId: productionRow?.id ?? "",
             jobCardNo: jobCardNo,
             deliveryOrderNo: deliveryOrderNo,
             partyName: String(row["Party Name"] || ""),
@@ -293,12 +310,22 @@ export default function ChemicalTestPage() {
         .map((row: any) => {
           const jobCardNo = String(row["JC-Job Card Number"] || "").trim()
           const deliveryOrderNo = String(row["Delivery Order No."] || "").trim()
-          const costingData = costingDataMap.get(deliveryOrderNo) || 
+          const productName = String(row["Product Name"] || "").trim()
+          const productionRow = (productionData || []).find(
+            (prodRow: any) =>
+              normalizeKey(prodRow["Delivery Order No."]) === normalizeKey(deliveryOrderNo) &&
+              normalizeKey(prodRow["Product Name"]) === normalizeKey(productName),
+          ) || (productionData || []).find(
+            (prodRow: any) => normalizeKey(prodRow["Delivery Order No."]) === normalizeKey(deliveryOrderNo),
+          )
+          const costingData = costingDataMap.get(makeOrderProductKey(deliveryOrderNo, productName)) ||
+                              costingDataMap.get(normalizeKey(deliveryOrderNo)) ||
                               Array.from(costingDataMap.values()).find(c => c.productName.toLowerCase() === String(row["Product Name"] || "").trim().toLowerCase()) || 
                               {}
 
           return {
             id: row.id,
+            productionId: productionRow?.id ?? "",
             jobCardNo: jobCardNo,
             deliveryOrderNo: deliveryOrderNo,
             partyName: String(row["Party Name"] || ""),

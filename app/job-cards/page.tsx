@@ -28,6 +28,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 interface Order {
   key: number
   _rowIndex: number
+  costingResponseId: number
+  productionId?: number | string
   deliveryOrderNo: string
   firmName: string
   partyName: string
@@ -45,6 +47,7 @@ interface Order {
 interface JobCard {
   key: number
   id: number
+  productionId?: number | string
   _rowIndex: number
   jobCardNo: string
   firmName: string
@@ -81,6 +84,7 @@ const COSTING_RESPONSE_TABLE = "costing_response"
 // Column definitions based on your actual JobCards sheet structure
 const PENDING_ORDERS_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", toggleable: false, alwaysVisible: true },
+  { header: "ID", dataKey: "productionId", toggleable: true, alwaysVisible: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true, alwaysVisible: true },
   { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
@@ -96,6 +100,7 @@ const PENDING_ORDERS_COLUMNS_META = [
 
 const HISTORY_COLUMNS_META = [
   { header: "Timestamp", dataKey: "createdAt", toggleable: true, alwaysVisible: true }, // ✅ ADDED
+  { header: "ID", dataKey: "productionId", toggleable: true, alwaysVisible: true },
   { header: "Job Card No.", dataKey: "jobCardNo", toggleable: true, alwaysVisible: true },
   { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Supervisor", dataKey: "supervisorName", toggleable: true },
@@ -206,11 +211,14 @@ export default function JobCardsPage() {
         const prodRow = findProductionRow(deliveryOrderNo, productName)
         const orderQty = prodRow ? Number(prodRow["Order Quantity"] || 0) : 0
 
-        const matchingJobCards = allJobCardsData.filter(
-          (jc: any) =>
-            String(jc["Delivery Order No."] || "").trim() === deliveryOrderNo &&
-            String(jc["Status"] || "active").toLowerCase() !== "cancelled"
-        )
+        const normalizedDo = deliveryOrderNo.toLowerCase()
+        const normalizedProduct = productName.toLowerCase()
+        const matchingJobCards = allJobCardsData.filter((jc: any) => {
+          const jcDo = String(jc["Delivery Order No."] || "").trim().toLowerCase()
+          const jcProduct = String(jc["Product Name"] || "").trim().toLowerCase()
+          const jcStatus = String(jc["Status"] || "active").toLowerCase()
+          return jcDo === normalizedDo && jcProduct === normalizedProduct && jcStatus !== "cancelled"
+        })
         const totalMadeSum = matchingJobCards.reduce(
           (sum: number, jc: any) => sum + Number(jc["Total Made"] || jc["Quantity"] || 0),
           0
@@ -219,7 +227,9 @@ export default function JobCardsPage() {
         return {
           key: row.id,
           id: row.id,
+          productionId: prodRow?.id ?? "",
           _rowIndex: row.id,
+          costingResponseId: row.id,
           deliveryOrderNo,
           firmName: prodRow ? String(prodRow["Firm Name"] || "") : "",
           partyName: prodRow ? String(prodRow["Party Name"] || "") : "",
@@ -248,6 +258,7 @@ export default function JobCardsPage() {
           return {
             key: row.id,
             id: row.id,
+            productionId: productionRow?.id ?? "",
             _rowIndex: row.id,
             jobCardNo: String(row["JC-Job Card Number"] || ""),
             firmName: String(row["Firm Name"] || ""),
@@ -345,8 +356,8 @@ export default function JobCardsPage() {
     if (!formData.totalMade || Number(formData.totalMade) <= 0) {
       newErrors.totalMade = "Valid total made quantity is required"
     }
-    if (selectedOrder && Number(formData.totalMade) > selectedOrder.orderQuantity) {
-      newErrors.totalMade = "Total made cannot exceed order quantity"
+    if (selectedOrder && Number(formData.totalMade) > Number(selectedOrder.pending || 0)) {
+      newErrors.totalMade = "Total made cannot exceed pending quantity"
     }
     setFormErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -890,7 +901,7 @@ export default function JobCardsPage() {
                     id="totalMade"
                     type="number"
                     min="0"
-                    max={selectedOrder?.orderQuantity}
+                    max={selectedOrder?.pending ?? selectedOrder?.orderQuantity}
                     value={formData.totalMade}
                     onChange={(e) => handleFormChange("totalMade", e.target.value)}
                     className={formErrors.totalMade ? "border-red-500" : ""}

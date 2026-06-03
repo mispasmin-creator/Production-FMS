@@ -28,6 +28,7 @@ interface RawMaterial {
 
 interface ProductionItem {
   _rowIndex: number | string
+  productionId?: number | string
   jobCardNo: string
   deliveryOrderNo: string
   partyName: string
@@ -53,6 +54,7 @@ interface ProductionItem {
 
 interface HistoryItem {
   _rowIndex: number | string
+  productionId?: number | string
   jobCardNo: string
   deliveryOrderNo: string
   partyName: string
@@ -117,6 +119,7 @@ const formatMachineHours = (hours: any) => {
 // Column Definitions
 const PENDING_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
+  { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
@@ -133,6 +136,7 @@ const PENDING_COLUMNS_META = [
 ]
 
 const HISTORY_COLUMNS_META = [
+  { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
@@ -348,6 +352,7 @@ export default function LabTesting1Page() {
 
           return {
             _rowIndex: row.id,
+            productionId: productionRow?.id ?? "",
             jobCardNo: jobCardNo.trim(),
             deliveryOrderNo: deliveryOrderNo.trim(),
             partyName: String(row["Party Name"] || ""),
@@ -391,10 +396,12 @@ export default function LabTesting1Page() {
           const jobCardNo = String(row["JC-Job Card Number"] || "").trim()
           const deliveryOrderNo = String(row["Delivery Order No."] || "").trim()
           const jobCardProductName = String(row["Product Name"] || "").trim()
+          const productionRow = findProductionRow(deliveryOrderNo, jobCardProductName)
           const costingData = findCostingData(deliveryOrderNo, jobCardProductName)
 
           return {
             _rowIndex: row.id,
+            productionId: productionRow?.id ?? "",
             jobCardNo: jobCardNo,
             deliveryOrderNo: String(row["Delivery Order No."] || ""),
             partyName: String(row["Party Name"] || ""),

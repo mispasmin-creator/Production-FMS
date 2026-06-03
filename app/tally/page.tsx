@@ -73,6 +73,24 @@ function formatDateForDisplay(value: any, formatStr: string = "dd/MM/yy HH:mm"):
   return format(date, formatStr)
 }
 
+const hasValue = (value: any) => {
+  if (value === null || value === undefined) return false
+  const normalized = String(value).trim().toLowerCase()
+  return normalized !== "" && normalized !== "n/a" && normalized !== "-" && normalized !== "null" && normalized !== "undefined"
+}
+
+const normalizeKey = (value: any) => String(value || "").trim().toLowerCase()
+
+const getFirmMatchValues = (firm?: string) => {
+  const rawFirm = String(firm || "").trim()
+  const mappedFirm = Object.entries(FIRM_MAP).find(
+    ([key, value]) => normalizeKey(key) === normalizeKey(rawFirm) || normalizeKey(value) === normalizeKey(rawFirm)
+  )?.[1]
+  return [rawFirm, mappedFirm]
+    .filter(Boolean)
+    .map((value) => normalizeKey(value))
+}
+
 export default function TallyPage() {
   const { user } = useAuth()
   const [pendingTallies, setPendingTallies] = useState<ActualProductionItem[]>([])
@@ -146,22 +164,22 @@ export default function TallyPage() {
       // Filter by Firm
       const filterByFirm = (data: any[]) => {
         if (!user?.firm || user?.role?.toLowerCase() === 'admin') return data;
-        const firmSearch = user.firm.toLowerCase();
+        const firmSearchValues = getFirmMatchValues(user.firm);
         return data.filter(item => {
-          const fName = String(item.firmName || "").toLowerCase();
-          return fName.includes(firmSearch);
+          const firmName = normalizeKey(item.firmName);
+          return firmSearchValues.some((firmSearch) => firmName.includes(firmSearch) || firmSearch.includes(firmName));
         });
       };
 
-      // Filter pending tallies: have Planned2 but no Actual2
+      // Pending: production rows whose tally process is not completed yet.
       const pendingData = allItems.filter(item =>
-        item.planned2 !== "N/A" && (item.tallyTimestamp === null || item.tallyTimestamp === "N/A")
+        hasValue(item.jobCardNo) && hasValue(item.planned2) && !hasValue(item.tallyTimestamp)
       )
       setPendingTallies(filterByFirm(pendingData))
 
-      // Filter history: have Actual2
+      // History: production rows whose tally process is completed.
       const historyData = allItems
-        .filter(item => item.tallyTimestamp !== null && item.tallyTimestamp !== "N/A")
+        .filter(item => hasValue(item.jobCardNo) && hasValue(item.tallyTimestamp))
         .sort((a, b) => {
           if (a.tallyTimestamp && b.tallyTimestamp) {
             return new Date(b.tallyTimestamp).getTime() - new Date(a.tallyTimestamp).getTime()
@@ -176,7 +194,7 @@ export default function TallyPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [user?.firm, user?.role])
 
   useEffect(() => {
     loadData()
@@ -199,7 +217,7 @@ export default function TallyPage() {
           "Actual2": new Date().toISOString(),
           "Remarks": remarks
         })
-        .eq('"Job Card No."', selectedTally.jobCardNo)
+        .eq("id", selectedTally.id)
 
       if (updateError) throw updateError
 

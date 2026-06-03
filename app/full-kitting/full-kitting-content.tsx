@@ -64,6 +64,7 @@ import { Badge } from "@/components/ui/badge";
 // --- Type Definitions ---
 interface ProductionItem {
   id: number;
+  productionId?: number | string;
   timestamp: string;
   firmName: string;
   deliveryOrderNo: string;
@@ -118,6 +119,7 @@ interface ExpectedValueRow {
 
 interface CostingHistoryItem {
   id: number;
+  productionId?: number | string;
   timestamp: string;
   compositionNo: string;
   orderNo: string;
@@ -161,6 +163,7 @@ const PENDING_COLUMNS_META = [
     toggleable: false,
   },
   { header: "Timestamp", dataKey: "timestamp", toggleable: true },
+  { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "Firm Name", dataKey: "firmName", toggleable: true },
   {
     header: "Delivery Order No.",
@@ -193,6 +196,7 @@ const HISTORY_COLUMNS_META = [
     toggleable: false,
   },
   { header: "Timestamp", dataKey: "timestamp", toggleable: true },
+  { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "Composition No.", dataKey: "compositionNo", toggleable: true },
   { header: "Order No.", dataKey: "orderNo", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
@@ -343,6 +347,7 @@ export default function CheckPage() {
           expectedDeliveryDate: string;
           priority: string;
           firmName: string;
+          productionId?: number | string;
           uploadSo?: string;
         }
       >();
@@ -356,9 +361,10 @@ export default function CheckPage() {
             expectedDeliveryDate: row["Expected Delivery Date"] || "",
             priority: row["Priority"] || "",
             firmName: row["Firm Name"] || "",
+            productionId: row.id,
             uploadSo: row["Upload SO"] || "",
           };
-          prodMap.set(doNo, prodInfo);
+          if (!prodMap.has(doNo)) prodMap.set(doNo, prodInfo);
           prodMap.set(makeOrderProductKey(doNo, productName), prodInfo);
           productionKeys.add(makeOrderProductKey(doNo, productName));
         }
@@ -371,7 +377,7 @@ export default function CheckPage() {
         const meta = buildOrderMeta(row);
         const productName = meta.productName;
         if (doNo) {
-          orderMetaMap.set(doNo, meta);
+          if (!orderMetaMap.has(doNo)) orderMetaMap.set(doNo, meta);
           orderMetaMap.set(makeOrderProductKey(doNo, productName), meta);
         }
       });
@@ -424,6 +430,7 @@ export default function CheckPage() {
 
         pendingMap.set(key, {
           id: row.id,
+          productionId: row.id,
           timestamp: row["Timestamp"] || "",
           firmName: row["Firm Name"] || meta?.firmName || "",
           deliveryOrderNo: doNo,
@@ -464,11 +471,13 @@ export default function CheckPage() {
             expectedDeliveryDate: "",
             priority: "",
             firmName: "",
+            productionId: "",
             uploadSo: "",
           };
 
         pendingMap.set(key, {
           id: row.id,
+          productionId: enriched.productionId || "",
           timestamp: row["Timestamp"] || "",
           firmName: enriched.firmName || row["Firm Name"] || "",
           deliveryOrderNo: doNo,
@@ -533,9 +542,11 @@ export default function CheckPage() {
             expectedDeliveryDate: "",
             priority: "",
             firmName: "",
+            productionId: "",
           };
         return {
           id: row.id,
+          productionId: enriched.productionId || "",
           firmName: meta?.firmName || enriched.firmName || "",
           timestamp: row["TIMESTAMP"]
             ? format(new Date(row["TIMESTAMP"]), "dd/MM/yyyy HH:mm:ss")

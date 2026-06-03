@@ -70,6 +70,7 @@ import { useAuth, FIRM_MAP } from "@/lib/auth";
 // Type for Production items
 interface ProductionItem {
   id: number;
+  productionId?: number | string;
   timestamp: string;
   deliveryOrderNo: string;
   firmName: string;
@@ -97,6 +98,7 @@ interface ProductionItem {
 // Column Definitions for Job Cards Table
 const JOBCARD_COLUMNS_META = [
   { header: "Timestamp", dataKey: "timestamp", toggleable: true },
+  { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "DO No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
@@ -190,6 +192,7 @@ export default function OrdersPage() {
   useEffect(() => {
     const visibility: Record<string, boolean> = {
       timestamp: true,
+      productionId: true,
       deliveryOrderNo: true,
       firmName: true,
       partyName: true,
@@ -278,6 +281,7 @@ export default function OrdersPage() {
 
             return {
               id: matchingProd ? matchingProd.id : row.id,
+              productionId: matchingProd?.id ?? "",
               timestamp: row["Timestamp"] || "",
               deliveryOrderNo: row["DO-Delivery Order No."] || "",
               firmName: row["Firm Name"] || "",

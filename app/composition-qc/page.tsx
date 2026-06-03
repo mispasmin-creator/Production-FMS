@@ -26,6 +26,7 @@ interface MaterialRow {
 }
 
 interface QCRecord {
+  productionId?: number | string
   jobCardNo: string
   doNo: string
   partyName: string
@@ -135,12 +136,13 @@ export default function CompositionQCPage() {
         }
       })
 
-      const productionMetaMap = new Map<string, { rate: number; firm: string; party: string; productName: string }>()
+      const productionMetaMap = new Map<string, { productionId?: number | string; rate: number; firm: string; party: string; productName: string }>()
       ;(prodData || []).forEach((p: any) => {
         const doNo = String(p["Delivery Order No."] || "").trim()
         const productName = String(p["Product Name"] || "").trim()
         if (!doNo) return
         const meta = {
+          productionId: p.id,
           rate: Number(p["product_rate"] || 0),
           firm: String(p["Firm Name"] || ""),
           party: String(p["Party Name"] || ""),
@@ -249,6 +251,7 @@ export default function CompositionQCPage() {
         const profitLoss     = actualProfit // backward compat alias
 
         result.push({
+          productionId: productionMeta?.productionId || "",
           jobCardNo, doNo,
           partyName:   String(jc["Party Name"] || productionMeta?.party || orderMeta?.party || ""),
           productName: String(jc["Product Name"] || productionMeta?.productName || costRow["product name"] || ""),
@@ -396,6 +399,7 @@ export default function CompositionQCPage() {
               <TableHeader>
                 <TableRow className="bg-slate-50 hover:bg-slate-50">
                   <TableHead className="text-xs font-bold text-slate-600">Job Card</TableHead>
+                  <TableHead className="text-xs font-bold text-slate-600">ID</TableHead>
                   <TableHead className="text-xs font-bold text-slate-600">DO No.</TableHead>
                   <TableHead className="text-xs font-bold text-slate-600">Party</TableHead>
                   <TableHead className="text-xs font-bold text-slate-600">Product</TableHead>
@@ -409,7 +413,7 @@ export default function CompositionQCPage() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-12 text-sm text-slate-400 italic">
+                    <TableCell colSpan={10} className="text-center py-12 text-sm text-slate-400 italic">
                       No records found. Production logs with matching compositions will appear here.
                     </TableCell>
                   </TableRow>
@@ -420,6 +424,7 @@ export default function CompositionQCPage() {
                     onClick={() => setSelected(r)}
                   >
                     <TableCell className="py-3 text-sm font-semibold text-indigo-700">{r.jobCardNo || "—"}</TableCell>
+                    <TableCell className="py-3 text-xs text-slate-600">{r.productionId || "—"}</TableCell>
                     <TableCell className="py-3 text-xs text-slate-600">{r.doNo || "—"}</TableCell>
                     <TableCell className="py-3 text-xs text-slate-700">{r.partyName || "—"}</TableCell>
                     <TableCell className="py-3 text-xs text-slate-700 max-w-[160px] truncate">{r.productName}</TableCell>
@@ -455,6 +460,7 @@ export default function CompositionQCPage() {
                 </DialogTitle>
                 <div className="flex flex-wrap gap-2 pt-1">
                   <Badge variant="outline" className="text-xs">{selected.doNo}</Badge>
+                  <Badge variant="outline" className="text-xs">ID: {selected.productionId || "—"}</Badge>
                   <Badge variant="outline" className="text-xs">{selected.partyName}</Badge>
                   <Badge variant="outline" className="text-xs">{selected.productName}</Badge>
                   {selected.productionDate && (

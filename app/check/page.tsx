@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Toaster } from "@/components/ui/toaster"
 
 import { supabase } from "@/lib/supabase"
+import { useAuth, FIRM_MAP } from "@/lib/auth"
 
 // --- Configuration ---
 const ACTUAL_PRODUCTION_TABLE = "actual_production"
@@ -244,6 +245,18 @@ function formatDate(date: any): string {
   } catch (err) {
     return "-"
   }
+}
+
+const normalizeKey = (value: any) => String(value || "").trim().toLowerCase()
+
+const getFirmMatchValues = (firm?: string) => {
+  const rawFirm = String(firm || "").trim()
+  const mappedFirm = Object.entries(FIRM_MAP).find(
+    ([key, value]) => normalizeKey(key) === normalizeKey(rawFirm) || normalizeKey(value) === normalizeKey(rawFirm)
+  )?.[1]
+  return [rawFirm, mappedFirm]
+    .filter(Boolean)
+    .map((value) => normalizeKey(value))
 }
 
 function parseActualProductionRow(row: any): ActualProductionItem {
@@ -681,6 +694,7 @@ function ColumnToggler({ tab, columnsMeta, visibilityMap, onToggle, onSelectAll 
 // MAIN COMPONENT
 // ============================
 export default function CheckPage() {
+  const { user } = useAuth()
   const [hemlalPending, setHemlalPending] = useState<HemlalPendingItem[]>([])
   const [jitendraPending, setJitendraPending] = useState<JitendraPendingItem[]>([])
   const [devshreePending, setDevshreePending] = useState<DevshreePendingItem[]>([])
@@ -748,7 +762,17 @@ export default function CheckPage() {
       if (masterErr) throw masterErr
       if (jobCardsErr) throw jobCardsErr
 
-      const allItems = (actualProdData || []).map((row: any) => parseActualProductionRow(row))
+      const firmSearchValues = getFirmMatchValues(user?.firm)
+      const isAdmin = user?.role?.toLowerCase() === "admin"
+      const filterByFirm = (items: ActualProductionItem[]) => {
+        if (isAdmin || firmSearchValues.length === 0) return items
+        return items.filter((item) => {
+          const firmName = normalizeKey(item.firmName)
+          return firmSearchValues.some((firmSearch) => firmName.includes(firmSearch) || firmSearch.includes(firmName))
+        })
+      }
+
+      const allItems = filterByFirm((actualProdData || []).map((row: any) => parseActualProductionRow(row)))
 
       // Hemlal Pending
       const hemlalPendingData: HemlalPendingItem[] = allItems
@@ -863,7 +887,7 @@ export default function CheckPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [user?.firm, user?.role])
 
   useEffect(() => { loadAllData() }, [loadAllData])
 

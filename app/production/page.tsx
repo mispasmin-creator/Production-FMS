@@ -34,6 +34,7 @@ interface ColumnMeta {
 
 interface ProductionItem {
   _rowIndex: number
+  productionId?: number | string
   jobCardNo: string
   firmName: string
 
@@ -116,6 +117,7 @@ const formatMachineHours = (hours: any) => {
 // Column Definitions
 const PENDING_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
+  { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
@@ -132,6 +134,7 @@ const PENDING_COLUMNS_META = [
 
 const HISTORY_COLUMNS_META = [
   { header: "Timestamp", dataKey: "timestamp", toggleable: true },
+  { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
@@ -309,6 +312,7 @@ export default function ProductionPage() {
           )
           return {
             _rowIndex: row.id,
+            productionId: prodInfo?.id ?? "",
             jobCardNo: String(row["JC-Job Card Number"] || ""),
             firmName: String(row["Firm Name"] || ""),
             supervisorName: String(row["Supervisor Name"] || ""),
@@ -338,6 +342,7 @@ export default function ProductionPage() {
 
           return {
             _rowIndex: row.id,
+            productionId: prodInfo?.id ?? "",
             timestamp: productionRecord?.timestamp || "",
             jobCardNo: jcNo,
             deliveryOrderNo: doNo,

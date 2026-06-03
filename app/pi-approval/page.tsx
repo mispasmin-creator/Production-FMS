@@ -62,6 +62,10 @@ import { cn } from "@/lib/utils";
 const COSTING_RESPONSE_TABLE = "costing_response";
 const PRODUCTION_TABLE = "production";
 
+const normalizeKey = (value: any) => String(value || "").trim().toLowerCase();
+const makeOrderProductKey = (orderNo: any, productName: any) =>
+  `${normalizeKey(orderNo)}::${normalizeKey(productName)}`;
+
 const EXPECTED_LABELS: { key: string; label: string }[] = [
   { key: "Expected WC %", label: "W/C (%)" },
   { key: "Expected Sticky Flow", label: "Sticky / Flow" },
@@ -77,6 +81,7 @@ const EXPECTED_LABELS: { key: string; label: string }[] = [
 // ──────────────── Types ────────────────
 interface LabItem {
   id: number;
+  productionId?: number | string;
   compositionNo: string;
   orderNo: string;
   partyName: string;
@@ -109,6 +114,7 @@ interface LabItem {
 
 const PENDING_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
+  { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "Composition No.", dataKey: "compositionNo", toggleable: true },
   { header: "Order No.", dataKey: "orderNo", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
@@ -123,6 +129,7 @@ const PENDING_COLUMNS_META = [
 
 const HISTORY_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
+  { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "Decision", dataKey: "piApprovalStatus", toggleable: true },
   { header: "Composition No.", dataKey: "compositionNo", toggleable: true },
   { header: "Order No.", dataKey: "orderNo", toggleable: true },
@@ -178,22 +185,30 @@ export default function PIApprovalPage() {
         kycMap.set(String(k["Product name"] || "").trim().toLowerCase(), k);
       });
 
-      // 2. Fetch product metadata from production table (keyed by Delivery Order No.)
+      // 2. Fetch product metadata from production table (keyed by Delivery Order No. + product)
       const { data: prodData, error: prodErr } = await supabase
         .from(PRODUCTION_TABLE)
-        .select('"Delivery Order No.", product_rate, "Firm Name", "Party Name", "Order Quantity"');
+        .select('id, "Delivery Order No.", "Product Name", product_rate, "Firm Name", "Party Name", "Order Quantity"');
       if (prodErr) throw prodErr;
-      const productRateMap = new Map<string, number>();
-      const firmMap = new Map<string, string>();
-      const partyMap = new Map<string, string>();
-      const quantityMap = new Map<string, number>();
+      const productionMetaMap = new Map<
+        string,
+        { productionId?: number | string; productRate: number; firmName: string; partyName: string; orderQuantity: number }
+      >();
       (prodData || []).forEach((p: any) => {
-        const key = String(p["Delivery Order No."] || "").trim();
-        if (key) {
-          productRateMap.set(key, Number(p.product_rate || 0));
-          firmMap.set(key, String(p["Firm Name"] || ""));
-          partyMap.set(key, String(p["Party Name"] || ""));
-          quantityMap.set(key, Number(p["Order Quantity"] || 0));
+        const orderNo = String(p["Delivery Order No."] || "").trim();
+        const productName = String(p["Product Name"] || "").trim();
+        if (orderNo) {
+          const meta = {
+            productionId: p.id,
+            productRate: Number(p.product_rate || 0),
+            firmName: String(p["Firm Name"] || ""),
+            partyName: String(p["Party Name"] || ""),
+            orderQuantity: Number(p["Order Quantity"] || 0),
+          };
+          productionMetaMap.set(makeOrderProductKey(orderNo, productName), meta);
+          if (!productionMetaMap.has(normalizeKey(orderNo))) {
+            productionMetaMap.set(normalizeKey(orderNo), meta);
+          }
         }
       });
 
@@ -231,15 +246,20 @@ export default function PIApprovalPage() {
         });
 
         const orderNo = row["Order No."] || "";
-        const productRate = productRateMap.get(String(orderNo).trim()) || 0;
+        const productName = row["product name"] || "";
+        const productionMeta =
+          productionMetaMap.get(makeOrderProductKey(orderNo, productName)) ||
+          productionMetaMap.get(normalizeKey(orderNo));
+        const productRate = productionMeta?.productRate || 0;
 
         return {
           id: row.id,
+          productionId: productionMeta?.productionId || "",
           compositionNo: row["Composition No."] || "",
           orderNo,
-          partyName: partyMap.get(String(orderNo).trim()) || "",
-          productName: row["product name"] || "",
-          orderQuantity: quantityMap.get(String(orderNo).trim()) || 0,
+          partyName: productionMeta?.partyName || "",
+          productName,
+          orderQuantity: productionMeta?.orderQuantity || 0,
           sellingPrice: Number(row["SELLING PRICE"] || 0),
           productRate,
           gpPercentage: Number(row["GP %AGE"] || 0),
@@ -259,7 +279,7 @@ export default function PIApprovalPage() {
             : null,
           expectedValues,
           rmValues,
-          firmName: firmMap.get(String(orderNo).trim()) || "",
+          firmName: productionMeta?.firmName || "",
         };
       });
 
@@ -376,10 +396,14 @@ export default function PIApprovalPage() {
 
         // 2. Clear "Actual 1" on the matching production row so it re-appears in Full Kitting pending
         if (selectedItem.orderNo) {
-          const { error: prodErr } = await supabase
+          let prodQuery = supabase
             .from(PRODUCTION_TABLE)
             .update({ "Actual 1": null, "Status": "Rejected – Redo Composition" })
             .eq('"Delivery Order No."', selectedItem.orderNo);
+          if (selectedItem.productName) {
+            prodQuery = prodQuery.eq("Product Name", selectedItem.productName);
+          }
+          const { error: prodErr } = await prodQuery;
           if (prodErr) throw prodErr;
         }
 

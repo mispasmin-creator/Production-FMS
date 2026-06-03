@@ -34,8 +34,13 @@ import { cn } from "@/lib/utils"
 const COSTING_RESPONSE_TABLE = "costing_response"
 const PRODUCTION_TABLE = "production"
 
+const normalizeKey = (value: any) => String(value || "").trim().toLowerCase()
+const makeOrderProductKey = (orderNo: any, productName: any) =>
+  `${normalizeKey(orderNo)}::${normalizeKey(productName)}`
+
 interface SampleItem {
   id: number
+  productionId?: number | string
   compositionNo: string
   orderNo: string
   partyName: string
@@ -82,20 +87,24 @@ export default function SampleTestPage() {
           .order("id", { ascending: false }),
         supabase
           .from(PRODUCTION_TABLE)
-          .select('"Delivery Order No.", "Party Name", "Order Quantity"'),
+          .select('id, "Delivery Order No.", "Product Name", "Party Name", "Order Quantity"'),
       ])
 
       if (dbErr) throw dbErr
       if (prodErr) throw prodErr
 
-      const productionMeta = new Map<string, { partyName: string; orderQuantity: number }>()
+      const productionMeta = new Map<string, { productionId?: number | string; partyName: string; orderQuantity: number }>()
       ;(prodData || []).forEach((p: any) => {
-        const key = String(p["Delivery Order No."] || "").trim()
-        if (key) {
-          productionMeta.set(key, {
+        const orderNo = String(p["Delivery Order No."] || "").trim()
+        const productName = String(p["Product Name"] || "").trim()
+        if (orderNo) {
+          const meta = {
+            productionId: p.id,
             partyName: String(p["Party Name"] || ""),
             orderQuantity: Number(p["Order Quantity"] || 0),
-          })
+          }
+          productionMeta.set(makeOrderProductKey(orderNo, productName), meta)
+          if (!productionMeta.has(normalizeKey(orderNo))) productionMeta.set(normalizeKey(orderNo), meta)
         }
       })
 
@@ -114,14 +123,18 @@ export default function SampleTestPage() {
           }
         }
         const orderNo = row["Order No."] || ""
-        const meta = productionMeta.get(String(orderNo).trim())
+        const productName = row["product name"] || ""
+        const meta =
+          productionMeta.get(makeOrderProductKey(orderNo, productName)) ||
+          productionMeta.get(normalizeKey(orderNo))
 
         return {
           id: row.id,
+          productionId: meta?.productionId || "",
           compositionNo: row["Composition No."] || "",
           orderNo,
           partyName: meta?.partyName || "",
-          productName: row["product name"] || "",
+          productName,
           orderQuantity: meta?.orderQuantity || 0,
           status: row.Status || "",
           managementApprovalType: row["Management Approval Type"] || "",
@@ -282,6 +295,7 @@ export default function SampleTestPage() {
                      <TableHeader className="bg-slate-50/80">
                        <TableRow>
                          <TableHead>Composition No.</TableHead>
+                         <TableHead>ID</TableHead>
                          <TableHead>Order No.</TableHead>
                          <TableHead>Party Name</TableHead>
                          <TableHead>Product Name</TableHead>
@@ -293,6 +307,7 @@ export default function SampleTestPage() {
                        {pendingItems.map((item) => (
                          <TableRow key={item.id} className="hover:bg-slate-50/50 transition-colors">
                            <TableCell className="font-bold text-olive-600">{item.compositionNo}</TableCell>
+                           <TableCell className="font-medium text-slate-700">{item.productionId || "-"}</TableCell>
                            <TableCell className="font-medium text-slate-700">{item.orderNo}</TableCell>
                            <TableCell className="font-medium text-slate-700">{item.partyName || "-"}</TableCell>
                            <TableCell className="font-semibold text-slate-900">{item.productName}</TableCell>
@@ -319,6 +334,7 @@ export default function SampleTestPage() {
                    <TableHeader className="bg-slate-50/80">
                      <TableRow>
                        <TableHead>Composition No.</TableHead>
+                       <TableHead>ID</TableHead>
                        <TableHead>Order No.</TableHead>
                        <TableHead>Party Name</TableHead>
                        <TableHead>Product Name</TableHead>
@@ -332,6 +348,7 @@ export default function SampleTestPage() {
                      {historyItems.map((item) => (
                        <TableRow key={item.id}>
                          <TableCell className="font-bold text-slate-600">{item.compositionNo}</TableCell>
+                         <TableCell className="text-slate-600">{item.productionId || "-"}</TableCell>
                          <TableCell className="text-slate-600">{item.orderNo}</TableCell>
                          <TableCell className="text-slate-600">{item.partyName || "-"}</TableCell>
                          <TableCell className="font-medium text-slate-700">{item.productName}</TableCell>
