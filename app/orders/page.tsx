@@ -232,7 +232,7 @@ export default function OrdersPage() {
       if (prodError) throw prodError;
 
       if (allOrders) {
-        const firmSearch = user?.firm?.toLowerCase() || "";
+        const userFirms = user?.firm ? user.firm.split(',').map(f => f.trim().toLowerCase()).filter(Boolean) : [];
         const isAdmin = user?.role?.toLowerCase() === 'admin';
         
         // 3. Process firm options and order dropdown data
@@ -240,13 +240,13 @@ export default function OrdersPage() {
           ...new Set(
             allOrders
               .map((m: any) => String(m["Firm Name"] || "").trim())
-              .filter(f => !f || isAdmin || !firmSearch || f.toLowerCase().includes(firmSearch)),
+              .filter(f => !f || isAdmin || userFirms.length === 0 || userFirms.some(uf => f.toLowerCase().includes(uf))),
           ),
         ] as string[];
         setFirmOptions(uniqueFirms);
 
         const orderRows = allOrders
-          .filter((m: any) => !String(m["Firm Name"]) || isAdmin || !firmSearch || String(m["Firm Name"]).toLowerCase().includes(firmSearch))
+          .filter((m: any) => !String(m["Firm Name"]) || isAdmin || userFirms.length === 0 || userFirms.some(uf => String(m["Firm Name"]).toLowerCase().includes(uf)))
           .map((row: any) => ({
             firmName: row["Firm Name"],
             partyName: row["Party Names"],
@@ -261,7 +261,7 @@ export default function OrdersPage() {
 
         // 4. Map ORDER RECEIPT rows using production status
         const productionRows: ProductionItem[] = allOrders
-          .filter((m: any) => isAdmin || !firmSearch || String(m["Firm Name"] || "").toLowerCase().includes(firmSearch))
+          .filter((m: any) => isAdmin || userFirms.length === 0 || userFirms.some(uf => String(m["Firm Name"] || "").toLowerCase().includes(uf)))
           .map((row: any) => {
             // Find match in production table
             const matchingProd = allProduction?.find((p: any) => {
@@ -588,10 +588,14 @@ export default function OrdersPage() {
     // 1. Filter by Firm first
     let baseData = productionData;
     if (user?.firm && user?.role?.toLowerCase() !== 'admin') {
-      const mappedFirmLower = (FIRM_MAP[user.firm] || user.firm).toLowerCase();
+      const userFirms = user.firm.split(',').map(f => f.trim()).filter(Boolean);
       baseData = productionData.filter(item => {
         const fName = String(item.firmName || "").toLowerCase();
-        return !fName || fName.includes(mappedFirmLower);
+        return !fName || userFirms.some(uf => {
+          const firmSearch = uf.toLowerCase();
+          const mappedFirmLower = (FIRM_MAP[uf] || uf).toLowerCase();
+          return fName.includes(firmSearch) || fName.includes(mappedFirmLower);
+        });
       });
     }
 

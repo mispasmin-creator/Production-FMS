@@ -190,10 +190,14 @@ export default function Step1List() {
             // Filter by Firm
             const filterByFirm = (data: any[]) => {
                 if (!user?.firm || user?.role?.toLowerCase() === 'admin') return data;
-                const firmSearch = user.firm.toLowerCase();
+                const userFirms = user.firm.split(',').map(f => f.trim()).filter(Boolean);
                 return data.filter(item => {
                     const fName = String(item.firmName || "").toLowerCase();
-                    return fName.includes(firmSearch);
+                    return userFirms.some(uf => {
+                        const firmSearch = uf.toLowerCase();
+                        const mappedFirmLower = (FIRM_MAP[uf] || uf).toLowerCase();
+                        return fName.includes(firmSearch) || fName.includes(mappedFirmLower);
+                    });
                 });
             };
 
@@ -229,8 +233,15 @@ export default function Step1List() {
             let firms: string[] = [...new Set(masterDataRows.map((row: any) => String(row.G || "")).filter(Boolean))] as string[];
             
             if (user?.firm && user?.role?.toLowerCase() !== 'admin') {
-                const mappedFirmLower = (FIRM_MAP[user.firm] || user.firm).toLowerCase();
-                firms = firms.filter(f => f.toLowerCase().includes(mappedFirmLower));
+                const userFirms = user.firm.split(',').map(f => f.trim()).filter(Boolean);
+                firms = firms.filter(f => {
+                    const firmNameLower = f.toLowerCase();
+                    return userFirms.some(uf => {
+                        const firmSearch = uf.toLowerCase();
+                        const mappedFirmLower = (FIRM_MAP[uf] || uf).toLowerCase();
+                        return firmNameLower.includes(firmSearch) || firmNameLower.includes(mappedFirmLower);
+                    });
+                });
             }
             setFirmsList(firms);
 
@@ -330,7 +341,7 @@ export default function Step1List() {
             setIsDialogOpen(false);
             setFormData({ sfSrNo: '', name: '', firmName: '', qty: '', notes: '' });
             await loadAllData();
-        } catch (err) {
+        } catch (err: any) {
             setError(err.message);
             alert(`Error: ${err.message}`);
         } finally {
@@ -385,7 +396,7 @@ export default function Step1List() {
             setCancelQty('');
             setCancelReason('');
             await loadAllData();
-        } catch (err) {
+        } catch (err: any) {
             console.error('Error submitting cancel order:', err);
             alert(`Error: ${err.message}`);
         } finally {

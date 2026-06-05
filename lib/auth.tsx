@@ -12,6 +12,7 @@ interface User {
   role: string
   permissions: string[]
   firm?: string
+  password?: string
 }
 
 export const FIRM_MAP: Record<string, string> = {
@@ -97,12 +98,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) throw error
 
       if (data) {
-        const users = data.map((row) => ({
+         const users = data.map((row) => ({
           username: row["User name"],
           id: row["ID"],
           role: row["Role"],
           permissions: row["Pages"] ? row["Pages"].toString().split(',').map((p: string) => p.trim()) : [],
-          firm: row["Firm"]
+          firm: row["Firm"],
+          password: row["Pass"]
         }))
         setAllUsers(users);
 
@@ -153,7 +155,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           id: data["ID"],
           role: data["Role"],
           permissions: data["Pages"] ? data["Pages"].toString().split(',').map((p: string) => p.trim()) : [],
-          firm: data["Firm"]
+          firm: data["Firm"],
+          password: data["Pass"]
         };
         setUser(foundUser);
         sessionStorage.setItem("user", JSON.stringify(foundUser));

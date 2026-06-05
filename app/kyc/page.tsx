@@ -200,11 +200,16 @@ export default function KycPage() {
     if (!user) return [];
     if (isAdmin) return data;
     if (!user.firm) return data;
-    const mapped = (FIRM_MAP[user.firm] || user.firm).toLowerCase();
-    return data.filter((row) =>
-      !String(row["Firm Name"] || "").trim() ||
-      String(row["Firm Name"] || "").toLowerCase().includes(mapped),
-    );
+    const userFirms = user.firm.split(',').map(f => f.trim()).filter(Boolean);
+    return data.filter((row) => {
+      const fName = String(row["Firm Name"] || "").trim().toLowerCase();
+      if (!fName) return true;
+      return userFirms.some(uf => {
+        const firmSearch = uf.toLowerCase();
+        const mapped = (FIRM_MAP[uf] || uf).toLowerCase();
+        return fName.includes(firmSearch) || fName.includes(mapped);
+      });
+    });
   }, [data, user, isAdmin]);
 
   const filtered = useMemo(() => {

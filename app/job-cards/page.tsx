@@ -284,10 +284,14 @@ export default function JobCardsPage() {
       // Filter by Firm
       const filterByFirm = (data: any[]) => {
         if (!user?.firm || user?.role?.toLowerCase() === 'admin') return data;
-        const firmSearch = user.firm.toLowerCase();
+        const userFirms = user.firm.split(',').map(f => f.trim()).filter(Boolean);
         return data.filter(item => {
           const fName = String(item.firmName || "").toLowerCase();
-          return fName.includes(firmSearch);
+          return userFirms.some(uf => {
+            const firmSearch = uf.toLowerCase();
+            const mappedFirmLower = (FIRM_MAP[uf] || uf).toLowerCase();
+            return fName.includes(firmSearch) || fName.includes(mappedFirmLower);
+          });
         });
       };
 

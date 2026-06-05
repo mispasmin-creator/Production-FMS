@@ -234,6 +234,68 @@ export default function CheckPage() {
   // Admin firm filter
   const [adminFirmFilter, setAdminFirmFilter] = useState<string>("");
 
+  // Search and Firm filters for listing
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [firmFilter, setFirmFilter] = useState<string>("all");
+
+  // Extract unique firm names dynamically from pending and history items
+  const uniqueFirms = useMemo(() => {
+    const firms = new Set<string>();
+    pendingChecks.forEach((item) => {
+      if (item.firmName) firms.add(item.firmName);
+    });
+    historyChecks.forEach((item) => {
+      if (item.firmName) firms.add(item.firmName);
+    });
+    return Array.from(firms).sort();
+  }, [pendingChecks, historyChecks]);
+
+  const filteredPendingChecks = useMemo(() => {
+    return pendingChecks.filter((item) => {
+      if (firmFilter !== "all") {
+        if (!item.firmName || item.firmName.toLowerCase() !== firmFilter.toLowerCase()) {
+          return false;
+        }
+      }
+      if (searchTerm.trim() !== "") {
+        const term = searchTerm.toLowerCase();
+        return (
+          (item.deliveryOrderNo || "").toLowerCase().includes(term) ||
+          (item.partyName || "").toLowerCase().includes(term) ||
+          (item.productName || "").toLowerCase().includes(term) ||
+          (item.firmName || "").toLowerCase().includes(term) ||
+          (item.priority || "").toLowerCase().includes(term) ||
+          (item.note || "").toLowerCase().includes(term) ||
+          (item.crmName || "").toLowerCase().includes(term) ||
+          (item.status || "").toLowerCase().includes(term)
+        );
+      }
+      return true;
+    });
+  }, [pendingChecks, firmFilter, searchTerm]);
+
+  const filteredHistoryChecks = useMemo(() => {
+    return historyChecks.filter((item) => {
+      if (firmFilter !== "all") {
+        if (!item.firmName || item.firmName.toLowerCase() !== firmFilter.toLowerCase()) {
+          return false;
+        }
+      }
+      if (searchTerm.trim() !== "") {
+        const term = searchTerm.toLowerCase();
+        return (
+          (item.orderNo || "").toLowerCase().includes(term) ||
+          (item.compositionNo || "").toLowerCase().includes(term) ||
+          (item.productName || "").toLowerCase().includes(term) ||
+          (item.firmName || "").toLowerCase().includes(term) ||
+          (item.status || "").toLowerCase().includes(term) ||
+          (item.priority || "").toLowerCase().includes(term)
+        );
+      }
+      return true;
+    });
+  }, [historyChecks, firmFilter, searchTerm]);
+
   // Derived: filter kyc products by login firm (or admin selection)
   const filteredKycProducts = useMemo(() => {
     const isAdmin = user?.role?.toLowerCase() === "admin";
@@ -242,8 +304,15 @@ export default function CheckPage() {
       return kycProducts.filter((p) => p.firmName === adminFirmFilter);
     }
     if (!user?.firm) return kycProducts;
-    const mappedFirm = FIRM_MAP[user.firm] || user.firm;
-    return kycProducts.filter((p) => p.firmName === mappedFirm);
+    const userFirms = user.firm.split(',').map(f => f.trim()).filter(Boolean);
+    return kycProducts.filter((p) => {
+      const fName = (p.firmName || "").toLowerCase();
+      return userFirms.some(uf => {
+        const mappedFirm = (FIRM_MAP[uf] || uf).toLowerCase();
+        const firmSearch = uf.toLowerCase();
+        return fName.includes(firmSearch) || fName.includes(mappedFirm);
+      });
+    });
   }, [kycProducts, user?.firm, user?.role, adminFirmFilter]);
 
   // Raw Materials view dialog
@@ -568,13 +637,14 @@ export default function CheckPage() {
         };
       });
 
-      const firmSearch = user?.firm?.toLowerCase() || "";
+      const userFirms = user?.firm ? user.firm.split(',').map(f => f.trim().toLowerCase()).filter(Boolean) : [];
       const isAdmin = user?.role?.toLowerCase() === "admin";
       const filterByFirm = (list: any[]) => {
-        if (isAdmin || !firmSearch) return list;
-        return list.filter((item) =>
-          (item.firmName || "").toLowerCase().includes(firmSearch),
-        );
+        if (isAdmin || userFirms.length === 0) return list;
+        return list.filter((item) => {
+          const fName = (item.firmName || "").toLowerCase();
+          return userFirms.some(uf => fName.includes(uf));
+        });
       };
 
       setPendingChecks(filterByFirm(pending));
@@ -629,7 +699,13 @@ export default function CheckPage() {
       if (user?.role?.toLowerCase() === "admin")
         return adminFirmFilter || selectedCheck?.firmName || "";
       if (!user?.firm) return selectedCheck?.firmName || "";
-      return FIRM_MAP[user.firm] || user.firm;
+      const userFirms = user.firm.split(',').map(f => f.trim()).filter(Boolean);
+      if (selectedCheck?.firmName) {
+        const itemFirmLower = selectedCheck.firmName.toLowerCase();
+        const matched = userFirms.find(uf => itemFirmLower.includes(uf.toLowerCase()) || (FIRM_MAP[uf] || uf).toLowerCase().includes(itemFirmLower));
+        if (matched) return FIRM_MAP[matched] || matched;
+      }
+      return userFirms[0] ? (FIRM_MAP[userFirms[0]] || userFirms[0]) : "";
     },
     [adminFirmFilter, selectedCheck?.firmName, user?.firm, user?.role],
   );
@@ -1167,26 +1243,83 @@ export default function CheckPage() {
         </CardHeader>
         <CardContent className="p-4 sm:p-6">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full sm:w-[450px] grid-cols-2 mb-6">
-              <TabsTrigger value="pending" className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4" /> Pending
-                <Badge
-                  variant="secondary"
-                  className="ml-1 px-1.5 py-0.5 text-xs"
-                >
-                  {pendingChecks.length}
-                </Badge>
-              </TabsTrigger>
-              <TabsTrigger value="history" className="flex items-center gap-2">
-                <Eye className="h-4 w-4" /> History
-                <Badge
-                  variant="secondary"
-                  className="ml-1 px-1.5 py-0.5 text-xs"
-                >
-                  {historyChecks.length}
-                </Badge>
-              </TabsTrigger>
-            </TabsList>
+            <div className="flex flex-col lg:flex-row gap-4 mb-6 lg:items-center lg:justify-between">
+              <TabsList className="grid w-full lg:w-[320px] grid-cols-2">
+                <TabsTrigger value="pending" className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4" /> Pending
+                  <Badge
+                    variant="secondary"
+                    className="ml-1 px-1.5 py-0.5 text-xs"
+                  >
+                    {filteredPendingChecks.length}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger value="history" className="flex items-center gap-2">
+                  <Eye className="h-4 w-4" /> History
+                  <Badge
+                    variant="secondary"
+                    className="ml-1 px-1.5 py-0.5 text-xs"
+                  >
+                    {filteredHistoryChecks.length}
+                  </Badge>
+                </TabsTrigger>
+              </TabsList>
+
+              <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto items-center">
+                {/* Search Input */}
+                <div className="relative w-full sm:w-64">
+                  <Input
+                    placeholder="Search orders, products, parties..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-8 pr-8 py-2 text-sm h-9 border-slate-200 focus:border-olive-500 focus:ring-olive-500 rounded-md"
+                  />
+                  <div className="absolute left-2.5 top-2.5 text-gray-400">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      className="w-4 h-4"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.602 10.602z"
+                      />
+                    </svg>
+                  </div>
+                  {searchTerm && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setSearchTerm("")}
+                      className="absolute right-1 top-1 h-7 w-7 text-gray-400 hover:text-gray-600 hover:bg-transparent"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+
+                {/* Firm Dropdown Filter */}
+                <div className="w-full sm:w-48">
+                  <Select value={firmFilter} onValueChange={setFirmFilter}>
+                    <SelectTrigger className="h-9 text-sm border-slate-200">
+                      <SelectValue placeholder="All Firms" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Firms</SelectItem>
+                      {uniqueFirms.map((firm) => (
+                        <SelectItem key={firm} value={firm}>
+                          {firm}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
 
             {/* ──── PENDING ──── */}
             <TabsContent value="pending">
@@ -1280,8 +1413,8 @@ export default function CheckPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {pendingChecks.length > 0 ? (
-                          pendingChecks.map((item) => (
+                        {filteredPendingChecks.length > 0 ? (
+                          filteredPendingChecks.map((item) => (
                             <TableRow key={item.id}>
                               {visiblePendingMeta.map((col) => (
                                 <TableCell key={col.dataKey}>
@@ -1420,8 +1553,8 @@ export default function CheckPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {historyChecks.length > 0 ? (
-                          historyChecks.map((item) => (
+                        {filteredHistoryChecks.length > 0 ? (
+                          filteredHistoryChecks.map((item) => (
                             <TableRow key={item.id}>
                               {visibleHistoryMeta.map((col) => (
                                 <TableCell key={col.dataKey}>

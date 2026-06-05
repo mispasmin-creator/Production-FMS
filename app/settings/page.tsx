@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Settings, Shield, Key, Plus, Trash2, Edit, Loader2 } from "lucide-react"
+import { Settings, Shield, Key, Plus, Trash2, Edit, Loader2, Eye, EyeOff } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils" // Import cn for conditional class styling
@@ -24,6 +24,7 @@ interface User {
   role: string;
   permissions: string[];
   firm?: string;
+  password?: string;
 }
 
 interface Page {
@@ -76,6 +77,9 @@ export default function SettingsPage() {
   const [editUserData, setEditUserData] = useState({ id: "", username: "", password: "", role: "user", permissions: [] as string[], firm: "" })
   const [firmOptions, setFirmOptions] = useState<string[]>([])
   const [newPasswordData, setNewPasswordData] = useState({ newPassword: "", confirmPassword: "" })
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [showDialogPassword, setShowDialogPassword] = useState(false)
   
   const showMessage = (msg: string, type: "success" | "error" = "success") => {
     setMessage(msg)
@@ -105,6 +109,7 @@ export default function SettingsPage() {
     if (result.success) {
       showMessage("User added successfully!");
       setIsAddUserOpen(false);
+      setShowDialogPassword(false);
       setNewUserData({ username: "", password: "", role: "user", permissions: [], firm: "" });
     } else { showMessage(`Error: ${result.error}`, "error"); }
     setIsSubmitting(false);
@@ -146,9 +151,10 @@ export default function SettingsPage() {
       username: userToEdit.username,
       role: userToEdit.role,
       permissions: userToEdit.permissions || [],
-      password: "",
+      password: userToEdit.password || "",
       firm: userToEdit.firm || ""
     });
+    setShowDialogPassword(false);
     setIsEditUserOpen(true);
   }
 
@@ -159,6 +165,7 @@ export default function SettingsPage() {
       if(result.success) {
           showMessage("User updated successfully!");
           setIsEditUserOpen(false);
+          setShowDialogPassword(false);
       } else { showMessage(`Error: ${result.error}`, "error"); }
       setIsSubmitting(false);
   }
@@ -221,8 +228,48 @@ export default function SettingsPage() {
               <CardDescription className="text-gray-700">Enter and confirm a new password.</CardDescription> {/* Darker text */}
             </CardHeader>
             <CardContent className="space-y-4 p-4 max-w-sm">
-                 <div className="space-y-2"><Label htmlFor="newPass">New Password</Label><Input id="newPass" type="password" value={newPasswordData.newPassword} onChange={e => setNewPasswordData({...newPasswordData, newPassword: e.target.value})} className="bg-white border-olive-200 focus:ring-olive-400"/></div> {/* Light olive input */}
-                 <div className="space-y-2"><Label htmlFor="confirmPass">Confirm New Password</Label><Input id="confirmPass" type="password" value={newPasswordData.confirmPassword} onChange={e => setNewPasswordData({...newPasswordData, confirmPassword: e.target.value})} className="bg-white border-olive-200 focus:ring-olive-400"/></div> {/* Light olive input */}
+                  <div className="space-y-2">
+                    <Label htmlFor="newPass">New Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="newPass"
+                        type={showNewPassword ? "text" : "password"}
+                        value={newPasswordData.newPassword}
+                        onChange={e => setNewPasswordData({...newPasswordData, newPassword: e.target.value})}
+                        className="bg-white border-olive-200 focus:ring-olive-400 pr-10"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-500 hover:bg-transparent"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                      >
+                        {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPass">Confirm New Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="confirmPass"
+                        type={showConfirmPassword ? "text" : "password"}
+                        value={newPasswordData.confirmPassword}
+                        onChange={e => setNewPasswordData({...newPasswordData, confirmPassword: e.target.value})}
+                        className="bg-white border-olive-200 focus:ring-olive-400 pr-10"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-500 hover:bg-transparent"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      >
+                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
                  <Button onClick={handleUpdatePassword} disabled={isSubmitting} className="bg-olive-600 text-white hover:bg-olive-700"> {/* Light olive button */}
                     {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                     Update My Password
@@ -240,7 +287,7 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent className="p-4">
                 <div className="flex justify-end mb-4">
-                    <Button onClick={() => setIsAddUserOpen(true)} className="bg-olive-600 text-white hover:bg-olive-700"> {/* Light olive button */}
+                    <Button onClick={() => { setShowDialogPassword(false); setIsAddUserOpen(true); }} className="bg-olive-600 text-white hover:bg-olive-700"> {/* Light olive button */}
                         <Plus className="mr-2 h-4 w-4"/> Add User
                     </Button>
                 </div>
@@ -286,7 +333,27 @@ export default function SettingsPage() {
           <div className="py-4 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2"><Label>Username</Label><Input value={editingUser ? editUserData.username : newUserData.username} onChange={e => editingUser ? setEditUserData({...editUserData, username: e.target.value}) : setNewUserData({...newUserData, username: e.target.value})} className="bg-white border-olive-200 focus:ring-olive-400"/></div> {/* Light olive input */}
-                  <div className="space-y-2"><Label>Password {editingUser ? "(Leave blank to keep same)" : ""}</Label><Input type="password" placeholder="••••••••" value={editingUser ? editUserData.password : newUserData.password} onChange={e => editingUser ? setEditUserData({...editUserData, password: e.target.value}) : setNewUserData({...newUserData, password: e.target.value})} className="bg-white border-olive-200 focus:ring-olive-400"/></div> {/* Light olive input */}
+                  <div className="space-y-2">
+                    <Label>Password {editingUser ? "(Leave blank to keep same)" : ""}</Label>
+                    <div className="relative">
+                      <Input
+                        type={showDialogPassword ? "text" : "password"}
+                        placeholder="••••••••"
+                        value={editingUser ? editUserData.password : newUserData.password}
+                        onChange={e => editingUser ? setEditUserData({...editUserData, password: e.target.value}) : setNewUserData({...newUserData, password: e.target.value})}
+                        className="bg-white border-olive-200 focus:ring-olive-400 pr-10"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-500 hover:bg-transparent"
+                        onClick={() => setShowDialogPassword(!showDialogPassword)}
+                      >
+                        {showDialogPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2"><Label>Role</Label>
@@ -298,13 +365,76 @@ export default function SettingsPage() {
                     </Select>
                 </div>
                 {(editingUser ? editUserData.role : newUserData.role) === "user" && (
-                  <div className="space-y-2"><Label>Firm</Label>
-                      <Select value={editingUser ? editUserData.firm : newUserData.firm} onValueChange={val => editingUser ? setEditUserData({...editUserData, firm: val}) : setNewUserData({...newUserData, firm: val})}>
-                          <SelectTrigger className="border-olive-200 focus:ring-olive-400"><SelectValue placeholder="Select Firm"/></SelectTrigger>
-                          <SelectContent className="bg-white border-olive-200 max-h-40 overflow-y-auto">
-                              {firmOptions.map((f: string) => <SelectItem key={f} value={f} className="hover:bg-olive-50">{f}</SelectItem>)}
-                          </SelectContent>
-                      </Select>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center mb-1">
+                      <Label>Firms</Label>
+                      <div className="flex items-center gap-2">
+                        <Button 
+                          variant="link" 
+                          type="button"
+                          className="p-0 h-auto text-xs text-olive-600 hover:text-olive-800" 
+                          onClick={() => {
+                            const firmString = firmOptions.join(', ');
+                            if (editingUser) {
+                              setEditUserData({ ...editUserData, firm: firmString });
+                            } else {
+                              setNewUserData({ ...newUserData, firm: firmString });
+                            }
+                          }}
+                        >
+                          Select All
+                        </Button>
+                        <span className="text-gray-300">/</span>
+                        <Button 
+                          variant="link" 
+                          type="button"
+                          className="p-0 h-auto text-xs text-olive-600 hover:text-olive-800" 
+                          onClick={() => {
+                            if (editingUser) {
+                              setEditUserData({ ...editUserData, firm: "" });
+                            } else {
+                              setNewUserData({ ...newUserData, firm: "" });
+                            }
+                          }}
+                        >
+                          Deselect All
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto border rounded-md p-3 border-olive-200 bg-olive-50">
+                      {firmOptions.map((f: string) => {
+                        const currentFirms = (editingUser ? editUserData.firm : newUserData.firm)
+                          ? (editingUser ? editUserData.firm : newUserData.firm).split(',').map(s => s.trim()).filter(Boolean)
+                          : [];
+                        const isChecked = currentFirms.includes(f);
+                        return (
+                          <div key={f} className="flex items-center space-x-2">
+                            <Checkbox 
+                              id={`${editingUser ? 'edit' : 'new'}-firm-${f}`}
+                              checked={isChecked}
+                              onCheckedChange={checked => {
+                                let newFirms;
+                                if (checked) {
+                                  newFirms = [...currentFirms, f];
+                                } else {
+                                  newFirms = currentFirms.filter(item => item !== f);
+                                }
+                                const firmString = newFirms.join(', ');
+                                if (editingUser) {
+                                  setEditUserData({ ...editUserData, firm: firmString });
+                                } else {
+                                  setNewUserData({ ...newUserData, firm: firmString });
+                                }
+                              }}
+                              className="border-olive-400 data-[state=checked]:bg-olive-600 data-[state=checked]:text-white"
+                            />
+                            <Label htmlFor={`${editingUser ? 'edit' : 'new'}-firm-${f}`} className="text-sm font-normal cursor-pointer text-gray-700">
+                              {f}
+                            </Label>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
