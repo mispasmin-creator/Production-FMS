@@ -256,6 +256,7 @@ export default function ProductionPage() {
         }
         
         return {
+          id: row.id,
           jobCardNo: String(row["Job Card No."] || "").trim(),
           timestamp: row["Timestamp"] ? format(new Date(row["Timestamp"]), "dd/MM/yy HH:mm") : "",
           firmName: String(row["FIRM Name"] || "").trim(),
@@ -334,39 +335,39 @@ export default function ProductionPage() {
             productRate: Number(prodInfo?.["product_rate"] || 0),
           }
         })
-      const history = (jobCardsData || [])
-        .filter(row => hasCompletedProductionFlag(row["Time Delay 1"]))
-        .map((row: any) => {
-          const jcNo = String(row["JC-Job Card Number"] || "").trim()
-          const doNo = String(row["Delivery Order No."] || "").trim()
-          const productionRecord = findActualProductionRecord(jcNo, doNo, String(row["Product Name"] || ""))
-          const prodInfo = findProductionInfo(doNo, String(row["Product Name"] || ""))
+      const history = actualProductionRecords.map((productionRecord: any) => {
+        const jcNo = productionRecord.jobCardNo
+        const jobCard = (jobCardsData || []).find(
+          (jc: any) => normalizeKey(jc["JC-Job Card Number"]) === normalizeKey(jcNo)
+        )
+        const doNo = productionRecord.orderNo || jobCard?.["Delivery Order No."] || ""
+        const prodInfo = findProductionInfo(doNo, productionRecord.productName)
 
-          return {
-            _rowIndex: row.id,
-            productionId: prodInfo?.id ?? "",
-            timestamp: productionRecord?.timestamp || "",
-            jobCardNo: jcNo,
-            deliveryOrderNo: doNo,
-            actualQuantity: Number(productionRecord?.quantityFG || row["Total Made"] || 0),
-            expectedDeliveryDate: prodInfo?.["Expected Delivery Date"] ? format(new Date(prodInfo["Expected Delivery Date"]), "dd/MM/yyyy") : "",
-            priority: prodInfo?.["Priority"] || "",
-            dateOfProduction: productionRecord?.dateOfProduction || (row["Date Of Production"] ? format(new Date(row["Date Of Production"]), "dd/MM/yyyy") : ""),
-            supervisorName: productionRecord?.supervisorName || String(row["Supervisor Name"] || ""),
-            shift: String(row["Shift"] || ""),
-            totalMade: Number(row["Total Made"] || 0),
-            rawMaterials: (productionRecord?.rawMaterials || []) as RawMaterial[],
-            machineHours: String(productionRecord?.machineHours || "-"),
-            remarks: productionRecord?.remarks || "",
-            firmName: productionRecord?.firmName || String(row["Firm Name"] || ""),
-            partyName: String(row["Party Name"] || prodInfo?.["Party Name"] || ""),
-            productName: String(row["Product Name"] || productionRecord?.productName || ""),
-            orderQuantity: Number(row["Quantity"] || 0),
-            quantity: Number(row["Quantity"] || 0),
-            plannedDate: "",
-            notes: "",
-          } as HistoryItem
-        })
+        return {
+          _rowIndex: productionRecord.id,
+          productionId: prodInfo?.id ?? "",
+          timestamp: productionRecord.timestamp || "",
+          jobCardNo: jcNo,
+          deliveryOrderNo: doNo,
+          actualQuantity: Number(productionRecord.quantityFG || 0),
+          expectedDeliveryDate: prodInfo?.["Expected Delivery Date"] ? format(new Date(prodInfo["Expected Delivery Date"]), "dd/MM/yyyy") : "",
+          priority: prodInfo?.["Priority"] || "",
+          dateOfProduction: productionRecord.dateOfProduction || "",
+          supervisorName: productionRecord.supervisorName || "",
+          shift: jobCard?.["Shift"] || "",
+          totalMade: Number(jobCard?.["Total Made"] || 0),
+          rawMaterials: productionRecord.rawMaterials as RawMaterial[],
+          machineHours: String(productionRecord.machineHours || "-"),
+          remarks: productionRecord.remarks || "",
+          firmName: productionRecord.firmName || jobCard?.["Firm Name"] || "",
+          partyName: jobCard?.["Party Name"] || prodInfo?.["Party Name"] || "",
+          productName: productionRecord.productName || "",
+          orderQuantity: Number(jobCard?.["Quantity"] || 0),
+          quantity: Number(jobCard?.["Quantity"] || 0),
+          plannedDate: "",
+          notes: "",
+        } as HistoryItem
+      })
 
       // Filter by Firm
       const filterByFirm = (data: any[]) => {
@@ -542,16 +543,20 @@ export default function ProductionPage() {
 
       if (insertErr) throw insertErr
 
-      // 4. Update Job Card status to move it to history
-      // Logic: Set Time Delay 1 to a non-null value (using 1 as a flag or calculated delay)
+      // 4. Update Job Card status to move it to history if fully produced
+      const newTotalMade = (selectedJobCard.totalMade || 0) + Number(formData.quantityFG)
+      const isFullyProduced = newTotalMade >= (selectedJobCard.quantity || 0)
+
+      const updatePayload: any = {
+        "Total Made": newTotalMade,
+        "Actual 1": isFullyProduced ? new Date().toISOString() : null,
+        "Planned 2": isFullyProduced ? format(new Date(), "yyyy-MM-dd") : null,
+        "Time Delay 1": isFullyProduced ? 1 : null
+      }
+
       const { error: updateJCErr } = await supabase
         .from(JOBCARDS_TABLE)
-        .update({ 
-          "Actual 1": new Date().toISOString(),
-          "Planned 2": format(new Date(), "yyyy-MM-dd"),
-          "Time Delay 1": 1,
-          "Total Made": (selectedJobCard.totalMade || 0) + Number(formData.quantityFG)
-        })
+        .update(updatePayload)
         .eq("JC-Job Card Number", selectedJobCard.jobCardNo)
 
       if (updateJCErr) throw updateJCErr
@@ -871,7 +876,7 @@ export default function ProductionPage() {
             <DialogDescription>Enter the final production details. Fields with * are required.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-6 p-1">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 border rounded-lg bg-muted/50">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4 p-4 border rounded-lg bg-muted/50">
               <div>
                 <Label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">DO No.</Label>
                 <p className="text-sm font-bold text-olive-800">{selectedJobCard?.deliveryOrderNo}</p>
@@ -887,6 +892,16 @@ export default function ProductionPage() {
               <div>
                 <Label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Supervisor</Label>
                 <p className="text-sm font-medium">{selectedJobCard?.supervisorName}</p>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Total Qty</Label>
+                <p className="text-sm font-bold text-blue-800">{selectedJobCard?.quantity ?? 0}</p>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Pending Qty</Label>
+                <p className="text-sm font-bold text-red-800 border-none bg-transparent">
+                  {Math.max(0, (selectedJobCard?.quantity || 0) - (selectedJobCard?.totalMade || 0))}
+                </p>
               </div>
             </div>
             
