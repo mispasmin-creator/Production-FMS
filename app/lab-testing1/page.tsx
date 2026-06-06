@@ -170,8 +170,6 @@ const initialFormState = {
   whatToBeMixed: "",
   flowOfMaterial: "",
   sieveAnalysis: "",
-  bdAt110: "",
-  ccsAt100: "",
 }
 
 const hasValue = (value: any) => {
@@ -539,8 +537,6 @@ export default function LabTesting1Page() {
           "FinalSettingTime": String(formData.finalSettingTime),
           "WhatToBeMixed": String(formData.whatToBeMixed),
           "SieveAnalysis": String(formData.sieveAnalysis),
-          "BDAt110C": formData.bdAt110,
-          "CCSAt100C": formData.ccsAt100,
         })
         .eq("id", selectedProduction._rowIndex)
       if (updateErr) throw updateErr
@@ -721,27 +717,6 @@ export default function LabTesting1Page() {
             </div>
 
             <div className="space-y-1"><Label htmlFor="sieveAnalysis">Sieve Analysis</Label><Textarea id="sieveAnalysis" value={formData.sieveAnalysis} onChange={(e) => handleFormChange("sieveAnalysis", e.target.value)} /></div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4">
-              <div className="space-y-1">
-                <Label htmlFor="bdAt110">BD at 110°C</Label>
-                <Input
-                  id="bdAt110"
-                  placeholder="Enter value"
-                  value={formData.bdAt110}
-                  onChange={(e) => handleFormChange("bdAt110", e.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="ccsAt100">CCS at 100°C</Label>
-                <Input
-                  id="ccsAt100"
-                  placeholder="Enter value"
-                  value={formData.ccsAt100}
-                  onChange={(e) => handleFormChange("ccsAt100", e.target.value)}
-                />
-              </div>
-            </div>
 
             <div className="flex justify-end gap-2 pt-4 border-t">
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>

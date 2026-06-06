@@ -52,6 +52,8 @@ interface ActualProductionItem {
   actualQty1: string
   planned2: string
   actual2: string
+  actual3: string
+  actual4: string
   timeDelay2: string
   remarks: string
   
@@ -153,12 +155,14 @@ export default function TallyPage() {
           actualQty1: String(row.Qty || ""), 
           planned2: formatDateForDisplay(row.Planned2, "dd/MM/yy"),
           actual2: formatDateForDisplay(row.Actual2, "dd/MM/yy"),
+          actual3: formatDateForDisplay(row.Actual3, "dd/MM/yy"),
+          actual4: formatDateForDisplay(row.Actual4, "dd/MM/yy"),
           timeDelay2: String(row.TimeDelay2 || ""),
           remarks: String(row.Remarks || ""),
           checkStatus: String(row.Status || "N/A"),
           checkTimestamp: formatDateForDisplay(row.Planned2, "dd/MM/yy HH:mm"),
-          tallyTimestamp: row.Actual2 ? formatDateForDisplay(row.Actual2, "dd/MM/yy HH:mm") : null,
-          tallyRemarks: String(row.Remarks || ""),
+          tallyTimestamp: row.TallyActual ? formatDateForDisplay(row.TallyActual, "dd/MM/yy HH:mm") : null,
+          tallyRemarks: String(row.TallyRemarks || ""),
           costingAmount2: "", 
         }
       })
@@ -175,7 +179,11 @@ export default function TallyPage() {
 
       // Pending: production rows whose tally process is not completed yet.
       const pendingData = allItems.filter(item =>
-        hasValue(item.jobCardNo) && hasValue(item.planned2) && !hasValue(item.tallyTimestamp)
+        hasValue(item.jobCardNo) &&
+        hasValue(item.actual3) &&
+        hasValue(item.actual4) &&
+        Number(item.costingAmount || 0) > 0 &&
+        !hasValue(item.tallyTimestamp)
       )
       setPendingTallies(filterByFirm(pendingData))
 
@@ -212,12 +220,12 @@ export default function TallyPage() {
     if (!selectedTally) return
     setIsSubmitting(true)
     try {
-      // Update Actual2 (tally timestamp) and Remarks (tally remarks) in actual_production
+      // Update dedicated tally fields in actual_production.
       const { error: updateError } = await supabase
         .from('actual_production')
         .update({
-          "Actual2": new Date().toISOString(),
-          "Remarks": remarks
+          "TallyActual": new Date().toISOString(),
+          "TallyRemarks": remarks
         })
         .eq("id", selectedTally.id)
 

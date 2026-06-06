@@ -1404,11 +1404,16 @@ export default function CheckPage() {
                 </CardHeader>
                 <CardContent className="p-0">
                   <div className="relative max-h-[600px] overflow-auto rounded-lg border">
-                    <Table>
-                      <TableHeader className="sticky top-0 z-10 bg-slate-100">
+                    <table className="w-full caption-bottom text-sm min-w-max border-separate border-spacing-0">
+                      <TableHeader className="sticky top-0 z-20 bg-slate-100">
                         <TableRow>
                           {visiblePendingMeta.map((c) => (
-                            <TableHead key={c.dataKey}>{c.header}</TableHead>
+                            <TableHead
+                              key={c.dataKey}
+                              className="sticky top-0 z-20 bg-slate-100 shadow-sm"
+                            >
+                              {c.header}
+                            </TableHead>
                           ))}
                         </TableRow>
                       </TableHeader>
@@ -1457,7 +1462,7 @@ export default function CheckPage() {
                           </TableRow>
                         )}
                       </TableBody>
-                    </Table>
+                    </table>
                   </div>
                 </CardContent>
               </Card>
@@ -1544,11 +1549,16 @@ export default function CheckPage() {
                 </CardHeader>
                 <CardContent className="p-0">
                   <div className="relative max-h-[600px] overflow-auto rounded-lg border">
-                    <Table>
-                      <TableHeader className="sticky top-0 z-10 bg-slate-100">
+                    <table className="w-full caption-bottom text-sm min-w-max border-separate border-spacing-0">
+                      <TableHeader className="sticky top-0 z-20 bg-slate-100">
                         <TableRow>
                           {visibleHistoryMeta.map((c) => (
-                            <TableHead key={c.dataKey}>{c.header}</TableHead>
+                            <TableHead
+                              key={c.dataKey}
+                              className="sticky top-0 z-20 bg-slate-100 shadow-sm"
+                            >
+                              {c.header}
+                            </TableHead>
                           ))}
                         </TableRow>
                       </TableHeader>
@@ -1610,7 +1620,7 @@ export default function CheckPage() {
                           </TableRow>
                         )}
                       </TableBody>
-                    </Table>
+                    </table>
                   </div>
                 </CardContent>
               </Card>

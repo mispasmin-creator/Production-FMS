@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react"
 import { Loader2, AlertTriangle, Beaker, History, Settings, Eye } from "lucide-react"
 import { format } from "date-fns"
 import { supabase } from "@/lib/supabase"
+import { useAuth, FIRM_MAP } from "@/lib/auth"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -33,6 +34,7 @@ interface PendingChemicalTestItem {
   id: number
   productionId?: number | string
   jobCardNo: string
+  firmName: string
   deliveryOrderNo: string
   partyName: string
   productName: string
@@ -52,6 +54,7 @@ interface HistoryChemicalTestItem {
   id: number
   productionId?: number | string
   jobCardNo: string
+  firmName: string
   deliveryOrderNo: string
   partyName: string
   productName: string
@@ -106,6 +109,7 @@ const PENDING_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
   { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
+  { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
@@ -125,6 +129,7 @@ const HISTORY_COLUMNS_META = [
   { header: "Completed At", dataKey: "chemicalTestCompletedAt", toggleable: true },
   { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
+  { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
@@ -157,8 +162,18 @@ const isCancelledStatus = (value: any) => String(value || "").trim().toLowerCase
 const normalizeKey = (value: any) => String(value || "").trim().toLowerCase()
 const makeOrderProductKey = (orderNo: any, productName: any) =>
   `${normalizeKey(orderNo)}::${normalizeKey(productName)}`
+const getFirmMatchValues = (firm?: string) => {
+  const rawFirm = String(firm || "").trim()
+  const mappedFirm = Object.entries(FIRM_MAP).find(
+    ([key, value]) => normalizeKey(key) === normalizeKey(rawFirm) || normalizeKey(value) === normalizeKey(rawFirm)
+  )?.[1] || ""
+  return [rawFirm, mappedFirm]
+    .map((value) => normalizeKey(value))
+    .filter(Boolean)
+}
 
 export default function ChemicalTestPage() {
+  const { user } = useAuth()
   const [pendingTests, setPendingTests] = useState<PendingChemicalTestItem[]>([])
   const [historyTests, setHistoryTests] = useState<HistoryChemicalTestItem[]>([])
   const [statusOptions, setStatusOptions] = useState<string[]>([])
@@ -284,6 +299,7 @@ export default function ChemicalTestPage() {
             id: row.id,
             productionId: productionRow?.id ?? "",
             jobCardNo: jobCardNo,
+            firmName: String(row["Firm Name"] || ""),
             deliveryOrderNo: deliveryOrderNo,
             partyName: String(row["Party Name"] || ""),
             productName: costingData.productName || String(row["Product Name"] || ""),
@@ -300,7 +316,17 @@ export default function ChemicalTestPage() {
           }
         })
 
-      setPendingTests(pendingData)
+      const firmSearchValues = getFirmMatchValues(user?.firm)
+      const isAdmin = user?.role?.toLowerCase() === "admin"
+      const filterByFirm = (list: any[]) => {
+        if (isAdmin || firmSearchValues.length === 0) return list
+        return list.filter((item) => {
+          const firmName = normalizeKey(item.firmName)
+          return firmSearchValues.some((firmSearch) => firmName.includes(firmSearch) || firmSearch.includes(firmName))
+        })
+      }
+
+      setPendingTests(filterByFirm(pendingData))
 
       // Filter history: Actual 4 filled
       const historyData = (jobCardsData || [])
@@ -327,6 +353,7 @@ export default function ChemicalTestPage() {
             id: row.id,
             productionId: productionRow?.id ?? "",
             jobCardNo: jobCardNo,
+            firmName: String(row["Firm Name"] || ""),
             deliveryOrderNo: deliveryOrderNo,
             partyName: String(row["Party Name"] || ""),
             productName: costingData.productName || String(row["Product Name"] || ""),
@@ -343,7 +370,7 @@ export default function ChemicalTestPage() {
         })
         .sort((a, b) => new Date(b.chemicalTestCompletedAt).getTime() - new Date(a.chemicalTestCompletedAt).getTime())
 
-      setHistoryTests(historyData)
+      setHistoryTests(filterByFirm(historyData))
 
       // Set options from master data
       const statuses = [...new Set((masterData || []).map((row: any) => String(row["Test Status"] || "")).filter(Boolean))]
@@ -357,7 +384,7 @@ export default function ChemicalTestPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [user?.firm, user?.role])
 
   useEffect(() => {
     loadAllData()

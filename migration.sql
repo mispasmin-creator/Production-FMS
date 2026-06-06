@@ -20,3 +20,7 @@ ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "DateOfTest2" date
 ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "BDAt1100C" numeric;
 ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "CCSAt1100C" numeric;
 ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "PLCAt1100C" numeric;
+
+-- Dedicated tally fields so tally does not overwrite lab/check stage dates.
+ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "TallyActual" timestamp with time zone;
+ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "TallyRemarks" text;

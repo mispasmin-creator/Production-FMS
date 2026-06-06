@@ -137,6 +137,8 @@ const HISTORY_COLUMNS_META = [
 const initialFormState = {
   dateOfTest: new Date(),
   testStatus: "",
+  bdAt110: "",
+  ccsAt100: "",
   bdAt1100: "",
   ccsAt1100: "",
   plcAt1100: "",
@@ -423,6 +425,8 @@ export default function LabTesting2Page() {
           "Status3": formData.testStatus,
           "TestedBy2": formData.testedBy,
           "DateOfTest2": format(formData.dateOfTest, "yyyy-MM-dd"),
+          "BDAt110C": formData.bdAt110,
+          "CCSAt100C": formData.ccsAt100,
           "BDAt1100C": formData.bdAt1100,
           "CCSAt1100C": formData.ccsAt1100,
           "PLCAt1100C": formData.plcAt1100,
@@ -838,6 +842,24 @@ export default function LabTesting2Page() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 border-t pt-4">
+              <div className="space-y-2">
+                <Label htmlFor="bdAt110">BD at 110°C</Label>
+                <Input
+                  id="bdAt110"
+                  placeholder="Enter value"
+                  value={formData.bdAt110}
+                  onChange={(e) => handleFormChange("bdAt110", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ccsAt100">CCS at 100°C</Label>
+                <Input
+                  id="ccsAt100"
+                  placeholder="Enter value"
+                  value={formData.ccsAt100}
+                  onChange={(e) => handleFormChange("ccsAt100", e.target.value)}
+                />
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="bdAt1100">BD at 1100°C</Label>
                 <Input

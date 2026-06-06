@@ -155,6 +155,7 @@ const HISTORY_COLUMNS_META = [
 ]
 const initialFormData = {
   quantityFG: "",
+  productionDate: "",
   rawMaterials: [] as RawMaterial[],
   machineRunningHour: "",
   remarks: "",
@@ -203,8 +204,10 @@ export default function ProductionPage() {
   const [visibleHistoryColumns, setVisibleHistoryColumns] = useState<Record<string, boolean>>({})
   const [formData, setFormData] = useState(initialFormData)
   const [formErrors, setFormErrors] = useState<Record<string, string | null>>({})
-  const [viewingMaterials, setViewingMaterials] = useState<RawMaterial[] | null>(null)
+  const [viewingMaterials, setViewingMaterials] = useState<{ rowId: number | string; materials: RawMaterial[] } | null>(null)
+  const [editedViewingMaterials, setEditedViewingMaterials] = useState<RawMaterial[]>([])
   const [kycPriceMap, setKycPriceMap] = useState<Record<string, number>>({})
+  const isAdmin = user?.role?.toLowerCase() === "admin"
 
 
   useEffect(() => {
@@ -448,7 +451,10 @@ export default function ProductionPage() {
 
   const handleOpenDialog = (jobCard: ProductionItem) => {
     setSelectedJobCard(jobCard)
-    setFormData(initialFormData)
+    const parsedProductionDate = jobCard.dateOfProduction
+      ? format(new Date(jobCard.dateOfProduction.split('/').reverse().join('-')), "yyyy-MM-dd")
+      : format(new Date(), "yyyy-MM-dd")
+    setFormData({ ...initialFormData, productionDate: parsedProductionDate })
     setFormErrors({})
     setIsDialogOpen(true)
   }
@@ -524,7 +530,7 @@ export default function ProductionPage() {
         "Timestamp": new Date().toISOString(),
         "Job Card No.": selectedJobCard.jobCardNo,
         "FIRM Name": selectedJobCard.firmName,
-        "Date Of Production": selectedJobCard.dateOfProduction ? new Date(selectedJobCard.dateOfProduction.split('/').reverse().join('-')) : new Date(),
+        "Date Of Production": formData.productionDate || format(new Date(), "yyyy-MM-dd"),
         "Name Of Supervisor": selectedJobCard.supervisorName,
         "Product Name": selectedJobCard.productName,
         "Quantity Of FG": fgQtyNum,
@@ -685,7 +691,8 @@ export default function ProductionPage() {
     [visibleHistoryColumns],
   )
 
-  const renderRawMaterials = (materials: RawMaterial[]) => {
+  const renderRawMaterials = (item: HistoryItem) => {
+    const materials = item.rawMaterials
     if (!materials || materials.length === 0) {
       return "-";
     }
@@ -697,7 +704,8 @@ export default function ProductionPage() {
         className="h-7 text-xs bg-transparent"
         onClick={(e) => {
           e.stopPropagation();
-          setViewingMaterials(materials);
+          setViewingMaterials({ rowId: item._rowIndex, materials });
+          setEditedViewingMaterials(materials.map((material) => ({ ...material })));
         }}
       >
         <Eye className="h-3.5 w-3.5 mr-1.5" />
@@ -705,6 +713,37 @@ export default function ProductionPage() {
       </Button>
     );
   };
+
+  const handleSaveViewingMaterials = async () => {
+    if (!viewingMaterials || !isAdmin) return
+    setIsSubmitting(true)
+    try {
+      const updatePayload: Record<string, any> = {}
+      for (let i = 0; i < 20; i++) {
+        const material = editedViewingMaterials[i]
+        updatePayload[`Raw Material Name ${i + 1}`] = material?.name ? String(material.name).trim() : null
+        updatePayload[`Quantity Of Raw Material ${i + 1}`] = material?.quantity === "" || material?.quantity === undefined
+          ? null
+          : Number(material.quantity) || 0
+      }
+
+      const { error: updateError } = await supabase
+        .from(ACTUAL_PRODUCTION_TABLE)
+        .update(updatePayload)
+        .eq("id", viewingMaterials.rowId)
+
+      if (updateError) throw updateError
+
+      setViewingMaterials(null)
+      setEditedViewingMaterials([])
+      await loadAllData()
+    } catch (err: any) {
+      setError(err.message)
+      alert(`Error: ${err.message}`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   if (loading)
     return (
@@ -833,7 +872,7 @@ export default function ProductionPage() {
                               {visibleHistoryColumnsMeta.map((col) => (
                                 <TableCell key={col.dataKey} className="whitespace-nowrap text-sm py-2 px-3">
                                   {col.dataKey === "rawMaterials"
-                                    ? renderRawMaterials(item.rawMaterials)
+                                    ? renderRawMaterials(item)
                                     : col.dataKey === "machineHours"
                                       ? formatMachineHours((item as any)[col.dataKey])
                                       : (item as any)[col.dataKey] || "-"}
@@ -858,7 +897,12 @@ export default function ProductionPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={!!viewingMaterials} onOpenChange={(isOpen) => !isOpen && setViewingMaterials(null)}>
+      <Dialog open={!!viewingMaterials} onOpenChange={(isOpen) => {
+        if (!isOpen) {
+          setViewingMaterials(null)
+          setEditedViewingMaterials([])
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Raw Materials Used</DialogTitle>
@@ -873,15 +917,51 @@ export default function ProductionPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {viewingMaterials?.map((material, index) => (
+                {(isAdmin ? editedViewingMaterials : viewingMaterials?.materials || []).map((material, index) => (
                   <TableRow key={index}>
-                    <TableCell>{material.name}</TableCell>
-                    <TableCell className="text-right">{material.quantity}</TableCell>
+                    <TableCell>
+                      {material.name}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {isAdmin ? (
+                        <Input
+                          type="number"
+                          step="any"
+                          value={material.quantity}
+                          onChange={(e) => {
+                            const updated = [...editedViewingMaterials]
+                            updated[index] = { ...updated[index], quantity: e.target.value }
+                            setEditedViewingMaterials(updated)
+                          }}
+                          className="text-right"
+                        />
+                      ) : (
+                        material.quantity
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
+          {isAdmin && (
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setViewingMaterials(null)
+                  setEditedViewingMaterials([])
+                }}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button type="button" onClick={handleSaveViewingMaterials} disabled={isSubmitting}>
+                {isSubmitting ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -1121,6 +1201,16 @@ export default function ProductionPage() {
 
             {/* Other Form Fields */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-6">
+              <div>
+                <Label htmlFor="productionDate" className="font-semibold">Date of Production</Label>
+                <Input
+                  id="productionDate"
+                  type="date"
+                  value={formData.productionDate}
+                  onChange={(e) => setFormData({ ...formData, productionDate: e.target.value })}
+                  className="mt-1.5"
+                />
+              </div>
               <div>
                 <Label htmlFor="machineRunningHour" className="font-semibold">Machine Running Hour</Label>
                 <Input
