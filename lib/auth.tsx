@@ -11,6 +11,7 @@ interface User {
   username: string
   role: string
   permissions: string[]
+  pageAccess?: Record<string, "view" | "full">
   firm?: string
   password?: string
 }
@@ -47,6 +48,24 @@ interface AuthContextType {
 
 // --- Constants ---
 const LOGIN_TABLE = "login"
+
+const parsePagePermissions = (pagesValue: unknown): { permissions: string[]; pageAccess: Record<string, "view" | "full"> } => {
+  const pageAccess: Record<string, "view" | "full"> = {}
+  const permissions = String(pagesValue || "")
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [pageid, access] = entry.split(":").map((part) => part.trim())
+      pageAccess[pageid] = access === "view" ? "view" : "full"
+      return pageid
+    })
+
+  return { permissions, pageAccess }
+}
+
+const serializePagePermissions = (permissions: string[] = [], pageAccess: Record<string, "view" | "full"> = {}) =>
+  permissions.map((pageid) => `${pageid}:${pageAccess[pageid] || "full"}`).join(",")
 
 // --- Hardcoded App Data (Removes Master Sheet Dependency) ---
 const ROLES_AVAILABLE = ["admin", "user"];
@@ -102,7 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           username: row["User name"],
           id: row["ID"],
           role: row["Role"],
-          permissions: row["Pages"] ? row["Pages"].toString().split(',').map((p: string) => p.trim()) : [],
+          ...parsePagePermissions(row["Pages"]),
           firm: row["Firm"],
           password: row["Pass"]
         }))
@@ -150,11 +169,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) throw new Error("Invalid username or password.");
 
       if (data) {
+        const parsedPermissions = parsePagePermissions(data["Pages"])
         const foundUser: User = {
           username: data["User name"],
           id: data["ID"],
           role: data["Role"],
-          permissions: data["Pages"] ? data["Pages"].toString().split(',').map((p: string) => p.trim()) : [],
+          permissions: parsedPermissions.permissions,
+          pageAccess: parsedPermissions.pageAccess,
           firm: data["Firm"],
           password: data["Pass"]
         };
@@ -183,7 +204,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           "ID": newId,
           "Pass": userData.password || "password123",
           "Role": userData.role,
-          "Pages": userData.permissions.join(','),
+          "Pages": serializePagePermissions(userData.permissions, userData.pageAccess),
           "Firm": userData.firm
         }])
 
@@ -200,7 +221,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const updatePayload: any = {}
       if (userData.username) updatePayload["User name"] = userData.username;
       if (userData.role) updatePayload["Role"] = userData.role;
-      if (userData.permissions) updatePayload["Pages"] = userData.permissions.join(',');
+      if (userData.permissions) updatePayload["Pages"] = serializePagePermissions(userData.permissions, userData.pageAccess);
       if (userData.password) updatePayload["Pass"] = userData.password;
       if (userData.firm !== undefined) updatePayload["Firm"] = userData.firm;
 

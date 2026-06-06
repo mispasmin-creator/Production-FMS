@@ -23,6 +23,7 @@ interface User {
   username: string;
   role: string;
   permissions: string[];
+  pageAccess?: Record<string, "view" | "full">;
   firm?: string;
   password?: string;
 }
@@ -73,8 +74,8 @@ export default function SettingsPage() {
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
   
   const [editingUser, setEditingUser] = useState<User | null>(null)
-  const [newUserData, setNewUserData] = useState({ username: "", password: "", role: "user", permissions: [] as string[], firm: "" })
-  const [editUserData, setEditUserData] = useState({ id: "", username: "", password: "", role: "user", permissions: [] as string[], firm: "" })
+  const [newUserData, setNewUserData] = useState({ username: "", password: "", role: "user", permissions: [] as string[], pageAccess: {} as Record<string, "view" | "full">, firm: "" })
+  const [editUserData, setEditUserData] = useState({ id: "", username: "", password: "", role: "user", permissions: [] as string[], pageAccess: {} as Record<string, "view" | "full">, firm: "" })
   const [firmOptions, setFirmOptions] = useState<string[]>([])
   const [newPasswordData, setNewPasswordData] = useState({ newPassword: "", confirmPassword: "" })
   const [showNewPassword, setShowNewPassword] = useState(false)
@@ -110,7 +111,7 @@ export default function SettingsPage() {
       showMessage("User added successfully!");
       setIsAddUserOpen(false);
       setShowDialogPassword(false);
-      setNewUserData({ username: "", password: "", role: "user", permissions: [], firm: "" });
+      setNewUserData({ username: "", password: "", role: "user", permissions: [], pageAccess: {}, firm: "" });
     } else { showMessage(`Error: ${result.error}`, "error"); }
     setIsSubmitting(false);
   }
@@ -151,6 +152,7 @@ export default function SettingsPage() {
       username: userToEdit.username,
       role: userToEdit.role,
       permissions: userToEdit.permissions || [],
+      pageAccess: userToEdit.pageAccess || {},
       password: userToEdit.password || "",
       firm: userToEdit.firm || ""
     });
@@ -193,16 +195,19 @@ export default function SettingsPage() {
 
   const handlePermissionSelection = (isSelectAll: boolean) => {
     const allPageIds = pages.map(p => p.pageid);
+    const fullAccessByPage = Object.fromEntries(allPageIds.map((pageid) => [pageid, "full"])) as Record<string, "view" | "full">;
     // FIX: Use separate state setters to allow TypeScript to infer the correct type for prevState
     if (editingUser) {
         setEditUserData(prevState => ({
             ...prevState,
             permissions: isSelectAll ? allPageIds : [],
+            pageAccess: isSelectAll ? fullAccessByPage : {},
         }));
     } else {
         setNewUserData(prevState => ({
             ...prevState,
             permissions: isSelectAll ? allPageIds : [],
+            pageAccess: isSelectAll ? fullAccessByPage : {},
         }));
     }
   };
@@ -447,21 +452,54 @@ export default function SettingsPage() {
                     <Button variant="link" className="p-0 h-auto text-xs text-olive-600 hover:text-olive-800" onClick={() => handlePermissionSelection(false)}>Deselect All</Button> {/* Light olive link */}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto border rounded-md p-3 border-olive-200 bg-olive-50"> {/* Light olive border and background */}
-                    {pages.map((page: Page) => (
-                        <div key={page.pageid} className="flex items-center space-x-2">
-                        <Checkbox id={`${editingUser ? 'edit' : 'new'}-${page.pageid}`} 
-                            checked={(editingUser ? editUserData.permissions : newUserData.permissions).includes(page.pageid)}
-                            onCheckedChange={checked => {
-                                const currentPerms = editingUser ? editUserData.permissions : newUserData.permissions;
-                                const newPerms = !!checked ? [...currentPerms, page.pageid] : currentPerms.filter((p: string) => p !== page.pageid);
-                                if(editingUser) { setEditUserData({...editUserData, permissions: newPerms}) }
-                                else { setNewUserData({...newUserData, permissions: newPerms}) }
-                            }}
-                            className={cn("border-olive-400 data-[state=checked]:bg-olive-600 data-[state=checked]:text-white")} // Light olive checkbox
-                        /><Label htmlFor={`${editingUser ? 'edit' : 'new'}-${page.pageid}`} className="text-sm font-normal cursor-pointer text-gray-700">{page.pagename}</Label> {/* Darker text */}
+                <div className="grid grid-cols-2 gap-3 max-h-48 overflow-y-auto border rounded-md p-3 border-olive-200 bg-olive-50"> {/* Light olive border and background */}
+                    {pages.map((page: Page) => {
+                      const currentData = editingUser ? editUserData : newUserData;
+                      const isSelected = currentData.permissions.includes(page.pageid);
+                      const accessValue = currentData.pageAccess?.[page.pageid] || "full";
+
+                      return (
+                        <div key={page.pageid} className="space-y-2 rounded-md bg-white/60 p-2 border border-olive-100">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox id={`${editingUser ? 'edit' : 'new'}-${page.pageid}`}
+                                checked={isSelected}
+                                onCheckedChange={checked => {
+                                    const currentPerms = currentData.permissions;
+                                    const currentAccess = currentData.pageAccess || {};
+                                    const newPerms = !!checked ? [...currentPerms, page.pageid] : currentPerms.filter((p: string) => p !== page.pageid);
+                                    const newAccess = { ...currentAccess };
+                                    if (checked) {
+                                      newAccess[page.pageid] = newAccess[page.pageid] || "full";
+                                    } else {
+                                      delete newAccess[page.pageid];
+                                    }
+                                    if(editingUser) { setEditUserData({...editUserData, permissions: newPerms, pageAccess: newAccess}) }
+                                    else { setNewUserData({...newUserData, permissions: newPerms, pageAccess: newAccess}) }
+                                }}
+                                className={cn("border-olive-400 data-[state=checked]:bg-olive-600 data-[state=checked]:text-white")} // Light olive checkbox
+                            /><Label htmlFor={`${editingUser ? 'edit' : 'new'}-${page.pageid}`} className="text-sm font-normal cursor-pointer text-gray-700">{page.pagename}</Label> {/* Darker text */}
+                          </div>
+                          {isSelected && (
+                            <Select
+                              value={accessValue}
+                              onValueChange={(value: "view" | "full") => {
+                                const newAccess = { ...(currentData.pageAccess || {}), [page.pageid]: value };
+                                if(editingUser) { setEditUserData({...editUserData, pageAccess: newAccess}) }
+                                else { setNewUserData({...newUserData, pageAccess: newAccess}) }
+                              }}
+                            >
+                              <SelectTrigger className="h-8 border-olive-200 bg-white text-xs focus:ring-olive-400">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="bg-white border-olive-200">
+                                <SelectItem value="view">View Only</SelectItem>
+                                <SelectItem value="full">Full Access</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )}
                         </div>
-                    ))}
+                      );
+                    })}
                 </div>
               </div>
               <Button onClick={editingUser ? handleUpdateUser : handleAddUser} disabled={isSubmitting} className="w-full bg-olive-600 text-white hover:bg-olive-700"> {/* Light olive button */}
