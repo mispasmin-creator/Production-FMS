@@ -30,6 +30,7 @@ interface ProductionItem {
   _rowIndex: number | string
   productionId?: number | string
   jobCardNo: string
+  firmName?: string
   deliveryOrderNo: string
   partyName: string
   productName: string
@@ -56,6 +57,7 @@ interface HistoryItem {
   _rowIndex: number | string
   productionId?: number | string
   jobCardNo: string
+  firmName?: string
   deliveryOrderNo: string
   partyName: string
   productName: string
@@ -299,30 +301,53 @@ export default function LabTesting1Page() {
 
       const productionDataMap = new Map()
       const productionDataByJobCard = new Map()
-      ;(actualProductionData || []).forEach((row: any) => {
+      const buildActualProductionInfo = (row: any) => {
         const jobCardNo = String(row["Job Card No."] || "").trim()
         const orderNo = String(row["Order No."] || "").trim()
         const productName = String(row["Product Name"] || "").trim()
-        if (jobCardNo) {
-          const materials = []
-          for (let i = 1; i <= 20; i++) {
-            const name = row[`Raw Material Name ${i}`]
-            const quantity = row[`Quantity Of Raw Material ${i}`]
-            if (name && String(name).trim()) {
-              materials.push({ name: String(name).trim(), quantity: quantity || 0 })
-            }
+        const materials = []
+        for (let i = 1; i <= 20; i++) {
+          const name = row[`Raw Material Name ${i}`]
+          const quantity = row[`Quantity Of Raw Material ${i}`]
+          if (name && String(name).trim()) {
+            materials.push({ name: String(name).trim(), quantity: quantity || 0 })
           }
+        }
 
-          const productionInfo = {
-            jobCardNo: jobCardNo,
-            orderNo,
-            productName,
-            machineHours: String(row["Machine Running hour"] || "-").trim(),
-            rawMaterials: materials,
-          }
-          productionDataMap.set(makeProductionRecordKey(jobCardNo, orderNo, productName), productionInfo)
-          if (!productionDataByJobCard.has(jobCardNo)) productionDataByJobCard.set(jobCardNo, [])
-          productionDataByJobCard.get(jobCardNo).push(productionInfo)
+        return {
+          id: row.id,
+          jobCardNo,
+          orderNo,
+          productName,
+          firmName: String(row["FIRM Name"] || "").trim(),
+          partyName: String(row["Party Name"] || "").trim(),
+          quantityFG: Number(row["Quantity Of FG"] || 0),
+          dateOfProduction: row["Date Of Production"] ? format(new Date(row["Date Of Production"]), "dd/MM/yyyy") : "",
+          supervisorName: String(row["Name Of Supervisor"] || "").trim(),
+          machineHours: String(row["Machine Running hour"] || "-").trim(),
+          rawMaterials: materials,
+          actual2: row["Actual2"] || row["Actual 2"],
+          planned3: row["Planned3"] || row["Planned 3"],
+          status2: row["Status2"] || row["Status 2"],
+          dateOfTest1: row["DateOfTest1"] || row["Date Of Test 1"],
+          wcPercentage: row["WCPercentage"] || row["WC Percentage %"],
+          testedBy1: row["TestedBy1"] || row["Tested By 1"],
+          initialSettingTime: row["InitialSettingTime"] || row["Initial Setting Time"],
+          flowOfMaterial: row["FlowOfMaterial"] || row["Flow Of Material"],
+          finalSettingTime: row["FinalSettingTime"] || row["Final Setting Time"],
+          whatToBeMixed: row["WhatToBeMixed"] || row["What To Be Mixed"],
+          sieveAnalysis: row["SieveAnalysis"] || row["Sieve Analysis"],
+          bdAt110: row["BDAt110C"] || row["BD At 110C"],
+          ccsAt100: row["CCSAt100C"] || row["CCS At 100C"],
+        }
+      }
+
+      ;(actualProductionData || []).forEach((row: any) => {
+        const productionInfo = buildActualProductionInfo(row)
+        if (productionInfo.jobCardNo) {
+          productionDataMap.set(makeProductionRecordKey(productionInfo.jobCardNo, productionInfo.orderNo, productionInfo.productName), productionInfo)
+          if (!productionDataByJobCard.has(productionInfo.jobCardNo)) productionDataByJobCard.set(productionInfo.jobCardNo, [])
+          productionDataByJobCard.get(productionInfo.jobCardNo).push(productionInfo)
         }
       })
 
@@ -337,17 +362,24 @@ export default function LabTesting1Page() {
         ) || (jobCardRows.length === 1 ? jobCardRows[0] : null)
       }
 
-      const pendingData = (jobCardsData || [])
-        .filter(
-          (row: any) => hasValue(row["Actual 1"]) && !hasValue(row["Actual 2"]) && !isCancelledStatus(row["Status"]),
-        )
+      const pendingData = (actualProductionData || [])
+        .map((row: any) => buildActualProductionInfo(row))
+        .filter((productionDataInfo: any) => productionDataInfo.jobCardNo && !hasValue(productionDataInfo.actual2))
         .map((row: any) => {
-          const jobCardNo = String(row["JC-Job Card Number"] || "")
-          const deliveryOrderNo = String(row["Delivery Order No."] || "")
-          const jobCardProductName = String(row["Product Name"] || "")
+          const jobCardNo = String(row.jobCardNo || "")
+          const deliveryOrderNo = String(row.orderNo || "")
+          const jobCardProductName = String(row.productName || "")
+          const jobCard = (jobCardsData || []).find(
+            (jc: any) =>
+              normalizeKey(jc["JC-Job Card Number"]) === normalizeKey(jobCardNo) &&
+              normalizeKey(jc["Firm Name"]) === normalizeKey(row.firmName) &&
+              normalizeKey(jc["Delivery Order No."]) === normalizeKey(deliveryOrderNo) &&
+              normalizeKey(jc["Product Name"]) === normalizeKey(jobCardProductName)
+          ) || (jobCardsData || []).find((jc: any) => normalizeKey(jc["JC-Job Card Number"]) === normalizeKey(jobCardNo))
+
+          if (isCancelledStatus(jobCard?.["Status"])) return null
           const productionRow = findProductionRow(deliveryOrderNo, jobCardProductName)
 
-          const productionDataInfo = findActualProductionInfo(jobCardNo.trim(), deliveryOrderNo.trim(), jobCardProductName.trim())
           const costingData = findCostingData(deliveryOrderNo.trim(), jobCardProductName.trim())
 
           return {
@@ -355,16 +387,16 @@ export default function LabTesting1Page() {
             productionId: productionRow?.id ?? "",
             jobCardNo: jobCardNo.trim(),
             deliveryOrderNo: deliveryOrderNo.trim(),
-            partyName: String(row["Party Name"] || ""),
+            partyName: String(row.partyName || jobCard?.["Party Name"] || ""),
             productName: jobCardProductName,
-            quantity: Number(row["Quantity"] || 0),
-            dateOfProduction: row["Date Of Production"] ? format(new Date(row["Date Of Production"]), "dd/MM/yyyy") : "",
-            supervisorName: String(row["Supervisor Name"] || ""),
-            shift: String(row["Shift"] || ""),
+            quantity: Number(row.quantityFG || 0),
+            dateOfProduction: row.dateOfProduction || "",
+            supervisorName: String(row.supervisorName || jobCard?.["Supervisor Name"] || ""),
+            shift: String(jobCard?.["Shift"] || ""),
             expectedDeliveryDate: productionRow?.["Expected Delivery Date"] ? format(new Date(productionRow["Expected Delivery Date"]), "dd/MM/yyyy") : "",
             priority: String(productionRow?.["Priority"] || ""),
-            rawMaterials: productionDataInfo ? productionDataInfo.rawMaterials : [],
-            machineHours: productionDataInfo ? productionDataInfo.machineHours : "-",
+            rawMaterials: row.rawMaterials || [],
+            machineHours: row.machineHours || "-",
             gpPercentage: costingData.gpPercentage || "-",
             alumina: costingData.alumina || "-",
             iron: costingData.iron || "-",
@@ -373,10 +405,11 @@ export default function LabTesting1Page() {
             rm1: costingData.rm1 || "-",
             aluminaPercentage: costingData.aluminaPercentage || "-",
             ironPercentage: costingData.ironPercentage || "-",
-            plannedDate: row["Planned 2"] ? format(new Date(row["Planned 2"]), "dd/MM/yyyy") : (costingData.plannedDate || "-"),
-            firmName: String(row["Firm Name"] || ""),
+            plannedDate: row.planned3 ? format(new Date(row.planned3), "dd/MM/yyyy") : (costingData.plannedDate || "-"),
+            firmName: String(row.firmName || jobCard?.["Firm Name"] || ""),
           }
         })
+        .filter(Boolean)
 
       const firmSearchValues = getFirmMatchValues(user?.firm)
       const isAdmin = user?.role?.toLowerCase() === "admin"
@@ -390,12 +423,20 @@ export default function LabTesting1Page() {
 
       setPendingTests(filterByFirm(pendingData))
 
-      const historyFiltered = (jobCardsData || [])
-        .filter((row: any) => hasValue(row["Actual 1"]) && hasValue(row["Actual 2"]))
+      const historyFiltered = (actualProductionData || [])
+        .map((row: any) => buildActualProductionInfo(row))
+        .filter((row: any) => row.jobCardNo && hasValue(row.actual2))
         .map((row: any) => {
-          const jobCardNo = String(row["JC-Job Card Number"] || "").trim()
-          const deliveryOrderNo = String(row["Delivery Order No."] || "").trim()
-          const jobCardProductName = String(row["Product Name"] || "").trim()
+          const jobCardNo = String(row.jobCardNo || "").trim()
+          const deliveryOrderNo = String(row.orderNo || "").trim()
+          const jobCardProductName = String(row.productName || "").trim()
+          const jobCard = (jobCardsData || []).find(
+            (jc: any) =>
+              normalizeKey(jc["JC-Job Card Number"]) === normalizeKey(jobCardNo) &&
+              normalizeKey(jc["Firm Name"]) === normalizeKey(row.firmName) &&
+              normalizeKey(jc["Delivery Order No."]) === normalizeKey(deliveryOrderNo) &&
+              normalizeKey(jc["Product Name"]) === normalizeKey(jobCardProductName)
+          ) || (jobCardsData || []).find((jc: any) => normalizeKey(jc["JC-Job Card Number"]) === normalizeKey(jobCardNo))
           const productionRow = findProductionRow(deliveryOrderNo, jobCardProductName)
           const costingData = findCostingData(deliveryOrderNo, jobCardProductName)
 
@@ -403,23 +444,23 @@ export default function LabTesting1Page() {
             _rowIndex: row.id,
             productionId: productionRow?.id ?? "",
             jobCardNo: jobCardNo,
-            deliveryOrderNo: String(row["Delivery Order No."] || ""),
-            partyName: String(row["Party Name"] || ""),
+            deliveryOrderNo,
+            partyName: String(row.partyName || jobCard?.["Party Name"] || ""),
             productName: jobCardProductName,
-            quantity: Number(row["Quantity"] || 0),
-            testStatus: String(row["Status 2"] || ""),
-            dateOfTest: row["Date Of Test 1"] ? format(new Date(row["Date Of Test 1"]), "dd/MM/yy") : "",
-            testedBy: String(row["Tested By 1"] || ""),
-            wcPercentage: String(row["WC Percentage %"] || ""),
-            initialSettingTime: String(row["Initial Setting Time"] || ""),
-            finalSettingTime: String(row["Final Setting Time"] || ""),
-            whatToBeMixed: String(row["What To Be Mixed"] || ""),
-            flowOfMaterial: String(row["Flow Of Material"] || ""),
-            sieveAnalysisTest: String(row["Sieve Analysis"] || ""),
-            bdAt110: String(row["BD At 110C"] || ""),
-            ccsAt100: String(row["CCS At 100C"] || ""),
-            test1CompletedAt: row["Actual 2"] ? String(row["Actual 2"]) : "",
-            timestamp: row["Actual 2"] ? format(new Date(row["Actual 2"]), "dd/MM/yyyy HH:mm:ss") : "",
+            quantity: Number(row.quantityFG || 0),
+            testStatus: String(row.status2 || ""),
+            dateOfTest: row.dateOfTest1 ? format(new Date(row.dateOfTest1), "dd/MM/yy") : "",
+            testedBy: String(row.testedBy1 || ""),
+            wcPercentage: String(row.wcPercentage || ""),
+            initialSettingTime: String(row.initialSettingTime || ""),
+            finalSettingTime: String(row.finalSettingTime || ""),
+            whatToBeMixed: String(row.whatToBeMixed || ""),
+            flowOfMaterial: String(row.flowOfMaterial || ""),
+            sieveAnalysisTest: String(row.sieveAnalysis || ""),
+            bdAt110: String(row.bdAt110 || ""),
+            ccsAt100: String(row.ccsAt100 || ""),
+            test1CompletedAt: row.actual2 ? String(row.actual2) : "",
+            timestamp: row.actual2 ? format(new Date(row.actual2), "dd/MM/yyyy HH:mm:ss") : "",
             gpPercentage: costingData.gpPercentage || "-",
             alumina: costingData.alumina || "-",
             iron: costingData.iron || "-",
@@ -429,7 +470,7 @@ export default function LabTesting1Page() {
             aluminaPercentage: costingData.aluminaPercentage || "-",
             ironPercentage: costingData.ironPercentage || "-",
             plannedDate: costingData.plannedDate || "-",
-            firmName: String(row["Firm Name"] || ""),
+            firmName: String(row.firmName || jobCard?.["Firm Name"] || ""),
           }
         })
         .sort((a, b) => new Date(b.test1CompletedAt).getTime() - new Date(a.test1CompletedAt).getTime())
@@ -485,23 +526,23 @@ export default function LabTesting1Page() {
       const jobCardNo = selectedProduction.jobCardNo.trim()
       const now = new Date().toISOString()
       const { error: updateErr } = await supabase
-        .from(JOBCARDS_TABLE)
+        .from(ACTUAL_PRODUCTION_TABLE)
         .update({
-          "Actual 2": now,
-          "Planned 3": format(new Date(), "yyyy-MM-dd"),
-          "Status 2": String(formData.testStatus),
-          "Date Of Test 1": format(formData.dateOfTest, "yyyy-MM-dd"),
-          "WC Percentage %": Number(formData.wcPercentage),
-          "Tested By 1": String(formData.testedBy),
-          "Initial Setting Time": String(formData.initialSettingTime),
-          "Flow Of Material": String(formData.flowOfMaterial),
-          "Final Setting Time": String(formData.finalSettingTime),
-          "What To Be Mixed": String(formData.whatToBeMixed),
-          "Sieve Analysis": String(formData.sieveAnalysis),
-          "BD At 110C": formData.bdAt110,
-          "CCS At 100C": formData.ccsAt100,
+          "Actual2": now,
+          "Planned3": format(new Date(), "yyyy-MM-dd"),
+          "Status2": String(formData.testStatus),
+          "DateOfTest1": format(formData.dateOfTest, "yyyy-MM-dd"),
+          "WCPercentage": Number(formData.wcPercentage),
+          "TestedBy1": String(formData.testedBy),
+          "InitialSettingTime": String(formData.initialSettingTime),
+          "FlowOfMaterial": String(formData.flowOfMaterial),
+          "FinalSettingTime": String(formData.finalSettingTime),
+          "WhatToBeMixed": String(formData.whatToBeMixed),
+          "SieveAnalysis": String(formData.sieveAnalysis),
+          "BDAt110C": formData.bdAt110,
+          "CCSAt100C": formData.ccsAt100,
         })
-        .eq("JC-Job Card Number", jobCardNo)
+        .eq("id", selectedProduction._rowIndex)
       if (updateErr) throw updateErr
       alert("Lab Test 1 data saved successfully!")
       setIsDialogOpen(false)

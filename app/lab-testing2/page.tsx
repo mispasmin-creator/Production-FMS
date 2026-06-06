@@ -223,36 +223,59 @@ export default function LabTesting2Page() {
         }
       })
 
-      const productionDataMap = new Map()
-      ;(actualProductionData || []).forEach((row: any) => {
+      const buildActualProductionInfo = (row: any) => {
         const jobCardNo = String(row["Job Card No."] || "").trim()
-        if (jobCardNo) {
-          const materials = []
-          for (let i = 1; i <= 20; i++) {
-            const name = row[`Raw Material Name ${i}`]
-            const quantity = row[`Quantity Of Raw Material ${i}`]
-            if (name && String(name).trim()) {
-              materials.push({ name: String(name).trim(), quantity: quantity || 0 })
-            }
+        const materials = []
+        for (let i = 1; i <= 20; i++) {
+          const name = row[`Raw Material Name ${i}`]
+          const quantity = row[`Quantity Of Raw Material ${i}`]
+          if (name && String(name).trim()) {
+            materials.push({ name: String(name).trim(), quantity: quantity || 0 })
           }
-
-          productionDataMap.set(jobCardNo, {
-            jobCardNo: jobCardNo,
-            machineHours: String(row["Machine Running hour"] || "-").trim(),
-            rawMaterials: materials,
-          })
         }
-      })
+
+        return {
+          id: row.id,
+          jobCardNo,
+          deliveryOrderNo: String(row["Order No."] || "").trim(),
+          partyName: String(row["Party Name"] || "").trim(),
+          productName: String(row["Product Name"] || "").trim(),
+          quantity: Number(row["Quantity Of FG"] || 0),
+          firmName: String(row["FIRM Name"] || "").trim(),
+          dateOfProduction: row["Date Of Production"] ? format(new Date(row["Date Of Production"]), "dd/MM/yyyy") : "",
+          supervisorName: String(row["Name Of Supervisor"] || "").trim(),
+          machineHours: String(row["Machine Running hour"] || "-").trim(),
+          rawMaterials: materials,
+          actual2: row["Actual2"] || row["Actual 2"],
+          actual3: row["Actual3"] || row["Actual 3"],
+          planned3: row["Planned3"] || row["Planned 3"],
+          status2: row["Status2"] || row["Status 2"],
+          status3: row["Status3"] || row["Status 3"],
+          dateOfTest2: row["DateOfTest2"] || row["Date Of Test 2"],
+          testedBy2: row["TestedBy2"] || row["Tested By 2"],
+          bdAt1100: row["BDAt1100C"] || row["BD At 1100C"],
+          ccsAt1100: row["CCSAt1100C"] || row["CCS At 1100C"],
+          plcAt1100: row["PLCAt1100C"] || row["PLC At 1100C"],
+        }
+      }
 
       // Filter pending tests: Actual 2 filled and Actual 3 empty
-      const pendingData = (jobCardsData || [])
-        .filter(
-          (row: any) => hasValue(row["Actual 2"]) && !hasValue(row["Actual 3"]) && !isCancelledStatus(row["Status"]),
-        )
+      const pendingData = (actualProductionData || [])
+        .map((row: any) => buildActualProductionInfo(row))
+        .filter((row: any) => row.jobCardNo && hasValue(row.actual2) && !hasValue(row.actual3))
         .map((row: any) => {
-          const jobCardNo = String(row["JC-Job Card Number"] || "").trim()
-          const deliveryOrderNo = String(row["Delivery Order No."] || "").trim()
-          const productName = String(row["Product Name"] || "").trim()
+          const jobCardNo = String(row.jobCardNo || "").trim()
+          const deliveryOrderNo = String(row.deliveryOrderNo || "").trim()
+          const productName = String(row.productName || "").trim()
+          const jobCard = (jobCardsData || []).find(
+            (jc: any) =>
+              normalizeKey(jc["JC-Job Card Number"]) === normalizeKey(jobCardNo) &&
+              normalizeKey(jc["Firm Name"]) === normalizeKey(row.firmName) &&
+              normalizeKey(jc["Delivery Order No."]) === normalizeKey(deliveryOrderNo) &&
+              normalizeKey(jc["Product Name"]) === normalizeKey(productName)
+          ) || (jobCardsData || []).find((jc: any) => normalizeKey(jc["JC-Job Card Number"]) === normalizeKey(jobCardNo))
+
+          if (isCancelledStatus(jobCard?.["Status"])) return null
 
           const productionRow = (productionData || []).find(
             (prodRow: any) =>
@@ -262,10 +285,9 @@ export default function LabTesting2Page() {
             (prodRow: any) => normalizeKey(prodRow["Delivery Order No."]) === normalizeKey(deliveryOrderNo),
           )
 
-          const productionInfo = productionDataMap.get(jobCardNo)
           const costingData = costingDataMap.get(makeOrderProductKey(deliveryOrderNo, productName)) ||
                               costingDataMap.get(normalizeKey(deliveryOrderNo)) ||
-                              Array.from(costingDataMap.values()).find(c => c.productName.toLowerCase() === String(row["Product Name"] || "").trim().toLowerCase()) || 
+                              Array.from(costingDataMap.values()).find(c => c.productName.toLowerCase() === productName.toLowerCase()) || 
                               {}
 
           return {
@@ -273,21 +295,22 @@ export default function LabTesting2Page() {
             productionId: productionRow?.id ?? "",
             jobCardNo: jobCardNo,
             deliveryOrderNo: deliveryOrderNo,
-            partyName: String(row["Party Name"] || ""),
-            productName: costingData.productName || String(row["Product Name"] || ""),
-            quantity: Number(row["Quantity"] || 0),
+            partyName: String(row.partyName || jobCard?.["Party Name"] || ""),
+            productName: costingData.productName || productName,
+            quantity: Number(row.quantity || 0),
             expectedDeliveryDate: productionRow?.["Expected Delivery Date"] ? format(new Date(productionRow["Expected Delivery Date"]), "dd/MM/yyyy") : "",
             priority: String(productionRow?.["Priority"] || ""),
-            dateOfProduction: row["Date Of Production"] ? format(new Date(row["Date Of Production"]), "dd/MM/yyyy") : "",
-            plannedDate: row["Planned 3"] ? format(new Date(row["Planned 3"]), "dd/MM/yyyy") : (costingData.plannedDate || ""),
-            supervisorName: String(row["Supervisor Name"] || ""),
-            shift: String(row["Shift"] || ""),
-            rawMaterials: productionInfo ? productionInfo.rawMaterials : [],
-            machineHours: productionInfo ? productionInfo.machineHours : "-",
-            labTest1Status: String(row["Status 2"] || "N/A"),
-            firmName: String(row["Firm Name"] || ""),
+            dateOfProduction: row.dateOfProduction || "",
+            plannedDate: row.planned3 ? format(new Date(row.planned3), "dd/MM/yyyy") : (costingData.plannedDate || ""),
+            supervisorName: String(row.supervisorName || jobCard?.["Supervisor Name"] || ""),
+            shift: String(jobCard?.["Shift"] || ""),
+            rawMaterials: row.rawMaterials || [],
+            machineHours: row.machineHours || "-",
+            labTest1Status: String(row.status2 || "N/A"),
+            firmName: String(row.firmName || jobCard?.["Firm Name"] || ""),
           }
         })
+        .filter(Boolean)
 
       const firmSearch = user?.firm?.toLowerCase() || ""
       const isAdmin = user?.role?.toLowerCase() === "admin"
@@ -299,14 +322,20 @@ export default function LabTesting2Page() {
       setPendingTests(filterByFirm(pendingData))
 
       // Filter history: Actual 3 filled
-      const historyData = (jobCardsData || [])
-        .filter(
-          (row: any) => hasValue(row["Actual 3"]),
-        )
+      const historyData = (actualProductionData || [])
+        .map((row: any) => buildActualProductionInfo(row))
+        .filter((row: any) => row.jobCardNo && hasValue(row.actual3))
         .map((row: any) => {
-          const jobCardNo = String(row["JC-Job Card Number"] || "").trim()
-          const deliveryOrderNo = String(row["Delivery Order No."] || "").trim()
-          const productName = String(row["Product Name"] || "").trim()
+          const jobCardNo = String(row.jobCardNo || "").trim()
+          const deliveryOrderNo = String(row.deliveryOrderNo || "").trim()
+          const productName = String(row.productName || "").trim()
+          const jobCard = (jobCardsData || []).find(
+            (jc: any) =>
+              normalizeKey(jc["JC-Job Card Number"]) === normalizeKey(jobCardNo) &&
+              normalizeKey(jc["Firm Name"]) === normalizeKey(row.firmName) &&
+              normalizeKey(jc["Delivery Order No."]) === normalizeKey(deliveryOrderNo) &&
+              normalizeKey(jc["Product Name"]) === normalizeKey(productName)
+          ) || (jobCardsData || []).find((jc: any) => normalizeKey(jc["JC-Job Card Number"]) === normalizeKey(jobCardNo))
           const productionRow = (productionData || []).find(
             (prodRow: any) =>
               normalizeKey(prodRow["Delivery Order No."]) === normalizeKey(deliveryOrderNo) &&
@@ -324,18 +353,18 @@ export default function LabTesting2Page() {
             productionId: productionRow?.id ?? "",
             jobCardNo: jobCardNo,
             deliveryOrderNo: deliveryOrderNo,
-            partyName: String(row["Party Name"] || ""),
-            productName: costingData.productName || String(row["Product Name"] || ""),
-            quantity: Number(row["Quantity"] || 0),
-            test1Status: String(row["Status 2"] || "N/A"),
-            dateOfTest2: row["Date Of Test 2"] ? format(new Date(row["Date Of Test 2"]), "dd/MM/yyyy") : "",
-            testedBy: String(row["Tested By 2"] || ""),
-            test2Status: String(row["Status 3"] || "N/A"),
-            ccsAt1100: String(row["CCS At 1100C"] || ""),
-            plcAt1100: String(row["PLC At 1100C"] || ""),
-            bdAt1100: String(row["BD At 1100C"] || ""),
-            test2CompletedAt: row["Actual 3"] ? format(new Date(row["Actual 3"]), "dd/MM/yy HH:mm") : "",
-            firmName: String(row["Firm Name"] || ""),
+            partyName: String(row.partyName || jobCard?.["Party Name"] || ""),
+            productName: costingData.productName || productName,
+            quantity: Number(row.quantity || 0),
+            test1Status: String(row.status2 || "N/A"),
+            dateOfTest2: row.dateOfTest2 ? format(new Date(row.dateOfTest2), "dd/MM/yyyy") : "",
+            testedBy: String(row.testedBy2 || ""),
+            test2Status: String(row.status3 || "N/A"),
+            ccsAt1100: String(row.ccsAt1100 || ""),
+            plcAt1100: String(row.plcAt1100 || ""),
+            bdAt1100: String(row.bdAt1100 || ""),
+            test2CompletedAt: row.actual3 ? format(new Date(row.actual3), "dd/MM/yy HH:mm") : "",
+            firmName: String(row.firmName || jobCard?.["Firm Name"] || ""),
           }
         })
         .sort((a, b) => new Date(b.test2CompletedAt).getTime() - new Date(a.test2CompletedAt).getTime())
@@ -387,16 +416,16 @@ export default function LabTesting2Page() {
     try {
       const now = new Date().toISOString()
       const { error: updateErr } = await supabase
-        .from(JOBCARDS_TABLE)
+        .from(ACTUAL_PRODUCTION_TABLE)
         .update({
-          "Actual 3": now,
-          "Planned 4": format(new Date(), "yyyy-MM-dd"),
-          "Status 3": formData.testStatus,
-          "Tested By 2": formData.testedBy,
-          "Date Of Test 2": format(formData.dateOfTest, "yyyy-MM-dd"),
-          "BD At 1100C": formData.bdAt1100,
-          "CCS At 1100C": formData.ccsAt1100,
-          "PLC At 1100C": formData.plcAt1100,
+          "Actual3": now,
+          "Planned4": format(new Date(), "yyyy-MM-dd"),
+          "Status3": formData.testStatus,
+          "TestedBy2": formData.testedBy,
+          "DateOfTest2": format(formData.dateOfTest, "yyyy-MM-dd"),
+          "BDAt1100C": formData.bdAt1100,
+          "CCSAt1100C": formData.ccsAt1100,
+          "PLCAt1100C": formData.plcAt1100,
         })
         .eq("id", selectedTest.id)
 

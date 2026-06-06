@@ -57,6 +57,8 @@ interface ActualProductionItem {
   remarks2: string
   planned3: string
   actual3: string
+  status2: string
+  status3: string
   costingAmount2: string
   planned4: string
   actual4: string
@@ -299,6 +301,8 @@ function parseActualProductionRow(row: any): ActualProductionItem {
     remarks2: String(row["Remarks2"] || ""),
     planned3: formatDate(row["Planned3"]),
     actual3: formatDate(row["Actual3"]),
+    status2: String(row["Status2"] || row["Status 2"] || ""),
+    status3: String(row["Status3"] || row["Status 3"] || ""),
     costingAmount2: "",
     planned4: formatDate(row["Planned4"]),
     actual4: formatDate(row["Actual4"]),
@@ -844,8 +848,8 @@ export default function CheckPage() {
             partyName: item.partyName,
             plannedTest: item.planned1,
             actualQty1: item.actualQty1,
-            labTest1: String(jobCard?.["Status 2"] || "N/A"),
-            labTest2: String(jobCard?.["Status 3"] || "N/A"),
+            labTest1: item.status2 || String(jobCard?.["Status 2"] || "N/A"),
+            labTest2: item.status3 || String(jobCard?.["Status 3"] || "N/A"),
             chemicalTest: String(jobCard?.["Status 4"] || "N/A"),
             machineRunningHour: item.machineRunningHour,
             remarks1: item.remarks1,

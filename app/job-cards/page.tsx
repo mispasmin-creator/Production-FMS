@@ -223,6 +223,10 @@ export default function JobCardsPage() {
           (sum: number, jc: any) => sum + Number(jc["Total Made"] || jc["Quantity"] || 0),
           0
         )
+        const quantitySum = matchingJobCards.reduce(
+          (sum: number, jc: any) => sum + Number(jc["Quantity"] || 0),
+          0
+        )
 
         return {
           key: row.id,
@@ -239,7 +243,7 @@ export default function JobCardsPage() {
           plannedDate: row["Planned 2"] ? format(new Date(row["Planned 2"]), "dd/MM/yy") : "",
           priority: prodRow ? String(prodRow["Priority"] || "") : "",
           totalMade: totalMadeSum,
-          pending: orderQty - totalMadeSum,
+          pending: orderQty - quantitySum,
           note: "",
         }
       }).filter((order) => Number(order.pending || 0) > 0)
@@ -360,9 +364,6 @@ export default function JobCardsPage() {
     if (!formData.totalMade || Number(formData.totalMade) <= 0) {
       newErrors.totalMade = "Valid total made quantity is required"
     }
-    if (selectedOrder && Number(formData.totalMade) > Number(selectedOrder.pending || 0)) {
-      newErrors.totalMade = "Total made cannot exceed pending quantity"
-    }
     setFormErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -382,10 +383,15 @@ export default function JobCardsPage() {
     return Object.keys(newErrors).length === 0
   }
 
-  const getNextJobCardNumber = () => {
-    if (historyJobCards.length === 0) return 1
+  const getNextJobCardNumber = (firmName: string) => {
+    const normalizedFirmName = firmName.trim().toLowerCase()
+    const firmJobCards = historyJobCards.filter(
+      (card) => card.firmName.trim().toLowerCase() === normalizedFirmName
+    )
+
+    if (firmJobCards.length === 0) return 1
     
-    const numbers = historyJobCards
+    const numbers = firmJobCards
       .map(card => {
         const match = card.jobCardNo.match(/JC-(\d+)/)
         return match ? parseInt(match[1], 10) : 0
@@ -405,7 +411,7 @@ export default function JobCardsPage() {
 
     setIsSubmitting(true)
     try {
-      const nextNumber = getNextJobCardNumber()
+      const nextNumber = getNextJobCardNumber(selectedOrder.firmName)
       const jobCardNumber = `JC-${String(nextNumber).padStart(3, "0")}`
 
       const { error: insertError } = await supabase
@@ -905,7 +911,7 @@ export default function JobCardsPage() {
                     id="totalMade"
                     type="number"
                     min="0"
-                    max={selectedOrder?.pending ?? selectedOrder?.orderQuantity}
+                    step="any"
                     value={formData.totalMade}
                     onChange={(e) => handleFormChange("totalMade", e.target.value)}
                     className={formErrors.totalMade ? "border-red-500" : ""}

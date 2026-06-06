@@ -119,6 +119,7 @@ const PENDING_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
   { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
+  { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product", dataKey: "productName", toggleable: true },
@@ -136,6 +137,7 @@ const HISTORY_COLUMNS_META = [
   { header: "Timestamp", dataKey: "timestamp", toggleable: true },
   { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
+  { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product", dataKey: "productName", toggleable: true },
@@ -307,7 +309,15 @@ export default function ProductionPage() {
       }
 
       const pending = (jobCardsData || [])
-        .filter(row => !isCancelledStatus(row["Status"]) && !hasCompletedProductionFlag(row["Time Delay 1"]))
+        .filter(row => {
+          if (isCancelledStatus(row["Status"])) return false
+
+          const targetQuantity = Number(row["Quantity"] || 0)
+          const totalMade = Number(row["Total Made"] || 0)
+          if (targetQuantity > 0) return totalMade < targetQuantity
+
+          return !hasCompletedProductionFlag(row["Time Delay 1"])
+        })
         .map((row: any) => {
           const prodInfo = findProductionInfo(
             String(row["Delivery Order No."] || ""),
@@ -338,6 +348,12 @@ export default function ProductionPage() {
       const history = actualProductionRecords.map((productionRecord: any) => {
         const jcNo = productionRecord.jobCardNo
         const jobCard = (jobCardsData || []).find(
+          (jc: any) =>
+            normalizeKey(jc["JC-Job Card Number"]) === normalizeKey(jcNo) &&
+            normalizeKey(jc["Firm Name"]) === normalizeKey(productionRecord.firmName) &&
+            normalizeKey(jc["Delivery Order No."]) === normalizeKey(productionRecord.orderNo) &&
+            normalizeKey(jc["Product Name"]) === normalizeKey(productionRecord.productName)
+        ) || (jobCardsData || []).find(
           (jc: any) => normalizeKey(jc["JC-Job Card Number"]) === normalizeKey(jcNo)
         )
         const doNo = productionRecord.orderNo || jobCard?.["Delivery Order No."] || ""
@@ -557,7 +573,7 @@ export default function ProductionPage() {
       const { error: updateJCErr } = await supabase
         .from(JOBCARDS_TABLE)
         .update(updatePayload)
-        .eq("JC-Job Card Number", selectedJobCard.jobCardNo)
+        .eq("id", selectedJobCard._rowIndex)
 
       if (updateJCErr) throw updateJCErr
 
