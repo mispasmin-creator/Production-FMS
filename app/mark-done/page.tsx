@@ -1,7 +1,6 @@
 "use client"
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { format } from 'date-fns';
 import { 
     Loader2, 
     AlertTriangle, 
@@ -32,12 +31,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { useGoogleSheet, parseGvizDate } from "@/lib/g-sheets";
+import { supabase } from "@/lib/supabase";
+import { fetchSemiActualRows, SEMI_ACTUAL_TABLE } from "@/lib/semi-finished-supabase";
 
 // ==================== CONSTANTS ====================
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzVnLwTlFuGrlzyPSa2VWy4h9sU2EQrsuKrPLvQvhZoaoJu8GilGDc5aQTgLliUD7ss/exec";
-const SEMI_ACTUAL_SHEET = "Semi Actual";
-
 // ==================== TYPE DEFINITIONS ====================
 interface SemiActualRecord {
     _rowIndex: number;
@@ -113,19 +110,6 @@ const formatDisplayDate = (dateString: string): string => {
     if (!dateString || dateString === 'null' || dateString === 'undefined' || dateString === '-') return '-';
     
     try {
-        // Handle GViz raw date format: Date(2026,2,17,12,57,46)
-        // month is 0-indexed in GViz — parseGvizDate handles this correctly
-        if (typeof dateString === 'string' && dateString.startsWith('Date(')) {
-            const parsed = parseGvizDate(dateString);
-            if (parsed) {
-                const day   = parsed.getDate().toString().padStart(2, '0');
-                const month = (parsed.getMonth() + 1).toString().padStart(2, '0');
-                const year  = parsed.getFullYear().toString().slice(-2);
-                return `${day}/${month}/${year}`;
-            }
-            return '-';
-        }
-
         // If already in DD/MM/YY format
         if (dateString.match(/^\d{2}\/\d{2}\/\d{2}$/)) {
             return dateString;
@@ -160,17 +144,6 @@ const formatDisplayDate = (dateString: string): string => {
     }
 };
 
-const formatTimestamp = (date: Date): string => {
-    const day = date.getDate().toString().padStart(2, '0');
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const year = date.getFullYear().toString().slice(-2);
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    const seconds = date.getSeconds().toString().padStart(2, '0');
-    
-    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-};
-
 // ==================== MAIN COMPONENT ====================
 type TabType = 'pending' | 'production' | 'history';
 
@@ -187,11 +160,6 @@ export default function Step4List() {
     const [markDoneRemarks, setMarkDoneRemarks] = useState('');
     const [markDoneErrors, setMarkDoneErrors] = useState<Record<string, string>>({});
 
-    // headers: 0 → GViz returns ALL rows as raw data (no header-row processing).
-    // Merged olive header cells in the sheet break GViz column schema when headers > 1.
-    // We manually skip the first 5 header rows in JS below.
-    const { fetchData: fetchSemiActualData } = useGoogleSheet(SEMI_ACTUAL_SHEET, { headers: 0 });
-
     // Auto-dismiss success message
     useEffect(() => {
         if (!successMessage) return;
@@ -204,89 +172,13 @@ export default function Step4List() {
         setError(null);
         
         try {
-            const table = await fetchSemiActualData();
-            
-            if (!table || !table.rows || table.rows.length === 0) {
-                setSemiActualData([]);
-                return;
-            }
-
-            // headers:0 → table.rows[0] = sheet row 1
-            // We manually skip the first 5 header rows so table data rows start at sheet row 6
-            const HEADER_ROW_COUNT = 5;
-            const dataRows = table.rows.slice(HEADER_ROW_COUNT);
-
-            const records: SemiActualRecord[] = dataRows
-                .map((row: any, index: number) => {
-                    if (!row || !row.c || row.c.every((cell: any) => !cell || cell.v === null || cell.v === '')) {
-                        return null;
-                    }
-
-                    const rowData: any = {
-                        // sheet row = HEADER_ROW_COUNT + index + 1  (1-based, headers:0 so row1 = index 0)
-                        _rowIndex: HEADER_ROW_COUNT + index + 1
-                    };
-
-                    // Map column letters to indices (A=0, B=1, AA=26, AB=27, etc.)
-                    // Proper Excel-style column name generator for multi-letter columns
-                    const getColLetter = (idx: number): string => {
-                        let name = '';
-                        let n = idx + 1; // 1-based
-                        while (n > 0) {
-                            const rem = (n - 1) % 26;
-                            name = String.fromCharCode(65 + rem) + name;
-                            n = Math.floor((n - 1) / 26);
-                        }
-                        return name;
-                    };
-                    row.c.forEach((cell: any, cellIndex: number) => {
-                        const colLetter = getColLetter(cellIndex);
-                        rowData[colLetter] = cell ? cell.v : null;
-                    });
-
-                    // Filter: only keep rows that have at least one of the planning/actual columns
-                    // (planned1/actual1 for stage 1, planned2/actual2 for stage 2)
-                    // This avoids dropping rows that have no serial number but do have planning data.
-                    const hasPlanning = rowData.AC || rowData.AD || rowData.AH || rowData.AI;
-                    if (!hasPlanning) return null;
-
-                    return {
-                        _rowIndex: rowData._rowIndex,
-                        timestamp: rowData.A || '',
-                        semiFinishedJobCardNo: String(rowData.B || ''),
-                        supervisorName: String(rowData.C || ''),
-                        dateOfProduction: String(rowData.D || ''),
-                        productName: String(rowData.E || ''),
-                        qtyOfSemiFinishedGood: Number(rowData.F || 0),
-                        rawMaterial1Name: String(rowData.G || ''),
-                        rawMaterial1Qty: Number(rowData.H || 0),
-                        rawMaterial2Name: String(rowData.I || ''),
-                        rawMaterial2Qty: Number(rowData.J || 0),
-                        rawMaterial3Name: String(rowData.K || ''),
-                        rawMaterial3Qty: Number(rowData.L || 0),
-                        isAnyEndProduct: String(rowData.M || 'No'),
-                        endProductRawMaterialName: String(rowData.N || ''),
-                        endProductQty: Number(rowData.O || 0),
-                        narration: String(rowData.P || ''),
-                        serialNo: String(rowData.Q || ''),
-                        startingReading: Number(rowData.R || 0),
-                        startingReadingPhoto: String(rowData.S || ''),
-                        endingReading: Number(rowData.T || 0),
-                        endingReadingPhoto: String(rowData.U || ''),
-                        machineRunningHour: Number(rowData.V || 0),
-                        rawMaterial4Name: String(rowData.W || ''),
-                        rawMaterial4Qty: Number(rowData.X || 0),
-                        rawMaterial5Name: String(rowData.Y || ''),
-                        rawMaterial5Qty: Number(rowData.Z || 0),
-                        machineRunning: Number(rowData.AA || 0),
-                        semiFinishedProductionNo: String(rowData.AB || ''),
-                        planned1: String(rowData.AC || ''),
-                        actual1: String(rowData.AD || ''),
-                        planned2: String(rowData.AH || ''),
-                        actual2: String(rowData.AI || ''),
-                    };
-                })
-                .filter(Boolean) as SemiActualRecord[];
+            const records: SemiActualRecord[] = (await fetchSemiActualRows())
+                .filter((row: any) => String(row.sNo || row.serialNo || "").startsWith("SA-"))
+                .map((row: any) => ({
+                    ...row,
+                    serialNo: row.serialNo || row.sNo || "",
+                    semiFinishedProductionNo: row.semiFinishedProductionNo || row.sfProductionNo || "",
+                }));
 
             setSemiActualData(records);
         } catch (err) {
@@ -295,26 +187,25 @@ export default function Step4List() {
         } finally {
             setLoading(false);
         }
-    }, [fetchSemiActualData]);
+    }, []);
 
     useEffect(() => {
         loadData();
     }, [loadData]);
 
     // Filter data based on tabs
-    // Pending Tab: Planned1 (AC) has value AND Actual1 (AD) is empty/null
+    // Pending Tab: production entries where stage 1 is not done yet
     const pendingOrders = semiActualData.filter(item => {
-        const planned1 = String(item.planned1 || '').trim();
         const actual1 = String(item.actual1 || '').trim();
-        return planned1 !== '' && planned1 !== '-' && planned1 !== 'null' && planned1 !== 'undefined' &&
-               (actual1 === '' || actual1 === '-' || actual1 === 'null' || actual1 === 'undefined');
+        return actual1 === '' || actual1 === '-' || actual1 === 'null' || actual1 === 'undefined';
     });
 
-    // Production Tab: Planned2 (AH) has value AND Actual2 (AI) is empty/null
+    // Production Tab: stage 1 done and stage 2 not done yet
     const productionOrders = semiActualData.filter(item => {
-        const planned2 = String(item.planned2 || '').trim();
+        const actual1 = String(item.actual1 || '').trim();
         const actual2 = String(item.actual2 || '').trim();
-        return planned2 !== '' && planned2 !== '-' && planned2 !== 'null' && planned2 !== 'undefined' &&
+        const hasActual1 = actual1 !== '' && actual1 !== '-' && actual1 !== 'null' && actual1 !== 'undefined';
+        return hasActual1 &&
                (actual2 === '' || actual2 === '-' || actual2 === 'null' || actual2 === 'undefined');
     });
 
@@ -392,37 +283,20 @@ export default function Step4List() {
         setError(null);
 
         try {
-            const timestamp = formatTimestamp(new Date());
-            
-            // Column indices (1-based, for Apps Script getRange):
-            // Stage 1 (Pending):   AD=30 (Actual1),  AF=32 (Status1)
-            // Stage 2 (Production): AI=35 (Actual2), AK=37 (Status2)
-            const actualColIndex  = activeTab === 'pending' ? 30 : 35;
-            const statusColIndex  = activeTab === 'pending' ? 32 : 37;
+            const updatePayload = activeTab === 'pending'
+                ? {
+                    "Actual1": new Date().toISOString().slice(0, 10),
+                    "Status": markDoneRemarks.trim(),
+                    "Planned2": new Date().toISOString().slice(0, 10),
+                }
+                : { "Actual2": new Date().toISOString().slice(0, 10), "Status1": markDoneRemarks.trim() };
 
-            // Write timestamp → Actual column AND remarks → Status column in one call
-            const cellUpdates = {
-                [actualColIndex]: timestamp,
-                [statusColIndex]: markDoneRemarks.trim()
-            };
+            const { error: updateError } = await supabase
+                .from(SEMI_ACTUAL_TABLE)
+                .update(updatePayload)
+                .eq("id", selectedRecord._rowIndex);
 
-            const formData = new URLSearchParams({
-                action: "updateCells",
-                sheetName: SEMI_ACTUAL_SHEET,
-                rowIndex: String(selectedRecord._rowIndex),
-                cellUpdates: JSON.stringify(cellUpdates)
-            });
-
-            const response = await fetch(WEB_APP_URL, {
-                method: 'POST',
-                body: formData
-            });
-
-            const result = await response.json();
-
-            if (!result.success) {
-                throw new Error(result.error || 'Failed to update record');
-            }
+            if (updateError) throw updateError;
 
             setSuccessMessage(`Record marked as done successfully!`);
             setIsMarkDoneOpen(false);

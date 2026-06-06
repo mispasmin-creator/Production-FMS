@@ -1,7 +1,6 @@
 "use client"
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { format } from 'date-fns';
 import { Loader2, AlertTriangle, Plus, X, Factory, History, Eye, RefreshCw, Ban } from 'lucide-react';
 
 // Shadcn UI components (assuming you have these installed)
@@ -14,8 +13,14 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { useGoogleSheet } from "@/lib/g-sheets"; // Used for Master sheet only; Semi Production uses doGet for reliable text-timestamp support
 import { useAuth, FIRM_MAP } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
+import {
+    fetchMasterRows,
+    fetchSemiProductionRows,
+    getMasterValue,
+    SEMI_PRODUCTION_TABLE,
+} from "@/lib/semi-finished-supabase";
 
 // Type Definitions
 interface SemiProductionItem {
@@ -42,10 +47,6 @@ interface MasterItem {
 }
 
 // Constants
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzVnLwTlFuGrlzyPSa2VWy4h9sU2EQrsuKrPLvQvhZoaoJu8GilGDc5aQTgLliUD7ss/exec";
-const SEMI_PRODUCTION_SHEET = "Semi Production";
-const MASTER_SHEET = "Master";
-
 // Column Definitions
 const SEMI_COLUMNS_META = [
     { header: "SF-Sr No.", dataKey: "sfSrNo", alwaysVisible: true, toggleable: false },
@@ -105,8 +106,6 @@ export default function Step1List() {
 
     const [formErrors, setFormErrors] = useState<Record<string, string | null>>({});
 
-    const { fetchData: fetchMasterData } = useGoogleSheet(MASTER_SHEET);
-
     // Auto-dismiss success toast after 3s
     useEffect(() => {
         if (!successMessage) return;
@@ -114,78 +113,11 @@ export default function Step1List() {
         return () => clearTimeout(t);
     }, [successMessage]);
 
-    // ─── Fetch Semi Production via Google Visualization (gviz) API ───────────────
-    // This bypasses the Apps Script doGet entirely and reads the sheet data directly.
-    // Same reliable method already used for the Master sheet.
-    const SHEET_ID = "1Oh16UfYFmNff0YLxHRh_D3mw3r7m7b9FOvxRpJxCUh4";
-
-    const fetchSemiProductionGviz = useCallback(async (): Promise<SemiProductionItem[]> => {
-        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SEMI_PRODUCTION_SHEET)}&headers=0&cb=${Date.now()}`;
-        const res = await fetch(url, { cache: 'no-store' });
-        if (!res.ok) throw new Error(`Network error: ${res.status}`);
-        const text = await res.text();
-        const match = text.match(/google\.visualization\.Query\.setResponse\((.*)\)/);
-        if (!match || !match[1]) throw new Error("Could not parse gviz response for Semi Production sheet.");
-        const json = JSON.parse(match[1]);
-        if (!json.table) throw new Error("Invalid gviz data structure.");
-
-        const table = json.table;
-        const rows: any[] = table.rows || [];
-        const items: SemiProductionItem[] = [];
-
-        // First 5 rows (indices 0-4) are header/metadata rows — skip them
-        const DATA_START_ROW = 5;
-
-        for (let i = DATA_START_ROW; i < rows.length; i++) {
-            const row = rows[i];
-            if (!row || !row.c) continue;
-
-            const getCell = (idx: number): string => {
-                const cell = row.c[idx];
-                if (!cell) return "";
-                // gviz returns formatted string in cell.f, raw value in cell.v
-                return cell.f !== undefined && cell.f !== null
-                    ? String(cell.f)
-                    : (cell.v !== null && cell.v !== undefined ? String(cell.v) : "");
-            };
-
-            // Skip completely empty rows
-            if (row.c.every((c: any) => !c || c.v === null || c.v === "" || c.v === undefined)) continue;
-
-            const tsCell = getCell(0).trim();
-            if (!tsCell) continue;
-
-            // Only include rows that have a valid SF-Sr No. in column B (e.g. "SF-1", "SF-2")
-            const sfSrNo = getCell(1).trim();
-            if (!sfSrNo.toUpperCase().startsWith("SF-")) continue;
-
-            items.push({
-                _rowIndex: i + 1, // 1-based row index for Apps Script updates
-                timestamp: tsCell,
-                sfSrNo: sfSrNo,
-                nameOfSemiFinished: getCell(2),
-                qty: Number(getCell(3)) || 0,
-                notes: getCell(4),
-                totalPlanned: Number(getCell(5)) || 0,
-                totalMade: Number(getCell(6)) || 0,
-                pending: Number(getCell(7)) || 0,
-                cancelOrder: getCell(8),
-                status: getCell(9) || "PENDING",
-                planned: getCell(10),
-                actual: getCell(11),
-                firmName: getCell(12),
-                reason: getCell(13),
-            });
-        }
-        return items;
-    }, []);
-
     const loadAllData = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            // Fetch Semi Production via gviz (bypasses Apps Script doGet)
-            const semiItems = await fetchSemiProductionGviz();
+            const semiItems = await fetchSemiProductionRows();
             
             // Filter by Firm
             const filterByFirm = (data: any[]) => {
@@ -203,34 +135,11 @@ export default function Step1List() {
 
             setSemiProductions(filterByFirm(semiItems).sort((a, b) => b._rowIndex - a._rowIndex));
 
-            // Fetch Master sheet using gviz
-            const masterTable = await fetchMasterData();
-
-            const processGvizTable = (table: any) => {
-                if (!table || !table.rows || table.rows.length === 0) return [];
-                const firstDataRowIndex = table.rows.findIndex((r: any) => r && r.c && r.c.some((cell: any) => cell && cell.v !== null && cell.v !== ''));
-                if (firstDataRowIndex === -1) return [];
-                const colIds = table.cols.map((col: any) => col.id);
-                const dataRows = table.rows.slice(firstDataRowIndex);
-                return dataRows.map((row: any, rowIndex: number) => {
-                    if (!row || !row.c || row.c.every((cell: any) => !cell || cell.v === null || cell.v === '')) return null;
-                    const rowData: any = { _rowIndex: firstDataRowIndex + rowIndex + 1 };
-                    row.c.forEach((cell: any, cellIndex: number) => {
-                        const colId = colIds[cellIndex];
-                        if (colId) rowData[colId] = cell ? cell.v : null;
-                    });
-                    return rowData;
-                }).filter(Boolean);
-            };
-
-            const masterDataRows = processGvizTable(masterTable);
-
-            // Get product names from Master sheet - Column M (Name Of Raw Material, index 12)
-            const materials: string[] = [...new Set(masterDataRows.map((row: any) => String(row.M || "")).filter(Boolean))] as string[];
+            const masterDataRows = await fetchMasterRows();
+            const materials: string[] = [...new Set(masterDataRows.map((row: any) => getMasterValue(row, ["Name Of Raw Material", "Raw Material Name", "Material Name", "M"])).filter(Boolean))] as string[];
             setMaterialsList(materials);
 
-            // Get firm names from Master sheet - Column G (Firm Name, index 6)
-            let firms: string[] = [...new Set(masterDataRows.map((row: any) => String(row.G || "")).filter(Boolean))] as string[];
+            let firms: string[] = [...new Set(masterDataRows.map((row: any) => getMasterValue(row, ["Firm Name", "Firm name", "G"])).filter(Boolean))] as string[];
             
             if (user?.firm && user?.role?.toLowerCase() !== 'admin') {
                 const userFirms = user.firm.split(',').map(f => f.trim()).filter(Boolean);
@@ -252,7 +161,7 @@ export default function Step1List() {
         } finally {
             setLoading(false);
         }
-    }, [fetchMasterData, fetchSemiProductionGviz]);
+    }, [user]);
 
     useEffect(() => {
         loadAllData();
@@ -304,38 +213,24 @@ export default function Step1List() {
 
         setIsSubmitting(true);
         try {
-            const timestamp = format(new Date(), "dd/MM/yyyy HH:mm:ss");
             const qty = Number(formData.qty);
 
-            // Prepare row data for Google Sheets
-            const rowData = [
-                timestamp,            // Column A: Timestamp
-                formData.sfSrNo,      // Column B: SF-Sr No.
-                formData.name,        // Column C: Name Of Semi Finished Good
-                qty,                  // Column D: Qty
-                formData.notes || "", // Column E: Notes
-                "",                   // Column F: Total Planned
-                "",                   // Column G: Total Made
-                "",                   // Column H: Pending
-                "",                   // Column I: Cancel Order (empty initially)
-                "",                   // Column J: Status (not submitted)
-                "",                   // Column K: Planned (empty)
-                "",                   // Column L: Actual (empty)
-                formData.firmName || "" // Column M: Firm Name
-            ];
-
-            const addBody = new URLSearchParams({
-                action: "insert",
-                sheetName: SEMI_PRODUCTION_SHEET,
-                rowData: JSON.stringify(rowData),
+            const { error: insertError } = await supabase.from(SEMI_PRODUCTION_TABLE).insert({
+                "Timestamp": new Date().toISOString(),
+                "SF-Sr No.": formData.sfSrNo,
+                "Name Of Semi Finished Good": formData.name,
+                "Qty": qty,
+                "Notes": formData.notes || "",
+                "Total Planned": 0,
+                "Total Made": 0,
+                "Pending": qty,
+                "Cancel Order": 0,
+                "Status": "",
+                "Planned": new Date().toISOString().slice(0, 10),
+                "Firm name": formData.firmName || "",
             });
 
-            const addRes = await fetch(WEB_APP_URL, { method: "POST", body: addBody });
-            const addResult = await addRes.json();
-
-            if (!addResult.success) {
-                throw new Error(addResult.error || "Failed to save production data.");
-            }
+            if (insertError) throw insertError;
 
             setSuccessMessage("Order created successfully!");
             setIsDialogOpen(false);
@@ -355,39 +250,28 @@ export default function Step1List() {
 
         setIsCancelSubmitting(true);
         try {
-            // Prepare cancel order data
-            const timestamp = format(new Date(), "dd/MM/yyyy HH:mm:ss");
+            const { error: updateError } = await supabase
+                .from(SEMI_PRODUCTION_TABLE)
+                .update({
+                    "Pending": Number(cancelRecord.pending) - Number(cancelQty),
+                    "Cancel Order": Number(cancelQty),
+                    "Status": "",
+                    "Reason": cancelReason,
+                })
+                .eq("id", cancelRecord._rowIndex);
 
-            // Update the record with cancel information
-            const updatedRowData = [
-                cancelRecord.timestamp,                   // Column A: Original Timestamp
-                cancelRecord.sfSrNo,                      // Column B
-                cancelRecord.nameOfSemiFinished,          // Column C
-                cancelRecord.qty,                         // Column D
-                cancelRecord.notes,                       // Column E
-                cancelRecord.totalPlanned,                // Column F
-                cancelRecord.totalMade,                   // Column G
-                Number(cancelRecord.pending) - Number(cancelQty), // Column H: Pending decreases
-                Number(cancelQty),                        // Column I: Cancel Order qty
-                "",                                       // Column J: Status (Cleared as requested)
-                cancelRecord.planned,                     // Column K
-                cancelRecord.actual,                      // Column L
-                cancelRecord.firmName,                    // Column M
-                cancelReason                              // Column N: Reason
-            ];
-
-            const updateBody = new URLSearchParams({
-                action: "update",
-                sheetName: SEMI_PRODUCTION_SHEET,
-                rowIndex: String(cancelRecord._rowIndex),
-                rowData: JSON.stringify(updatedRowData),
-            });
-
-            const updateRes = await fetch(WEB_APP_URL, { method: "POST", body: updateBody });
-            const updateResult = await updateRes.json();
-
-            if (!updateResult.success) {
-                throw new Error(updateResult.error || "Failed to cancel order.");
+            if (updateError && /Reason/i.test(updateError.message || "")) {
+                const { error: fallbackError } = await supabase
+                    .from(SEMI_PRODUCTION_TABLE)
+                    .update({
+                        "Pending": Number(cancelRecord.pending) - Number(cancelQty),
+                        "Cancel Order": Number(cancelQty),
+                        "Status": "",
+                    })
+                    .eq("id", cancelRecord._rowIndex);
+                if (fallbackError) throw fallbackError;
+            } else if (updateError) {
+                throw updateError;
             }
 
             setSuccessMessage(`Order ${cancelRecord.sfSrNo} cancelled successfully!`);

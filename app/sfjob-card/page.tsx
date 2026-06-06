@@ -16,14 +16,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { useGoogleSheet, parseGvizDate } from "@/lib/g-sheets";
+import { supabase } from "@/lib/supabase";
+import {
+    fetchMasterRows,
+    fetchSemiJobCardRows,
+    fetchSemiProductionRows,
+    getMasterValue,
+    SEMI_JOB_CARD_TABLE,
+    SEMI_PRODUCTION_TABLE,
+    toSupabaseDate,
+} from "@/lib/semi-finished-supabase";
 
 // ==================== CONSTANTS ====================
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzVnLwTlFuGrlzyPSa2VWy4h9sU2EQrsuKrPLvQvhZoaoJu8GilGDc5aQTgLliUD7ss/exec";
-const SEMI_PRODUCTION_SHEET = "Semi Production";
-const SEMI_JOB_CARD_SHEET = "Semi Job Card";
-const MASTER_SHEET = "Master";
-
 // ==================== TYPE DEFINITIONS ====================
 interface SemiProductionRecord {
     _rowIndex: number;
@@ -51,6 +55,7 @@ interface SemiJobCardRecord {
     productName: string;
     qty: number;
     dateOfProduction: string;
+    firmName?: string;
 }
 
 interface Supervisor {
@@ -60,11 +65,6 @@ interface Supervisor {
 // ==================== HELPERS ====================
 const formatDisplayDate = (val: any): string => {
     if (!val) return '-';
-    // gviz Date string
-    if (typeof val === 'string' && val.startsWith('Date(')) {
-        const d = parseGvizDate(val);
-        return d ? format(d, 'dd/MM/yy') : '-';
-    }
     // plain string date
     try {
         const d = new Date(val);
@@ -73,39 +73,21 @@ const formatDisplayDate = (val: any): string => {
     return String(val);
 };
 
-// Process a gviz table into plain row objects
-const processGvizTable = (table: any): any[] => {
-    if (!table || !table.rows || table.rows.length === 0) return [];
-    const colIds = table.cols.map((col: any) => col.id);
-    const firstDataRowIndex = table.rows.findIndex(
-        (r: any) => r && r.c && r.c.some((cell: any) => cell && cell.v !== null && cell.v !== '')
-    );
-    if (firstDataRowIndex === -1) return [];
-    return table.rows.slice(firstDataRowIndex).map((row: any, rowIndex: number) => {
-        if (!row || !row.c || row.c.every((cell: any) => !cell || cell.v === null || cell.v === '')) return null;
-        const obj: any = { _rowIndex: firstDataRowIndex + rowIndex + 1 };
-        row.c.forEach((cell: any, ci: number) => {
-            const colId = colIds[ci];
-            if (colId) obj[colId] = cell ? cell.v : null;
-        });
-        return obj;
-    }).filter(Boolean);
-};
-
 // ==================== PENDING LOGIC ====================
 // A record is PENDING if:
 //   Planned (Column K) is NOT null/empty AND Actual (Column L) IS null/empty
 //   OR the status is not completed/cancelled
 const isOrderPending = (record: SemiProductionRecord): boolean => {
+    if (Number(record.pending || 0) <= 0) return false;
+
+    const statusStr = String(record.status || '').toLowerCase().trim();
+    if (['complete', 'completed', 'cancelled', 'cancel'].includes(statusStr)) return false;
+
     const hasPlanned = record.planned && record.planned !== '' && record.planned !== 'null';
     const hasActual = record.actual && record.actual !== '' && record.actual !== 'null';
 
     // If planned is set but actual is not — definitely pending
     if (hasPlanned && !hasActual) return true;
-
-    // Also check status
-    const statusStr = String(record.status || '').toLowerCase().trim();
-    if (['complete', 'completed', 'cancelled', 'cancel'].includes(statusStr)) return false;
 
     // Otherwise treat as pending
     return true;
@@ -133,62 +115,6 @@ export default function SFJobCardPage() {
         dateOfProduction: new Date().toISOString().split('T')[0],
     });
 
-    // useGoogleSheet hooks for reading
-    const { fetchData: fetchSemiJobCardData } = useGoogleSheet(SEMI_JOB_CARD_SHEET);
-    const { fetchData: fetchMasterData } = useGoogleSheet(MASTER_SHEET);
-
-    // Direct gviz fetch for Semi Production — skips header rows properly
-    const SHEET_ID = "1Oh16UfYFmNff0YLxHRh_D3mw3r7m7b9FOvxRpJxCUh4";
-    const fetchSemiProductionDirect = useCallback(async (): Promise<SemiProductionRecord[]> => {
-        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SEMI_PRODUCTION_SHEET)}&headers=0&cb=${Date.now()}`;
-        const res = await fetch(url, { cache: 'no-store' });
-        if (!res.ok) throw new Error(`Network error: ${res.status}`);
-        const text = await res.text();
-        const match = text.match(/google\.visualization\.Query\.setResponse\((.*)\)/);
-        if (!match || !match[1]) throw new Error('Could not parse gviz for Semi Production.');
-        const json = JSON.parse(match[1]);
-        if (!json.table) throw new Error('Invalid gviz data.');
-
-        const rows: any[] = json.table.rows || [];
-        const DATA_START_ROW = 5; // rows 0-4 are metadata/header rows
-        const items: SemiProductionRecord[] = [];
-
-        for (let i = DATA_START_ROW; i < rows.length; i++) {
-            const row = rows[i];
-            if (!row || !row.c) continue;
-            if (row.c.every((c: any) => !c || c.v === null || c.v === undefined || c.v === '')) continue;
-
-            const getCell = (idx: number): string => {
-                const cell = row.c[idx];
-                if (!cell) return '';
-                return cell.f !== undefined && cell.f !== null
-                    ? String(cell.f)
-                    : (cell.v !== null && cell.v !== undefined ? String(cell.v) : '');
-            };
-
-            const sfSrNo = getCell(1).trim();
-            if (!sfSrNo.toUpperCase().startsWith('SF-')) continue;
-
-            items.push({
-                _rowIndex: i + 1,
-                timestamp: getCell(0),
-                sfSrNo,
-                nameOfSemiFinished: getCell(2),
-                qty: Number(getCell(3)) || 0,
-                notes: getCell(4),
-                totalPlanned: Number(getCell(5)) || 0,
-                totalMade: Number(getCell(6)) || 0,
-                pending: Number(getCell(7)) || 0,
-                cancelOrder: getCell(8),
-                status: getCell(9) || '',
-                planned: getCell(10),
-                actual: getCell(11),
-                firmName: getCell(12),
-            });
-        }
-        return items;
-    }, []);
-
     // Auto-dismiss success toast
     useEffect(() => {
         if (!successMessage) return;
@@ -201,12 +127,12 @@ export default function SFJobCardPage() {
         setLoadError('');
         try {
             const [semiJobCardTable, masterTable] = await Promise.all([
-                fetchSemiJobCardData(),
-                fetchMasterData(),
+                fetchSemiJobCardRows(),
+                fetchMasterRows(),
             ]);
 
-            // ── Process Semi Production data (direct gviz, skips header rows) ──
-            const productions = await fetchSemiProductionDirect();
+            const productions = await fetchSemiProductionRows();
+            const productionFirmByNo = new Map(productions.map((row) => [row.sfSrNo, row.firmName]));
             
             // Filter by Firm
             const filterByFirm = (data: any[]) => {
@@ -224,39 +150,17 @@ export default function SFJobCardPage() {
 
             setProductionData(filterByFirm(productions).sort((a, b) => b._rowIndex - a._rowIndex));
 
-            const jobCardRows = processGvizTable(semiJobCardTable);
-            const jobCards: SemiJobCardRecord[] = jobCardRows
-                .filter((row: any) => row.B && typeof row.B === 'string' && /^SJC-\d+/.test(row.B))
-                .map((row: any) => {
-                    let dateOfProduction = '';
-                    if (row.G) {
-                        if (typeof row.G === 'string' && row.G.startsWith('Date(')) {
-                            const d = parseGvizDate(row.G);
-                            dateOfProduction = d ? format(d, 'dd/MM/yy') : '';
-                        } else {
-                            dateOfProduction = String(row.G);
-                        }
-                    }
-                    return {
-                        _rowIndex: row._rowIndex,
-                        timestamp: row.A ? format(parseGvizDate(row.A) || new Date(), "dd/MM/yy HH:mm:ss") : "",
-                        sjcSrNo: String(row.B || ""),
-                        sfSrNo: String(row.C || ""),
-                        supervisorName: String(row.D || ""),
-                        productName: String(row.E || ""),
-                        qty: Number(row.F || 0),
-                        dateOfProduction,
-                    };
-                });
+            const jobCards: SemiJobCardRecord[] = semiJobCardTable
+                .filter((row: any) => row.sjcSrNo && /^SJC-\d+/.test(row.sjcSrNo))
+                .map((row: any) => ({ ...row, firmName: productionFirmByNo.get(row.sfSrNo) || "" }));
 
             setJobCardData(filterByFirm(jobCards).sort((a, b) => b._rowIndex - a._rowIndex));
 
             // ── Process Master data for supervisors ──
-            const masterRows = processGvizTable(masterTable);
             const supSet = new Set<string>();
-            masterRows.forEach((row: any) => {
+            masterTable.forEach((row: any) => {
                 // Specifically use Column L (SF Supervisor Name) as requested
-                const val = String(row.L || '').trim();
+                const val = getMasterValue(row, ["SF Supervisor Name", "Supervisor Name", "L"]);
                 if (val && val !== 'null' && val !== 'undefined') {
                     supSet.add(val);
                 }
@@ -269,7 +173,7 @@ export default function SFJobCardPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [fetchSemiProductionDirect, fetchSemiJobCardData, fetchMasterData]);
+    }, [user]);
 
     useEffect(() => {
         loadAllData();
@@ -290,7 +194,7 @@ export default function SFJobCardPage() {
         setFormError('');
         setFormData({
             supervisorName: '',
-            qty: String(record.qty),
+            qty: String(record.pending > 0 ? record.pending : record.qty),
             dateOfProduction: new Date().toISOString().split('T')[0],
         });
         setIsModalOpen(true);
@@ -305,31 +209,39 @@ export default function SFJobCardPage() {
         setIsSubmitting(true);
         setFormError('');
         try {
-            const timestamp = format(new Date(), "dd/MM/yy HH:mm:ss");
             const sjcSrNo = getNextSJCNo();
 
-            // Row for "Semi Job Card" sheet:
-            // Timestamp | SJC-Sr No. | SF-Sr No.(Production No.) | Supervisor Name | Product Name | Qty | Date Of Production
-            const rowData = [
-                timestamp,
-                sjcSrNo,
-                selectedProd.sfSrNo,
-                formData.supervisorName,
-                selectedProd.nameOfSemiFinished,
-                Number(formData.qty),
-                formData.dateOfProduction
-            ];
-
-            const body = new URLSearchParams({
-                action: 'insert',
-                sheetName: SEMI_JOB_CARD_SHEET,
-                rowData: JSON.stringify(rowData),
+            const plannedQty = Number(formData.qty);
+            const { error: insertError } = await supabase.from(SEMI_JOB_CARD_TABLE).insert({
+                "Timestamp": new Date().toISOString(),
+                "SJC-Sr No.": sjcSrNo,
+                "Semi Finished Production No.": selectedProd.sfSrNo,
+                "Supervisor Name": formData.supervisorName,
+                "Product Name": selectedProd.nameOfSemiFinished,
+                "Qty": plannedQty,
+                "Date Of Production": toSupabaseDate(formData.dateOfProduction),
+                "Actual Made": 0,
+                "Pending": plannedQty,
+                "Status": "",
+                "Planned": new Date().toISOString().slice(0, 10),
             });
 
-            const res = await fetch(WEB_APP_URL, { method: 'POST', body });
-            const result = await res.json();
+            if (insertError) throw insertError;
 
-            if (!result.success) throw new Error(result.error || 'Failed to save Job Card.');
+            const nextTotalPlanned = Number(selectedProd.totalPlanned || 0) + plannedQty;
+            const cancelledQty = Number(selectedProd.cancelOrder || 0);
+            const nextPending = Math.max(Number(selectedProd.qty || 0) - nextTotalPlanned - (Number.isFinite(cancelledQty) ? cancelledQty : 0), 0);
+            const { error: updateError } = await supabase
+                .from(SEMI_PRODUCTION_TABLE)
+                .update({
+                    "Total Planned": nextTotalPlanned,
+                    "Pending": nextPending,
+                    "Planned": new Date().toISOString().slice(0, 10),
+                    "Status": nextPending <= 0 ? "COMPLETED" : "PENDING",
+                })
+                .eq("id", selectedProd._rowIndex);
+
+            if (updateError) throw updateError;
 
             setSuccessMessage(`Job Card ${sjcSrNo} created successfully!`);
             setIsModalOpen(false);
@@ -655,10 +567,10 @@ export default function SFJobCardPage() {
                                     id="jc-qty"
                                     type="number"
                                     min="1"
-                                    max={selectedProd.qty}
+                                    max={selectedProd.pending > 0 ? selectedProd.pending : selectedProd.qty}
                                     value={formData.qty}
                                     onChange={e => setFormData({ ...formData, qty: e.target.value })}
-                                    placeholder={`Enter quantity (max ${selectedProd.qty})`}
+                                    placeholder={`Enter quantity (max ${selectedProd.pending > 0 ? selectedProd.pending : selectedProd.qty})`}
                                 />
                             </div>
 

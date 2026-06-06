@@ -16,14 +16,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { useGoogleSheet, parseGvizDate } from "@/lib/g-sheets";
+import { supabase } from "@/lib/supabase";
+import {
+    fetchMasterRows,
+    fetchSemiActualRows,
+    fetchSemiJobCardRows,
+    getMasterValue,
+    SEMI_ACTUAL_TABLE,
+    SEMI_JOB_CARD_TABLE,
+    toSupabaseDate,
+} from "@/lib/semi-finished-supabase";
 
 // ==================== CONSTANTS ====================
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzVnLwTlFuGrlzyPSa2VWy4h9sU2EQrsuKrPLvQvhZoaoJu8GilGDc5aQTgLliUD7ss/exec";
-const SEMI_JOB_CARD_SHEET = "Semi Job Card";
-const SEMI_ACTUAL_SHEET = "Semi Actual";
-const MASTER_SHEET = "Master";
-const DRIVE_FOLDER_ID = "1H6cGQ1zfKN4V3MSuhKSf1yjCQq591bcH";
+const SEMI_FINISHED_IMAGES_BUCKET = "Semi Finished Images";
 const MAX_RAW_MATERIALS = 5;
 
 // ==================== TYPE DEFINITIONS ====================
@@ -38,6 +43,8 @@ interface SemiJobCardRecord {
     dateOfProduction: string;
     planned: string;
     actual: string;
+    actualMade?: number;
+    pending?: number;
 }
 
 interface SemiActualRecord {
@@ -94,33 +101,11 @@ interface RawMaterial {
 // ==================== HELPERS ====================
 const formatDisplayDate = (val: any): string => {
     if (!val) return '-';
-    if (typeof val === 'string' && val.startsWith('Date(')) {
-        const d = parseGvizDate(val);
-        return d ? format(d, 'dd/MM/yy') : '-';
-    }
     try {
         const d = new Date(val);
         if (!isNaN(d.getTime())) return format(d, 'dd/MM/yy');
     } catch { }
     return String(val);
-};
-
-const processGvizTable = (table: any): any[] => {
-    if (!table || !table.rows || table.rows.length === 0) return [];
-    const colIds = table.cols.map((col: any) => col.id);
-    const firstDataRowIndex = table.rows.findIndex(
-        (r: any) => r && r.c && r.c.some((cell: any) => cell && cell.v !== null && cell.v !== '')
-    );
-    if (firstDataRowIndex === -1) return [];
-    return table.rows.slice(firstDataRowIndex).map((row: any, rowIndex: number) => {
-        if (!row || !row.c || row.c.every((cell: any) => !cell || cell.v === null || cell.v === '')) return null;
-        const obj: any = { _rowIndex: firstDataRowIndex + rowIndex + 1 };
-        row.c.forEach((cell: any, ci: number) => {
-            const colId = colIds[ci];
-            if (colId) obj[colId] = cell ? cell.v : null;
-        });
-        return obj;
-    }).filter(Boolean);
 };
 
 const isSJCPending = (record: SemiJobCardRecord): boolean => {
@@ -129,23 +114,25 @@ const isSJCPending = (record: SemiJobCardRecord): boolean => {
     return hasPlanned && !hasActual;
 };
 
-const uploadImageToDrive = async (file: File, fileName: string): Promise<string> => {
-    const base64Data = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(file);
-    });
-    const formData = new FormData();
-    formData.append('action', 'uploadFile');
-    formData.append('fileName', fileName);
-    formData.append('mimeType', file.type);
-    formData.append('base64Data', base64Data);
-    formData.append('folderId', DRIVE_FOLDER_ID);
-    const response = await fetch(WEB_APP_URL, { method: 'POST', mode: 'cors', body: formData });
-    if (!response.ok) throw new Error(`Upload failed: ${response.status}`);
-    const result = await response.json();
-    if (!result.success) throw new Error(result.error || 'Upload failed');
-    return result.fileUrl;
+const uploadImageToStorage = async (file: File, fileName: string): Promise<string> => {
+    const extension = file.name.split('.').pop() || 'jpg';
+    const safeFileName = fileName.replace(/\.[^.]+$/, '');
+    const filePath = `${safeFileName}.${extension}`;
+
+    const { error: uploadError } = await supabase.storage
+        .from(SEMI_FINISHED_IMAGES_BUCKET)
+        .upload(filePath, file, {
+            contentType: file.type || 'image/jpeg',
+            upsert: true,
+        });
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage
+        .from(SEMI_FINISHED_IMAGES_BUCKET)
+        .getPublicUrl(filePath);
+
+    return data.publicUrl;
 };
 
 // ==================== MAIN COMPONENT ====================
@@ -184,11 +171,8 @@ export default function SemiActualProductionPage() {
         endProductQty: '',
         startingReading: '',
         endingReading: '',
+        machineRunningHour: '',
     });
-
-    const { fetchData: fetchSemiJobCardData } = useGoogleSheet(SEMI_JOB_CARD_SHEET);
-    const { fetchData: fetchSemiActualRawData } = useGoogleSheet(SEMI_ACTUAL_SHEET);
-    const { fetchData: fetchMasterData } = useGoogleSheet(MASTER_SHEET);
 
     useEffect(() => {
         if (!successMessage) return;
@@ -201,81 +185,22 @@ export default function SemiActualProductionPage() {
         setLoadError('');
         try {
             const [sjcTable, actualTable, masterTable] = await Promise.all([
-                fetchSemiJobCardData(),
-                fetchSemiActualRawData(),
-                fetchMasterData(),
+                fetchSemiJobCardRows(),
+                fetchSemiActualRows(),
+                fetchMasterRows(),
             ]);
 
-            // Process Semi Job Card
-            const sjcRows = processGvizTable(sjcTable);
-            const jobCards: SemiJobCardRecord[] = sjcRows
-                .filter((row: any) => row.B && typeof row.B === 'string' && row.B.startsWith('SJC-'))
-                .map((row: any) => ({
-                    _rowIndex: row._rowIndex,
-                    timestamp: row.A ? format(parseGvizDate(row.A) || new Date(), "dd/MM/yy HH:mm:ss") : "",
-                    sjcSrNo: String(row.B || ""),
-                    sfSrNo: String(row.C || ""),
-                    supervisorName: String(row.D || ""),
-                    productName: String(row.E || ""),
-                    qty: Number(row.F || 0),
-                    dateOfProduction: row.G ? formatDisplayDate(row.G) : "",
-                    planned: row.K ? String(row.K) : "",
-                    actual: row.L ? String(row.L) : "",
-                }));
+            const jobCards: SemiJobCardRecord[] = sjcTable
+                .filter((row: any) => row.sjcSrNo && row.sjcSrNo.startsWith('SJC-'));
             setJobCardData(jobCards.sort((a, b) => b._rowIndex - a._rowIndex));
 
-            // Process Semi Actual
-            const actualRows = processGvizTable(actualTable);
-            const actuals: SemiActualRecord[] = actualRows
-                .filter((row: any) => row.Q && typeof row.Q === 'string' && row.Q.startsWith('SA-'))
-                .map((row: any) => ({
-                    _rowIndex: row._rowIndex,
-                    timestamp: row.A ? format(parseGvizDate(row.A) || new Date(), "dd/MM/yy HH:mm:ss") : "",
-                    semiFinishedJobCardNo: String(row.B || ""),
-                    supervisorName: String(row.C || ""),
-                    dateOfProduction: row.D ? formatDisplayDate(row.D) : "",
-                    productName: String(row.E || ""),
-                    qtyOfSemiFinishedGood: Number(row.F || 0),
-                    rawMaterial1Name: String(row.G || ""),
-                    rawMaterial1Qty: Number(row.H || 0),
-                    rawMaterial2Name: String(row.I || ""),
-                    rawMaterial2Qty: Number(row.J || 0),
-                    rawMaterial3Name: String(row.K || ""),
-                    rawMaterial3Qty: Number(row.L || 0),
-                    isAnyEndProduct: String(row.M || "No"),
-                    endProductRawMaterialName: String(row.N || ""),
-                    endProductQty: Number(row.O || 0),
-                    narration: String(row.P || ""),
-                    sNo: String(row.Q || ""),
-                    startingReading: Number(row.R || 0),
-                    startingReadingPhoto: String(row.S || ""),
-                    endingReading: Number(row.T || 0),
-                    endingReadingPhoto: String(row.U || ""),
-                    machineRunningHour: Number(row.V || 0),
-                    rawMaterial4Name: String(row.W || ""),
-                    rawMaterial4Qty: Number(row.X || 0),
-                    rawMaterial5Name: String(row.Y || ""),
-                    rawMaterial5Qty: Number(row.Z || 0),
-                    machineRunning: Number(row.AA || 0),
-                    sfProductionNo: String(row.AB || ""),
-                    planned1: row.AC ? formatDisplayDate(row.AC) : "",
-                    actual1: row.AD ? formatDisplayDate(row.AD) : "",
-                    timeDelay1: String(row.AE || ""),
-                    status: String(row.AF || ""),
-                    actualQty1: Number(row.AG || 0),
-                    planned2: row.AH ? formatDisplayDate(row.AH) : "",
-                    actual2: row.AI ? formatDisplayDate(row.AI) : "",
-                    timeDelay2: String(row.AJ || ""),
-                    actualQty2: Number(row.AK || 0),
-                    finalQty: Number(row.AL || 0),
-                }));
+            const actuals: SemiActualRecord[] = actualTable
+                .filter((row: any) => row.sNo && row.sNo.startsWith('SA-'));
             setSemiActualData(actuals.sort((a, b) => b._rowIndex - a._rowIndex));
 
-            // Process Master for raw materials (Column M)
-            const masterRows = processGvizTable(masterTable);
             const rmSet = new Set<string>();
-            masterRows.forEach((row: any) => {
-                const val = String(row.M || '').trim();
+            masterTable.forEach((row: any) => {
+                const val = getMasterValue(row, ["Name Of Raw Material", "Raw Material Name", "Material Name", "M"]);
                 if (val && val.length > 1 && val.length < 60 && !/^\d+$/.test(val)) {
                     rmSet.add(val);
                 }
@@ -294,7 +219,7 @@ export default function SemiActualProductionPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [fetchSemiJobCardData, fetchSemiActualRawData, fetchMasterData]);
+    }, []);
 
     useEffect(() => { loadAllData(); }, [loadAllData]);
 
@@ -306,6 +231,7 @@ export default function SemiActualProductionPage() {
             endProductQty: '',
             startingReading: '',
             endingReading: '',
+            machineRunningHour: '',
         });
         setRawMaterialRows([{ name: '', qty: '' }]);
         setStartPhotoFile(null); setEndPhotoFile(null);
@@ -359,10 +285,10 @@ export default function SemiActualProductionPage() {
             let startPhotoUrl = '';
             let endPhotoUrl = '';
             if (startPhotoFile) {
-                startPhotoUrl = await uploadImageToDrive(startPhotoFile, `start_${selectedSjc.sjcSrNo}_${Date.now()}.jpg`);
+                startPhotoUrl = await uploadImageToStorage(startPhotoFile, `start_${selectedSjc.sjcSrNo}_${Date.now()}.jpg`);
             }
             if (endPhotoFile) {
-                endPhotoUrl = await uploadImageToDrive(endPhotoFile, `end_${selectedSjc.sjcSrNo}_${Date.now()}.jpg`);
+                endPhotoUrl = await uploadImageToStorage(endPhotoFile, `end_${selectedSjc.sjcSrNo}_${Date.now()}.jpg`);
             }
             setIsUploading(false);
 
@@ -370,49 +296,56 @@ export default function SemiActualProductionPage() {
             const paddedRM = [...rawMaterialRows];
             while (paddedRM.length < 5) paddedRM.push({ name: '', qty: '' });
 
-            const machineHours = (Number(formData.endingReading) - Number(formData.startingReading)) || 0;
-            const timestamp = format(new Date(), "dd/MM/yy HH:mm:ss");
-
-            const rowData = [
-                timestamp,                                      // A - Timestamp
-                selectedSjc.sjcSrNo,                           // B - SJC No
-                selectedSjc.supervisorName,                    // C - Supervisor
-                selectedSjc.dateOfProduction,                  // D - Date of Production
-                selectedSjc.productName,                       // E - Product Name
-                Number(formData.qtyOfSemiFinishedGood) || 0,  // F - Qty
-                paddedRM[0].name || '',                        // G - RM1 Name
-                Number(paddedRM[0].qty) || 0,                  // H - RM1 Qty
-                paddedRM[1].name || '',                        // I - RM2 Name
-                Number(paddedRM[1].qty) || 0,                  // J - RM2 Qty
-                paddedRM[2].name || '',                        // K - RM3 Name
-                Number(paddedRM[2].qty) || 0,                  // L - RM3 Qty
-                formData.isAnyEndProduct,                      // M - Is Any End Product
-                formData.endProductRawMaterialName || '',      // N - End Product RM Name
-                Number(formData.endProductQty) || 0,           // O - End Product Qty
-                '',                                            // P - Narration (empty)
-                nextSerialNo,                                  // Q - S No.
-                Number(formData.startingReading) || 0,         // R - Starting Reading
-                startPhotoUrl,                                 // S - Start Photo
-                Number(formData.endingReading) || 0,           // T - Ending Reading
-                endPhotoUrl,                                   // U - End Photo
-                machineHours >= 0 ? machineHours : 0,          // V - Machine Running Hour
-                paddedRM[3].name || '',                        // W - RM4 Name
-                Number(paddedRM[3].qty) || 0,                  // X - RM4 Qty
-                paddedRM[4].name || '',                        // Y - RM5 Name
-                Number(paddedRM[4].qty) || 0,                  // Z - RM5 Qty
-                machineHours >= 0 ? machineHours : 0,          // AA - Machine Running
-                selectedSjc.sfSrNo,                            // AB - SF Production No.
-            ];
-
-            const body = new URLSearchParams({
-                action: 'insert',
-                sheetName: SEMI_ACTUAL_SHEET,
-                rowData: JSON.stringify(rowData),
+            const calculatedMachineHours = (Number(formData.endingReading) - Number(formData.startingReading)) || 0;
+            const machineHours = formData.machineRunningHour !== ''
+                ? Number(formData.machineRunningHour)
+                : calculatedMachineHours;
+            const madeQty = Number(formData.qtyOfSemiFinishedGood) || 0;
+            const { error: insertError } = await supabase.from(SEMI_ACTUAL_TABLE).insert({
+                "Timestamp": new Date().toISOString(),
+                "Semi Finished Job Card No.": selectedSjc.sjcSrNo,
+                "Supervisor Name": selectedSjc.supervisorName,
+                "Date Of Production": toSupabaseDate(selectedSjc.dateOfProduction),
+                "Product Name": selectedSjc.productName,
+                "Qty Of Semi Finished Good": madeQty,
+                "Raw Material Name 1": paddedRM[0].name || '',
+                "Quantity Of Raw Material 1": Number(paddedRM[0].qty) || 0,
+                "Raw Material Name 2": paddedRM[1].name || '',
+                "Quantity Of Raw Material 2": Number(paddedRM[1].qty) || 0,
+                "Raw Material Name 3": paddedRM[2].name || '',
+                "Quantity Of Raw Material 3": Number(paddedRM[2].qty) || 0,
+                "Raw Material Name 4": paddedRM[3].name || '',
+                "Quantity Of Raw Material 4": Number(paddedRM[3].qty) || 0,
+                "Raw Material Name 5": paddedRM[4].name || '',
+                "Quantity Of Raw Material 5": Number(paddedRM[4].qty) || 0,
+                "Is Any End Product": formData.isAnyEndProduct === "Yes",
+                "End Product Name": formData.endProductRawMaterialName || '',
+                "End Product Qty": Number(formData.endProductQty) || 0,
+                "Narration": '',
+                "S No.": nextSerialNo,
+                "Starting Reading": Number(formData.startingReading) || 0,
+                "Starting Reading Photo": startPhotoUrl,
+                "Ending Reading": Number(formData.endingReading) || 0,
+                "Ending Reading Photo": endPhotoUrl,
+                "Machine Running hour": machineHours >= 0 ? machineHours : 0,
+                "Machine Running": machineHours >= 0 ? machineHours : 0,
+                "Semi Finished Production No.": selectedSjc.sfSrNo,
+                "Planned1": new Date().toISOString().slice(0, 10),
             });
+            if (insertError) throw insertError;
 
-            const res = await fetch(WEB_APP_URL, { method: 'POST', body });
-            const result = await res.json();
-            if (!result.success) throw new Error(result.error || 'Failed to save.');
+            const nextActualMade = Number(selectedSjc.actualMade || 0) + madeQty;
+            const nextPending = Math.max(Number(selectedSjc.qty || 0) - nextActualMade, 0);
+            const { error: updateError } = await supabase
+                .from(SEMI_JOB_CARD_TABLE)
+                .update({
+                    "Actual Made": nextActualMade,
+                    "Pending": nextPending,
+                    "Actual": nextPending <= 0 ? new Date().toISOString().slice(0, 10) : null,
+                    "Status": nextPending <= 0 ? "COMPLETED" : "PENDING",
+                })
+                .eq("id", selectedSjc._rowIndex);
+            if (updateError) throw updateError;
 
             setSuccessMessage(`Production entry ${nextSerialNo} logged successfully!`);
             setIsModalOpen(false);
@@ -846,6 +779,18 @@ export default function SemiActualProductionPage() {
                                                 placeholder="Enter ending reading"
                                                 value={formData.endingReading}
                                                 onChange={e => setFormData({ ...formData, endingReading: e.target.value })}
+                                                className="focus-visible:ring-olive-500"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label className="text-[10px] text-slate-500 uppercase font-semibold">Machine Running Hour</Label>
+                                            <Input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                placeholder="Enter running hour"
+                                                value={formData.machineRunningHour}
+                                                onChange={e => setFormData({ ...formData, machineRunningHour: e.target.value })}
                                                 className="focus-visible:ring-olive-500"
                                             />
                                         </div>
