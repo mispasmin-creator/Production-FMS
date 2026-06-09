@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { Loader2, AlertTriangle, FileText, History, Package, DollarSign, Clock, User, Building, Hash, CheckCircle, Calendar, Eye } from "lucide-react"
+import { useState, useEffect, useCallback, useMemo } from "react"
+import { Loader2, AlertTriangle, FileText, History, Package, DollarSign, Clock, User, Building, Hash, CheckCircle, Calendar, Eye, Search } from "lucide-react"
 import { format, isValid } from "date-fns"
 import { supabase } from "@/lib/supabase"
 import { useAuth, FIRM_MAP } from "@/lib/auth"
@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
+import { Input } from "@/components/ui/input"
 
 // --- Type Definitions ---
 interface RawMaterial {
@@ -99,6 +100,7 @@ export default function TallyPage() {
   const { user } = useAuth()
   const [pendingTallies, setPendingTallies] = useState<ActualProductionItem[]>([])
   const [historyTallies, setHistoryTallies] = useState<ActualProductionItem[]>([])
+  const [searchQuery, setSearchQuery] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -209,6 +211,28 @@ export default function TallyPage() {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  const filteredPending = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return pendingTallies
+    return pendingTallies.filter(item =>
+      (item.jobCardNo || "").toLowerCase().includes(q) ||
+      (item.firmName || "").toLowerCase().includes(q) ||
+      (item.productName || "").toLowerCase().includes(q) ||
+      (item.partyName || "").toLowerCase().includes(q)
+    )
+  }, [pendingTallies, searchQuery])
+
+  const filteredHistory = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return historyTallies
+    return historyTallies.filter(item =>
+      (item.jobCardNo || "").toLowerCase().includes(q) ||
+      (item.firmName || "").toLowerCase().includes(q) ||
+      (item.productName || "").toLowerCase().includes(q) ||
+      (item.partyName || "").toLowerCase().includes(q)
+    )
+  }, [historyTallies, searchQuery])
 
   const handleVerify = (tally: ActualProductionItem) => {
     setSelectedTally(tally)
@@ -355,26 +379,37 @@ export default function TallyPage() {
         </CardHeader>
         <CardContent className="p-4 sm:p-6">
           <Tabs defaultValue="pending" className="w-full">
-            <TabsList className="grid w-full sm:w-[450px] grid-cols-2 mb-6">
-              <TabsTrigger value="pending" className="flex items-center gap-2">
-                <FileText className="h-4 w-4" /> Pending Tallies
-                <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                  {pendingTallies.length}
-                </Badge>
-              </TabsTrigger>
-              <TabsTrigger value="history" className="flex items-center gap-2">
-                <History className="h-4 w-4" /> Tally History
-                <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                  {historyTallies.length}
-                </Badge>
-              </TabsTrigger>
-            </TabsList>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <TabsList className="grid w-full sm:w-[450px] grid-cols-2">
+                <TabsTrigger value="pending" className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" /> Pending Tallies
+                  <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
+                    {filteredPending.length}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger value="history" className="flex items-center gap-2">
+                  <History className="h-4 w-4" /> Tally History
+                  <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
+                    {filteredHistory.length}
+                  </Badge>
+                </TabsTrigger>
+              </TabsList>
+              <div className="relative w-full sm:w-[300px]">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search tallies..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 focus-visible:ring-olive-500"
+                />
+              </div>
+            </div>
 
             <TabsContent value="pending">
               <Card className="shadow-sm border border-border">
                 <CardHeader className="py-3 px-4 bg-olive-50 rounded-md">
                   <CardTitle className="text-md font-semibold">
-                    Pending Tallies ({pendingTallies.length})
+                    Pending Tallies ({filteredPending.length})
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -388,8 +423,8 @@ export default function TallyPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {pendingTallies.length > 0 ? (
-                          pendingTallies.map((tally, index) => (
+                        {filteredPending.length > 0 ? (
+                          filteredPending.map((tally, index) => (
                             <TableRow key={`${tally.jobCardNo}-${index}`} className="hover:bg-olive-50/50">
                               {pendingTableColumns.map((col) => (
                                 <TableCell key={col.key}>{col.render(tally)}</TableCell>
@@ -420,7 +455,7 @@ export default function TallyPage() {
               <Card className="shadow-sm border border-border">
                 <CardHeader className="py-3 px-4 bg-olive-50 rounded-md">
                   <CardTitle className="text-md font-semibold">
-                    Tally History ({historyTallies.length})
+                    Tally History ({filteredHistory.length})
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -434,8 +469,8 @@ export default function TallyPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {historyTallies.length > 0 ? (
-                          historyTallies.map((tally, index) => (
+                        {filteredHistory.length > 0 ? (
+                          filteredHistory.map((tally, index) => (
                             <TableRow key={`${tally.jobCardNo}-${index}`} className="hover:bg-olive-50/50">
                               {historyTableColumns.map((col) => (
                                 <TableCell key={col.key}>{col.render(tally)}</TableCell>

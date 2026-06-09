@@ -287,7 +287,7 @@ export default function KycPage() {
               placeholder="Search product or firm..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-10 h-10 rounded-xl border-gray-200 focus:ring-olive-500/20"
+              className="pl-10 h-10 rounded-xl border-gray-200 focus:ring-olive-500/20 focus-visible:ring-olive-500"
             />
           </div>
           <Button

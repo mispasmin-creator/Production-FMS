@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Loader2, AlertTriangle, DollarSign, History, Settings, Package, Building, User, Calendar, Clock, Hash, FileText, CheckCircle } from "lucide-react"
+import { Loader2, AlertTriangle, DollarSign, History, Settings, Package, Building, User, Calendar, Clock, Hash, FileText, CheckCircle, Search } from "lucide-react"
 import { format } from "date-fns"
 // Shadcn UI components
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -169,6 +169,31 @@ export default function CostingPage() {
   const [activeTab, setActiveTab] = useState("pending")
   const [visiblePendingColumns, setVisiblePendingColumns] = useState<Record<string, boolean>>({})
   const [visibleHistoryColumns, setVisibleHistoryColumns] = useState<Record<string, boolean>>({})
+  const [searchQuery, setSearchQuery] = useState("")
+
+  const filteredPending = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return pendingCosting
+    return pendingCosting.filter(item =>
+      (item.jobCardNo || "").toLowerCase().includes(q) ||
+      (item.deliveryOrderNo || "").toLowerCase().includes(q) ||
+      (item.productName || "").toLowerCase().includes(q) ||
+      (item.partyName || "").toLowerCase().includes(q) ||
+      (item.firmName || "").toLowerCase().includes(q)
+    )
+  }, [pendingCosting, searchQuery])
+
+  const filteredHistory = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return historyCosting
+    return historyCosting.filter(item =>
+      (item.jobCardNo || "").toLowerCase().includes(q) ||
+      (item.deliveryOrderNo || "").toLowerCase().includes(q) ||
+      (item.productName || "").toLowerCase().includes(q) ||
+      (item.partyName || "").toLowerCase().includes(q) ||
+      (item.firmName || "").toLowerCase().includes(q)
+    )
+  }, [historyCosting, searchQuery])
 
   useEffect(() => {
     const initializeVisibility = (columnsMeta: any[]) => {
@@ -481,20 +506,31 @@ export default function CostingPage() {
       <Card className="border-none shadow-sm bg-white">
         <CardContent className="p-4 sm:p-6">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full sm:w-[450px] grid-cols-2 mb-6 p-1 bg-slate-100 rounded-xl">
-              <TabsTrigger value="pending" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
-                <DollarSign className="h-4 w-4 mr-2" /> Pending Costing
-                <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                  {pendingCosting.length}
-                </Badge>
-              </TabsTrigger>
-              <TabsTrigger value="history" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
-                <History className="h-4 w-4 mr-2" /> Costing History
-                <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                  {historyCosting.length}
-                </Badge>
-              </TabsTrigger>
-            </TabsList>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <TabsList className="grid w-full sm:w-[450px] grid-cols-2 mb-0 p-1 bg-slate-100 rounded-xl">
+                <TabsTrigger value="pending" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
+                  <DollarSign className="h-4 w-4 mr-2" /> Pending Costing
+                  <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
+                    {filteredPending.length}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger value="history" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
+                  <History className="h-4 w-4 mr-2" /> Costing History
+                  <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
+                    {filteredHistory.length}
+                  </Badge>
+                </TabsTrigger>
+              </TabsList>
+              <div className="relative w-full sm:w-[300px]">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search costing..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 focus-visible:ring-olive-500"
+                />
+              </div>
+            </div>
 
             <TabsContent value="pending">
               <Card className="shadow-sm border border-border">
@@ -502,7 +538,7 @@ export default function CostingPage() {
                   <div className="flex justify-between items-center">
                     <CardTitle className="text-md font-semibold text-foreground">
                       <DollarSign className="h-5 w-5 text-olive-700 mr-2" />
-                      Pending Items ({pendingCosting.length})
+                      Pending Items ({filteredPending.length})
                     </CardTitle>
                     <ColumnToggler tab="pending" columnsMeta={PENDING_COLUMNS_META} />
                   </div>
@@ -518,8 +554,8 @@ export default function CostingPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {pendingCosting.length > 0 ? (
-                          pendingCosting.map((item, index) => (
+                        {filteredPending.length > 0 ? (
+                          filteredPending.map((item, index) => (
                             <TableRow key={`${item.jobCardNo}-${index}`} className="hover:bg-olive-50/50">
                               {visiblePendingColumnsMeta.map((col) => (
                                 <TableCell key={col.dataKey} className="whitespace-nowrap text-sm">
@@ -565,7 +601,7 @@ export default function CostingPage() {
                   <div className="flex justify-between items-center">
                     <CardTitle className="text-md font-semibold text-foreground">
                       <History className="h-5 w-5 text-olive-700 mr-2" />
-                      History Items ({historyCosting.length})
+                      History Items ({filteredHistory.length})
                     </CardTitle>
                     <ColumnToggler tab="history" columnsMeta={HISTORY_COLUMNS_META} />
                   </div>
@@ -581,8 +617,8 @@ export default function CostingPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {historyCosting.length > 0 ? (
-                          historyCosting.map((item, index) => (
+                        {filteredHistory.length > 0 ? (
+                          filteredHistory.map((item, index) => (
                             <TableRow key={`${item.jobCardNo}-${index}`} className="hover:bg-olive-50/50">
                               {visibleHistoryColumnsMeta.map((col) => (
                                 <TableCell key={col.dataKey} className="whitespace-nowrap text-sm">

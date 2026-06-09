@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
     Loader2, 
     AlertTriangle, 
@@ -20,7 +20,8 @@ import {
     Layers,
     FileText,
     BadgeCheck,
-    Settings
+    Settings,
+    Search
 } from 'lucide-react';
 
 // Shadcn UI components
@@ -31,6 +32,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { supabase } from "@/lib/supabase";
 import { fetchSemiActualRows, SEMI_ACTUAL_TABLE } from "@/lib/semi-finished-supabase";
 
@@ -159,6 +161,7 @@ export default function Step4List() {
     const [isMarkDoneOpen, setIsMarkDoneOpen] = useState(false);
     const [markDoneRemarks, setMarkDoneRemarks] = useState('');
     const [markDoneErrors, setMarkDoneErrors] = useState<Record<string, string>>({});
+    const [searchQuery, setSearchQuery] = useState("");
 
     // Auto-dismiss success message
     useEffect(() => {
@@ -183,7 +186,7 @@ export default function Step4List() {
             setSemiActualData(records);
         } catch (err) {
             console.error("Error loading data:", err);
-            setError(`Failed to load data: ${err.message}`);
+            setError(`Failed to load data: ${err instanceof Error ? err.message : String(err)}`);
         } finally {
             setLoading(false);
         }
@@ -193,30 +196,41 @@ export default function Step4List() {
         loadData();
     }, [loadData]);
 
+    const filteredSemiActual = useMemo(() => {
+        const q = searchQuery.toLowerCase().trim();
+        if (!q) return semiActualData;
+        return semiActualData.filter(item =>
+            (item.semiFinishedJobCardNo || "").toLowerCase().includes(q) ||
+            (item.productName || "").toLowerCase().includes(q) ||
+            (item.supervisorName || "").toLowerCase().includes(q) ||
+            (item.serialNo || "").toLowerCase().includes(q)
+        );
+    }, [semiActualData, searchQuery]);
+
     // Filter data based on tabs
     // Pending Tab: production entries where stage 1 is not done yet
-    const pendingOrders = semiActualData.filter(item => {
+    const pendingOrders = useMemo(() => filteredSemiActual.filter(item => {
         const actual1 = String(item.actual1 || '').trim();
         return actual1 === '' || actual1 === '-' || actual1 === 'null' || actual1 === 'undefined';
-    });
+    }), [filteredSemiActual]);
 
     // Production Tab: stage 1 done and stage 2 not done yet
-    const productionOrders = semiActualData.filter(item => {
+    const productionOrders = useMemo(() => filteredSemiActual.filter(item => {
         const actual1 = String(item.actual1 || '').trim();
         const actual2 = String(item.actual2 || '').trim();
         const hasActual1 = actual1 !== '' && actual1 !== '-' && actual1 !== 'null' && actual1 !== 'undefined';
         return hasActual1 &&
                (actual2 === '' || actual2 === '-' || actual2 === 'null' || actual2 === 'undefined');
-    });
+    }), [filteredSemiActual]);
 
     // History Tab: Either Actual1 OR Actual2 has a value (marked done at some stage)
-    const historyOrders = semiActualData.filter(item => {
+    const historyOrders = useMemo(() => filteredSemiActual.filter(item => {
         const actual1 = String(item.actual1 || '').trim();
         const actual2 = String(item.actual2 || '').trim();
         const hasActual1 = actual1 !== '' && actual1 !== '-' && actual1 !== 'null' && actual1 !== 'undefined';
         const hasActual2 = actual2 !== '' && actual2 !== '-' && actual2 !== 'null' && actual2 !== 'undefined';
         return hasActual1 || hasActual2;
-    });
+    }), [filteredSemiActual]);
 
     const getCurrentData = () => {
         switch (activeTab) {
@@ -303,7 +317,7 @@ export default function Step4List() {
             await loadData();
         } catch (err) {
             console.error('Error marking as done:', err);
-            setError(err.message);
+            setError(err instanceof Error ? err.message : String(err));
         } finally {
             setIsSubmitting(false);
         }
@@ -355,41 +369,52 @@ export default function Step4List() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="p-4 sm:p-6">
-                    {/* Tabs */}
-                    <div className="flex space-x-1 p-1 bg-slate-100 rounded-xl w-fit mb-6">
-                        <button
-                            onClick={() => setActiveTab('pending')}
-                            className={`flex items-center px-4 py-2 rounded-lg font-medium text-xs transition-all ${
-                                activeTab === 'pending'
-                                    ? 'bg-white text-olive-600 shadow-sm'
-                                    : 'text-slate-500 hover:text-slate-700'
-                            }`}
-                        >
-                            <Clock className="h-4 w-4 mr-2" />
-                            Supervisor ({getTabCount('pending')})
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('production')}
-                            className={`flex items-center px-4 py-2 rounded-lg font-medium text-xs transition-all ${
-                                activeTab === 'production'
-                                    ? 'bg-white text-olive-600 shadow-sm'
-                                    : 'text-slate-500 hover:text-slate-700'
-                            }`}
-                        >
-                            <Factory className="h-4 w-4 mr-2" />
-                            Production ({getTabCount('production')})
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('history')}
-                            className={`flex items-center px-4 py-2 rounded-lg font-medium text-xs transition-all ${
-                                activeTab === 'history'
-                                    ? 'bg-white text-olive-600 shadow-sm'
-                                    : 'text-slate-500 hover:text-slate-700'
-                            }`}
-                        >
-                            <History className="h-4 w-4 mr-2" />
-                            History ({getTabCount('history')})
-                        </button>
+                    {/* Tabs & Search */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                        <div className="flex space-x-1 p-1 bg-slate-100 rounded-xl w-fit">
+                            <button
+                                onClick={() => setActiveTab('pending')}
+                                className={`flex items-center px-4 py-2 rounded-lg font-medium text-xs transition-all ${
+                                    activeTab === 'pending'
+                                        ? 'bg-white text-olive-600 shadow-sm'
+                                        : 'text-slate-500 hover:text-slate-700'
+                                }`}
+                            >
+                                <Clock className="h-4 w-4 mr-2" />
+                                Supervisor ({getTabCount('pending')})
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('production')}
+                                className={`flex items-center px-4 py-2 rounded-lg font-medium text-xs transition-all ${
+                                    activeTab === 'production'
+                                        ? 'bg-white text-olive-600 shadow-sm'
+                                        : 'text-slate-500 hover:text-slate-700'
+                                }`}
+                            >
+                                <Factory className="h-4 w-4 mr-2" />
+                                Production ({getTabCount('production')})
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('history')}
+                                className={`flex items-center px-4 py-2 rounded-lg font-medium text-xs transition-all ${
+                                    activeTab === 'history'
+                                        ? 'bg-white text-olive-600 shadow-sm'
+                                        : 'text-slate-500 hover:text-slate-700'
+                                }`}
+                            >
+                                <History className="h-4 w-4 mr-2" />
+                                History ({getTabCount('history')})
+                            </button>
+                        </div>
+                        <div className="relative w-full sm:w-[300px]">
+                            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Search approval cards..."
+                                value={searchQuery}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+                                className="pl-9 focus-visible:ring-olive-500"
+                            />
+                        </div>
                     </div>
 
                     {/* Refresh Button */}

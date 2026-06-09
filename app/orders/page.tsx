@@ -19,6 +19,7 @@ import {
   Hash,
   DollarSign,
   AlertCircle,
+  Search,
 } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
@@ -126,6 +127,7 @@ const JOBCARD_COLUMNS_META = [
 
 export default function OrdersPage() {
   const { user } = useAuth();
+  const [searchQuery, setSearchQuery] = useState("");
   const [date, setDate] = useState<Date | undefined>();
   const [priority, setPriority] = useState("");
   const [priorityOptions] = useState(["Normal", "Urgent"]);
@@ -599,7 +601,23 @@ export default function OrdersPage() {
       });
     }
 
-    // 2. Then filter by Tab
+    // 2. Filter by search query
+    if (searchQuery.trim() !== "") {
+      const q = searchQuery.toLowerCase().trim();
+      baseData = baseData.filter((item) => {
+        return [
+          item.deliveryOrderNo,
+          item.firmName,
+          item.partyName,
+          item.productName,
+          item.crmName,
+          item.note,
+          item.status
+        ].some(val => String(val || "").toLowerCase().includes(q));
+      });
+    }
+
+    // 3. Then filter by Tab
     if (activeTab === "all") return baseData;
     if (activeTab === "pending")
       return baseData.filter(
@@ -612,7 +630,7 @@ export default function OrdersPage() {
     if (activeTab === "cancelled")
       return baseData.filter((item) => item.orderCancel);
     return baseData;
-  }, [productionData, activeTab, user]);
+  }, [productionData, activeTab, user, searchQuery]);
 
   const visibleColumnsMeta = useMemo(
     () => JOBCARD_COLUMNS_META.filter((col) => visibleColumns[col.dataKey]),
@@ -847,9 +865,11 @@ export default function OrdersPage() {
 
             <div className="flex items-center gap-3 w-full lg:w-auto">
               <div className="relative flex-1 lg:w-64">
-                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
-                  placeholder="Filter entries..."
+                  placeholder="Search orders..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10 h-10 rounded-xl border-gray-200 focus:ring-olive-500/20 focus:border-olive-500"
                 />
               </div>

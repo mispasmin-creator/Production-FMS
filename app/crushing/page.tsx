@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { format } from 'date-fns';
 import {
     Loader2,
@@ -18,7 +18,8 @@ import {
     HardHat,
     CheckCircle2,
     Clock,
-    FileText
+    FileText,
+    Search
 } from 'lucide-react';
 
 // Shadcn UI components
@@ -194,6 +195,7 @@ export default function Step5List() {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [selectedRecord, setSelectedRecord] = useState<CrushingRecord | null>(null);
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
 
     // Form state
     const [formData, setFormData] = useState({
@@ -320,7 +322,7 @@ if (crushingTable && crushingTable.rows && crushingTable.rows.length > 0) {
             }
         } catch (err) {
             console.error("Error loading data:", err);
-            setError(`Failed to load data: ${err.message}`);
+            setError(`Failed to load data: ${err instanceof Error ? err.message : String(err)}`);
         } finally {
             setLoading(false);
         }
@@ -329,6 +331,20 @@ if (crushingTable && crushingTable.rows && crushingTable.rows.length > 0) {
     useEffect(() => {
         loadData();
     }, [loadData]);
+
+    const filteredRecords = useMemo(() => {
+        const q = searchQuery.toLowerCase().trim();
+        if (!q) return crushingRecords;
+        return crushingRecords.filter(record => 
+            (record.crushingProductName || "").toLowerCase().includes(q) ||
+            (record.remarks || "").toLowerCase().includes(q) ||
+            (record.fg1Name || "").toLowerCase().includes(q) ||
+            (record.fg2Name || "").toLowerCase().includes(q) ||
+            (record.fg3Name || "").toLowerCase().includes(q) ||
+            (record.fg4Name || "").toLowerCase().includes(q) ||
+            (record.dateOfProduction || "").toLowerCase().includes(q)
+        );
+    }, [crushingRecords, searchQuery]);
 
     const validateForm = () => {
         const errors: Record<string, string> = {};
@@ -431,7 +447,7 @@ if (crushingTable && crushingTable.rows && crushingTable.rows.length > 0) {
             await loadData();
         } catch (err) {
             console.error('Error submitting form:', err);
-            setError(err.message);
+            setError(err instanceof Error ? err.message : String(err));
         } finally {
             setIsSubmitting(false);
         }
@@ -487,31 +503,42 @@ if (crushingTable && crushingTable.rows && crushingTable.rows.length > 0) {
                 </CardHeader>
                 <CardContent className="p-4 sm:p-6">
                     {/* Header Actions */}
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                         <div>
                             <h3 className="text-lg font-semibold text-slate-800">Crushing Records</h3>
                             <p className="text-xs text-slate-400 font-medium">
-                                {crushingRecords.length} records found
+                                {filteredRecords.length} records found ({crushingRecords.length} total)
                             </p>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <Button
-                                onClick={loadData}
-                                variant="outline"
-                                size="sm"
-                                className="h-9"
-                            >
-                                <RefreshCw className="h-4 w-4 mr-2" />
-                                Refresh
-                            </Button>
-                            <Button
-                                onClick={() => setIsDialogOpen(true)}
-                                className="bg-olive-600 text-white hover:bg-olive-700"
-                                size="sm"
-                            >
-                                <Plus className="h-4 w-4 mr-2" />
-                                New Crushing
-                            </Button>
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto">
+                            <div className="relative w-full sm:w-[250px]">
+                                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    placeholder="Search crushing..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="pl-9 focus-visible:ring-olive-500"
+                                />
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    onClick={loadData}
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-9"
+                                >
+                                    <RefreshCw className="h-4 w-4 mr-2" />
+                                    Refresh
+                                </Button>
+                                <Button
+                                    onClick={() => setIsDialogOpen(true)}
+                                    className="bg-olive-600 text-white hover:bg-olive-700"
+                                    size="sm"
+                                >
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    New Crushing
+                                </Button>
+                            </div>
                         </div>
                     </div>
 
@@ -528,8 +555,8 @@ if (crushingTable && crushingTable.rows && crushingTable.rows.length > 0) {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {crushingRecords.length > 0 ? (
-                                    crushingRecords.map((record) => (
+                                {filteredRecords.length > 0 ? (
+                                    filteredRecords.map((record) => (
                                         <TableRow key={record._rowIndex} className="hover:bg-olive-50/40">
                                             {/* Date */}
                                             <TableCell className="whitespace-nowrap">

@@ -390,7 +390,7 @@ export default function CompositionQCPage() {
               placeholder="Search by Job Card, DO No., Party or Product…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="border-0 shadow-none focus-visible:ring-0 p-0 h-auto text-sm"
+              className="border-0 shadow-none focus-visible:ring-olive-500 p-0 h-auto text-sm"
             />
           </div>
 

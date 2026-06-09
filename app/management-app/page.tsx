@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronUp,
   LayoutDashboard,
+  Search,
 } from "lucide-react";
 import { format } from "date-fns";
 import { supabase } from "@/lib/supabase";
@@ -28,6 +29,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
@@ -161,6 +163,30 @@ export default function ManagementApp() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("pending");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredPending = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return pendingItems;
+    return pendingItems.filter(item =>
+      (item.compositionNo || "").toLowerCase().includes(q) ||
+      (item.orderNo || "").toLowerCase().includes(q) ||
+      (item.partyName || "").toLowerCase().includes(q) ||
+      (item.productName || "").toLowerCase().includes(q)
+    );
+  }, [pendingItems, searchQuery]);
+
+  const filteredHistory = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return historyItems;
+    return historyItems.filter(item =>
+      (item.compositionNo || "").toLowerCase().includes(q) ||
+      (item.orderNo || "").toLowerCase().includes(q) ||
+      (item.partyName || "").toLowerCase().includes(q) ||
+      (item.productName || "").toLowerCase().includes(q) ||
+      (item.managementApprovalStatus || "").toLowerCase().includes(q)
+    );
+  }, [historyItems, searchQuery]);
 
   // Detail / Action dialog
   const [selectedItem, setSelectedItem] = useState<LabItem | null>(null);
@@ -503,20 +529,31 @@ export default function ManagementApp() {
       <Card className="border-none shadow-sm bg-white">
         <CardContent className="p-4 sm:p-6">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full sm:w-[400px] grid-cols-2 mb-6 p-1 bg-slate-100 rounded-xl">
-              <TabsTrigger value="pending" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
-                <ShieldCheck className="h-4 w-4 mr-2" /> Pending Review
-                <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                  {pendingItems.length}
-                </Badge>
-              </TabsTrigger>
-              <TabsTrigger value="history" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
-                <History className="h-4 w-4 mr-2" /> Decision History
-                <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                  {historyItems.length}
-                </Badge>
-              </TabsTrigger>
-            </TabsList>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <TabsList className="grid w-full sm:w-[400px] grid-cols-2 p-1 bg-slate-100 rounded-xl mb-0">
+                <TabsTrigger value="pending" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
+                  <ShieldCheck className="h-4 w-4 mr-2" /> Pending Review
+                  <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
+                    {filteredPending.length}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger value="history" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
+                  <History className="h-4 w-4 mr-2" /> Decision History
+                  <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
+                    {filteredHistory.length}
+                  </Badge>
+                </TabsTrigger>
+              </TabsList>
+              <div className="relative w-full sm:w-[300px]">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search decisions..."
+                  value={searchQuery}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+                  className="pl-9 focus-visible:ring-olive-500"
+                />
+              </div>
+            </div>
 
             {/* ── PENDING TAB ──────────────────────────────── */}
             <TabsContent value="pending">
@@ -525,7 +562,7 @@ export default function ManagementApp() {
                   <div className="flex justify-between items-center">
                     <CardTitle className="text-md font-semibold flex items-center gap-2">
                       <ShieldCheck className="h-5 w-5 text-olive-600" />
-                      Awaiting Management Decision ({pendingItems.length})
+                      Awaiting Management Decision ({filteredPending.length})
                     </CardTitle>
                     <ColumnToggler tab="pending" columnsMeta={PENDING_COLUMNS_META} />
                   </div>
@@ -541,8 +578,8 @@ export default function ManagementApp() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {pendingItems.length > 0 ? (
-                          pendingItems.map((item) => (
+                        {filteredPending.length > 0 ? (
+                          filteredPending.map((item) => (
                             <TableRow key={item.id} className="hover:bg-olive-50/40">
                               {visiblePendingColumnsMeta.map((col) => (
                                 <TableCell key={col.dataKey} className="whitespace-nowrap text-sm py-2 px-3">
@@ -588,7 +625,7 @@ export default function ManagementApp() {
                   <div className="flex justify-between items-center">
                     <CardTitle className="text-md font-semibold flex items-center gap-2">
                       <History className="h-5 w-5 text-olive-600" />
-                      Decision History ({historyItems.length})
+                      Decision History ({filteredHistory.length})
                     </CardTitle>
                     <ColumnToggler tab="history" columnsMeta={HISTORY_COLUMNS_META} />
                   </div>
@@ -604,8 +641,8 @@ export default function ManagementApp() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {historyItems.length > 0 ? (
-                          historyItems.map((item) => (
+                        {filteredHistory.length > 0 ? (
+                          filteredHistory.map((item) => (
                             <TableRow key={item.id} className="hover:bg-slate-50/50">
                               {visibleHistoryColumnsMeta.map((col) => (
                                 <TableCell key={col.dataKey} className="whitespace-nowrap text-sm py-2 px-3">

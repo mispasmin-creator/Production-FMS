@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Loader2, CalendarIcon, FileCheck, History, AlertTriangle, Settings, XCircle } from "lucide-react"
+import { Loader2, CalendarIcon, FileCheck, History, AlertTriangle, Settings, XCircle, Search } from "lucide-react"
 import { format } from "date-fns"
 import { supabase } from "@/lib/supabase"
 import { useAuth, FIRM_MAP } from "@/lib/auth"
@@ -119,6 +119,7 @@ const HISTORY_COLUMNS_META = [
 
 export default function JobCardsPage() {
   const { user } = useAuth()
+  const [searchQuery, setSearchQuery] = useState("")
   const [pendingOrders, setPendingOrders] = useState<Order[]>([])
   const [historyJobCards, setHistoryJobCards] = useState<JobCard[]>([])
   const [supervisors, setSupervisors] = useState<string[]>([])
@@ -322,6 +323,33 @@ export default function JobCardsPage() {
   useEffect(() => {
     loadAllData()
   }, [loadAllData])
+
+  const filteredPending = useMemo(() => {
+    return pendingOrders.filter((item) => {
+      return searchQuery.trim() === "" || [
+        item.deliveryOrderNo,
+        item.firmName,
+        item.partyName,
+        item.productName,
+        item.priority
+      ].some(val => String(val || "").toLowerCase().includes(searchQuery.toLowerCase().trim()))
+    })
+  }, [pendingOrders, searchQuery])
+
+  const filteredHistory = useMemo(() => {
+    return historyJobCards.filter((item) => {
+      return searchQuery.trim() === "" || [
+        item.jobCardNo,
+        item.firmName,
+        item.supervisorName,
+        item.deliveryOrderNo,
+        item.partyName,
+        item.productName,
+        item.notes,
+        item.shift
+      ].some(val => String(val || "").toLowerCase().includes(searchQuery.toLowerCase().trim()))
+    })
+  }, [historyJobCards, searchQuery])
 
   const handleOpenDialog = (order: Order) => {
     setSelectedOrder(order)
@@ -541,18 +569,29 @@ export default function JobCardsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4 sm:p-6 lg:p-8">
+          {/* Search Bar */}
+          <div className="relative mb-6 w-full max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              placeholder="Search by JC No, DO No, Product or Party..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 h-10 rounded-xl border-gray-200 focus:ring-olive-500/20 focus:border-olive-500 bg-white text-sm"
+            />
+          </div>
+
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
             <TabsList className="grid w-full sm:w-[450px] grid-cols-2 mb-6">
               <TabsTrigger value="pending" className="flex items-center gap-2">
                 <FileCheck className="h-4 w-4" /> Pending Orders{" "}
                 <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                  {pendingOrders.length}
+                  {searchQuery ? `${filteredPending.length} / ${pendingOrders.length}` : pendingOrders.length}
                 </Badge>
               </TabsTrigger>
               <TabsTrigger value="history" className="flex items-center gap-2">
                 <History className="h-4 w-4" /> Job Card History{" "}
                 <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                  {historyJobCards.length}
+                  {searchQuery ? `${filteredHistory.length} / ${historyJobCards.length}` : historyJobCards.length}
                 </Badge>
               </TabsTrigger>
             </TabsList>
@@ -563,7 +602,7 @@ export default function JobCardsPage() {
                   <div className="flex flex-wrap justify-between items-center bg-olive-50 rounded-md p-2 gap-4">
                     <CardTitle className="flex items-center text-md font-semibold text-foreground">
                       <FileCheck className="h-5 w-5 text-primary mr-2" />
-                      Pending for Production ({pendingOrders.length})
+                      Pending for Production ({searchQuery ? `${filteredPending.length} / ${pendingOrders.length}` : pendingOrders.length})
                     </CardTitle>
                     <Popover>
                       <PopoverTrigger asChild>
@@ -620,7 +659,7 @@ export default function JobCardsPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="p-0 flex-1 flex flex-col">
-                  {pendingOrders.length === 0 ? (
+                  {filteredPending.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-10 px-4 text-center flex-1">
                       <FileCheck className="h-12 w-12 text-olive-500 mb-3" />
                       <p className="font-medium text-foreground">No Pending Orders Found</p>
@@ -629,7 +668,7 @@ export default function JobCardsPage() {
                     <div className="overflow-x-auto w-full rounded-b-lg" style={{ maxHeight: "60vh" }}>
                       <Table>
                         <TableHeader className="bg-muted/50 sticky top-0 z-10">
-                          <TableRow>
+                           <TableRow>
                             {visiblePendingOrdersColumns.map((col) => (
                               <TableHead key={col.dataKey} className="whitespace-nowrap text-xs">
                                 {col.header}
@@ -638,7 +677,7 @@ export default function JobCardsPage() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {pendingOrders.map((order) => (
+                          {filteredPending.map((order) => (
                             <TableRow key={order.key} className="hover:bg-olive-50/50">
                               {visiblePendingOrdersColumns.map((column) => (
                                 <TableCell
@@ -677,7 +716,7 @@ export default function JobCardsPage() {
                   <div className="flex flex-wrap justify-between items-center bg-olive-50 rounded-md p-2 gap-4">
                     <CardTitle className="flex items-center text-md font-semibold text-foreground">
                       <History className="h-5 w-5 text-primary mr-2" />
-                      Job Card History ({historyJobCards.length})
+                      Job Card History ({searchQuery ? `${filteredHistory.length} / ${historyJobCards.length}` : historyJobCards.length})
                     </CardTitle>
                     <Popover>
                       <PopoverTrigger asChild>
@@ -734,7 +773,7 @@ export default function JobCardsPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="p-0 flex-1 flex flex-col">
-                  {historyJobCards.length === 0 ? (
+                  {filteredHistory.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-10 text-center flex-1">
                       <History className="h-12 w-12 text-olive-500 mb-3" />
                       <p className="font-medium text-foreground">No Job Cards Found</p>
@@ -752,7 +791,7 @@ export default function JobCardsPage() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {historyJobCards.map((card) => (
+                          {filteredHistory.map((card) => (
                             <TableRow key={card.key} className="hover:bg-olive-50/50">
                               {visibleHistoryJobCardsColumns.map((column) => (
                                 <TableCell

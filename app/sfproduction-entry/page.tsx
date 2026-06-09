@@ -1,11 +1,11 @@
 "use client"
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { format } from 'date-fns';
 import {
     Loader2, AlertTriangle, RefreshCw, ClipboardList, History,
     FileCheck, Clock, Zap, Camera, Upload, Save, Eye, X, Plus,
-    Pencil, Target, Settings
+    Pencil, Target, Settings, Search
 } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
@@ -148,6 +148,7 @@ export default function SemiActualProductionPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [loadError, setLoadError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
 
     const [jobCardData, setJobCardData] = useState<SemiJobCardRecord[]>([]);
     const [semiActualData, setSemiActualData] = useState<SemiActualRecord[]>([]);
@@ -360,8 +361,33 @@ export default function SemiActualProductionPage() {
         }
     };
 
-    const pendingJobCards = jobCardData.filter(isSJCPending);
-    const historyEntries = semiActualData;
+    const filteredPending = useMemo(() => {
+        const q = searchQuery.toLowerCase().trim();
+        const pending = jobCardData.filter(isSJCPending);
+        if (!q) return pending;
+        return pending.filter(item =>
+            (item.sjcSrNo || "").toLowerCase().includes(q) ||
+            (item.sfSrNo || "").toLowerCase().includes(q) ||
+            (item.productName || "").toLowerCase().includes(q) ||
+            (item.supervisorName || "").toLowerCase().includes(q)
+        );
+    }, [jobCardData, searchQuery]);
+
+    const filteredHistory = useMemo(() => {
+        const q = searchQuery.toLowerCase().trim();
+        if (!q) return semiActualData;
+        return semiActualData.filter(item =>
+            (item.sNo || "").toLowerCase().includes(q) ||
+            (item.semiFinishedJobCardNo || "").toLowerCase().includes(q) ||
+            (item.sfProductionNo || "").toLowerCase().includes(q) ||
+            (item.productName || "").toLowerCase().includes(q) ||
+            (item.supervisorName || "").toLowerCase().includes(q) ||
+            (item.status || "").toLowerCase().includes(q)
+        );
+    }, [semiActualData, searchQuery]);
+
+    const pendingJobCards = filteredPending;
+    const historyEntries = filteredHistory;
 
     // ==================== RENDER ====================
     if (isLoading) {
@@ -411,34 +437,45 @@ export default function SemiActualProductionPage() {
                 </Button>
             </div>
 
-            {/* ── Tabs ── */}
-            <div className="bg-slate-100 rounded-xl p-1 flex gap-1 w-fit">
-                <button
-                    onClick={() => setActiveTab('pending')}
-                    className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === 'pending'
-                        ? 'bg-white text-olive-700 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700'
-                        }`}
-                >
-                    <Pencil size={14} />
-                    Pending Tests
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${activeTab === 'pending' ? 'bg-olive-100 text-olive-700' : 'bg-slate-200 text-slate-600'}`}>
-                        {pendingJobCards.length}
-                    </span>
-                </button>
-                <button
-                    onClick={() => setActiveTab('history')}
-                    className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === 'history'
-                        ? 'bg-white text-olive-700 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700'
-                        }`}
-                >
-                    <Clock size={14} />
-                    Test History
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${activeTab === 'history' ? 'bg-olive-100 text-olive-700' : 'bg-slate-200 text-slate-600'}`}>
-                        {historyEntries.length}
-                    </span>
-                </button>
+            {/* ── Tabs & Search ── */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="bg-slate-100 rounded-xl p-1 flex gap-1 w-fit">
+                    <button
+                        onClick={() => setActiveTab('pending')}
+                        className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === 'pending'
+                            ? 'bg-white text-olive-700 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                    >
+                        <Pencil size={14} />
+                        Pending Tests
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${activeTab === 'pending' ? 'bg-olive-100 text-olive-700' : 'bg-slate-200 text-slate-600'}`}>
+                            {pendingJobCards.length}
+                        </span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('history')}
+                        className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === 'history'
+                            ? 'bg-white text-olive-700 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                    >
+                        <Clock size={14} />
+                        Test History
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${activeTab === 'history' ? 'bg-olive-100 text-olive-700' : 'bg-slate-200 text-slate-600'}`}>
+                            {historyEntries.length}
+                        </span>
+                    </button>
+                </div>
+                <div className="relative w-full sm:w-[300px]">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        placeholder="Search entries..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-9 focus-visible:ring-olive-500 bg-white"
+                    />
+                </div>
             </div>
 
             {/* ── Pending Tab ── */}

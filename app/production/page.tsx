@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Loader2, AlertTriangle, Settings, Plus, X, Factory, History, Eye } from "lucide-react"
+import { Loader2, AlertTriangle, Settings, Plus, X, Factory, History, Eye, Search } from "lucide-react"
 import { format } from "date-fns"
 import { supabase } from "@/lib/supabase"
 import { useAuth, FIRM_MAP } from "@/lib/auth"
@@ -188,6 +188,19 @@ const getFirmMatchValues = (firm?: string) => {
   });
 }
 
+const parseDDMMYYYY = (dateStr: string) => {
+  if (!dateStr || dateStr === "-") return null
+  const parts = dateStr.split('/')
+  if (parts.length === 3) {
+    const day = parseInt(parts[0], 10)
+    const month = parseInt(parts[1], 10) - 1
+    const year = parseInt(parts[2], 10)
+    const fullYear = year < 100 ? 2000 + year : year
+    return new Date(fullYear, month, day)
+  }
+  return null
+}
+
 export default function ProductionPage() {
   const { user } = useAuth()
   const [pendingProductions, setPendingProductions] = useState<ProductionItem[]>([])
@@ -208,6 +221,10 @@ export default function ProductionPage() {
   const [editedViewingMaterials, setEditedViewingMaterials] = useState<RawMaterial[]>([])
   const [kycPriceMap, setKycPriceMap] = useState<Record<string, number>>({})
   const isAdmin = user?.role?.toLowerCase() === "admin"
+
+  const [searchQuery, setSearchQuery] = useState("")
+  const [fromDate, setFromDate] = useState("")
+  const [toDate, setToDate] = useState("")
 
 
   useEffect(() => {
@@ -448,6 +465,87 @@ export default function ProductionPage() {
   useEffect(() => {
     loadAllData()
   }, [loadAllData])
+
+  const filteredPending = useMemo(() => {
+    return pendingProductions.filter((item) => {
+      // 1. Search Query filter
+      const matchesSearch = searchQuery.trim() === "" || [
+        item.jobCardNo,
+        item.partyName,
+        item.productName,
+        item.deliveryOrderNo,
+        item.supervisorName,
+        item.firmName
+      ].some(val => String(val || "").toLowerCase().includes(searchQuery.toLowerCase().trim()))
+
+      // 2. Date Range filter (on dateOfProduction)
+      let matchesDate = true
+      if (fromDate || toDate) {
+        if (item.dateOfProduction) {
+          const itemDate = parseDDMMYYYY(item.dateOfProduction)
+          if (itemDate) {
+            if (fromDate) {
+              const from = new Date(fromDate)
+              from.setHours(0, 0, 0, 0)
+              if (itemDate < from) matchesDate = false
+            }
+            if (toDate) {
+              const to = new Date(toDate)
+              to.setHours(23, 59, 59, 999)
+              if (itemDate > to) matchesDate = false
+            }
+          } else {
+            matchesDate = false
+          }
+        } else {
+          matchesDate = false
+        }
+      }
+
+      return matchesSearch && matchesDate
+    })
+  }, [pendingProductions, searchQuery, fromDate, toDate])
+
+  const filteredHistory = useMemo(() => {
+    return historyProductions.filter((item) => {
+      // 1. Search Query filter
+      const matchesSearch = searchQuery.trim() === "" || [
+        item.jobCardNo,
+        item.partyName,
+        item.productName,
+        item.deliveryOrderNo,
+        item.supervisorName,
+        item.firmName,
+        item.remarks
+      ].some(val => String(val || "").toLowerCase().includes(searchQuery.toLowerCase().trim()))
+
+      // 2. Date Range filter (on dateOfProduction)
+      let matchesDate = true
+      if (fromDate || toDate) {
+        if (item.dateOfProduction) {
+          const itemDate = parseDDMMYYYY(item.dateOfProduction)
+          if (itemDate) {
+            if (fromDate) {
+              const from = new Date(fromDate)
+              from.setHours(0, 0, 0, 0)
+              if (itemDate < from) matchesDate = false
+            }
+            if (toDate) {
+              const to = new Date(toDate)
+              to.setHours(23, 59, 59, 999)
+              if (itemDate > to) matchesDate = false
+            }
+          } else {
+            matchesDate = false
+          }
+        } else {
+          matchesDate = false
+        }
+      }
+
+      return matchesSearch && matchesDate
+    })
+  }, [historyProductions, searchQuery, fromDate, toDate])
 
   const handleOpenDialog = (jobCard: ProductionItem) => {
     setSelectedJobCard(jobCard)
@@ -781,18 +879,73 @@ export default function ProductionPage() {
       </div>
       <Card className="border-none shadow-sm bg-white">
         <CardContent className="p-2 sm:p-4 lg:p-6">
+          {/* Filters Bar */}
+          <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row flex-wrap gap-4 items-end mb-6">
+            <div className="space-y-1.5 flex-1 min-w-[200px]">
+              <Label htmlFor="search" className="text-xs font-bold text-slate-600 uppercase tracking-wider">Search</Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input
+                  id="search"
+                  placeholder="Search JC, DO, Product..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 h-10 rounded-xl border-slate-200 bg-white focus:ring-olive-500/20"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5 w-full sm:w-[150px]">
+              <Label htmlFor="fromDate" className="text-xs font-bold text-slate-600 uppercase tracking-wider">From Date</Label>
+              <Input
+                id="fromDate"
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="h-10 rounded-xl border-slate-200 bg-white focus:ring-olive-500/20"
+              />
+            </div>
+
+            <div className="space-y-1.5 w-full sm:w-[150px]">
+              <Label htmlFor="toDate" className="text-xs font-bold text-slate-600 uppercase tracking-wider">To Date</Label>
+              <Input
+                id="toDate"
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="h-10 rounded-xl border-slate-200 bg-white focus:ring-olive-500/20"
+              />
+            </div>
+
+            <div className="w-full sm:w-auto">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => {
+                  setSearchQuery("")
+                  setFromDate("")
+                  setToDate("")
+                }}
+                className="h-10 px-4 rounded-xl border-slate-200 hover:bg-slate-50 font-semibold text-sm w-full bg-white whitespace-nowrap"
+                disabled={!searchQuery && !fromDate && !toDate}
+              >
+                Clear Filters
+              </Button>
+            </div>
+          </div>
+
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid w-full sm:w-[450px] grid-cols-2 mb-6 p-1 bg-slate-100 rounded-xl">
               <TabsTrigger value="pending" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
                 <Factory className="h-4 w-4 mr-2" /> Pending
                 <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                  {pendingProductions.length}
+                  {searchQuery || fromDate || toDate ? `${filteredPending.length} / ${pendingProductions.length}` : pendingProductions.length}
                 </Badge>
               </TabsTrigger>
               <TabsTrigger value="history" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
                 <History className="h-4 w-4 mr-2" /> History
                 <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                  {historyProductions.length}
+                  {searchQuery || fromDate || toDate ? `${filteredHistory.length} / ${historyProductions.length}` : historyProductions.length}
                 </Badge>
               </TabsTrigger>
             </TabsList>
@@ -814,8 +967,8 @@ export default function ProductionPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {pendingProductions.length > 0 ? (
-                          pendingProductions.map((jobCard) => (
+                        {filteredPending.length > 0 ? (
+                          filteredPending.map((jobCard) => (
                             <TableRow key={jobCard._rowIndex} className="hover:bg-olive-50/50 transition-colors">
                               {visiblePendingColumnsMeta.map((col) => (
                                 <TableCell key={col.dataKey} className="whitespace-nowrap text-sm py-2 px-3">
@@ -866,8 +1019,8 @@ export default function ProductionPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {historyProductions.length > 0 ? (
-                          historyProductions.map((item) => (
+                        {filteredHistory.length > 0 ? (
+                          filteredHistory.map((item) => (
                             <TableRow key={item._rowIndex} className="hover:bg-olive-50/50 transition-colors">
                               {visibleHistoryColumnsMeta.map((col) => (
                                 <TableCell key={col.dataKey} className="whitespace-nowrap text-sm py-2 px-3">

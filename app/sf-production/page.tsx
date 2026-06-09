@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Loader2, AlertTriangle, Plus, X, Factory, History, Eye, RefreshCw, Ban } from 'lucide-react';
+import { Loader2, AlertTriangle, Plus, X, Factory, History, Eye, RefreshCw, Ban, Search } from 'lucide-react';
 
 // Shadcn UI components (assuming you have these installed)
 import { Button } from "@/components/ui/button";
@@ -82,6 +82,7 @@ interface SemiProductionRecord {
 
 export default function Step1List() {
     const { user } = useAuth();
+    const [searchQuery, setSearchQuery] = useState("");
     const [semiProductions, setSemiProductions] = useState<SemiProductionItem[]>([]);
     const [materialsList, setMaterialsList] = useState<string[]>([]);
     const [firmsList, setFirmsList] = useState<string[]>([]);
@@ -166,6 +167,19 @@ export default function Step1List() {
     useEffect(() => {
         loadAllData();
     }, [loadAllData]);
+
+    const filteredData = useMemo(() => {
+        return semiProductions.filter((item) => {
+            return searchQuery.trim() === "" || [
+                item.sfSrNo,
+                item.nameOfSemiFinished,
+                item.notes,
+                item.firmName,
+                item.reason,
+                item.status
+            ].some(val => String(val || "").toLowerCase().includes(searchQuery.toLowerCase().trim()))
+        })
+    }, [semiProductions, searchQuery]);
 
     // Generate SF number when modal opens
     useEffect(() => {
@@ -351,31 +365,42 @@ export default function Step1List() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="p-4 sm:p-6">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                    <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 mb-6">
                         <div>
                             <h3 className="text-lg font-semibold text-slate-800">Production Orders</h3>
                             <p className="text-xs text-slate-400 font-medium">
-                                {semiProductions.length} orders found
+                                {searchQuery ? `${filteredData.length} / ${semiProductions.length}` : semiProductions.length} orders found
                             </p>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <Button
-                                onClick={loadAllData}
-                                variant="outline"
-                                size="sm"
-                                className="h-9"
-                            >
-                                <RefreshCw className="h-4 w-4 mr-2" />
-                                Refresh
-                            </Button>
-                            <Button
-                                onClick={() => setIsDialogOpen(true)}
-                                className="bg-olive-600 text-white hover:bg-olive-700"
-                                size="sm"
-                            >
-                                <Plus className="h-4 w-4 mr-2" />
-                                New Order
-                            </Button>
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                            <div className="relative w-full sm:w-64">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                <Input
+                                    placeholder="Search semi-finished orders..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="pl-10 h-9 rounded-xl border-slate-200 bg-white text-xs focus:ring-olive-500/20 focus:border-olive-500"
+                                />
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    onClick={loadAllData}
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-9"
+                                >
+                                    <RefreshCw className="h-4 w-4 mr-2" />
+                                    Refresh
+                                </Button>
+                                <Button
+                                    onClick={() => setIsDialogOpen(true)}
+                                    className="bg-olive-600 text-white hover:bg-olive-700 h-9"
+                                    size="sm"
+                                >
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    New Order
+                                </Button>
+                            </div>
                         </div>
                     </div>
 
@@ -392,8 +417,8 @@ export default function Step1List() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {semiProductions.length > 0 ? (
-                                    semiProductions.map((item) => {
+                                {filteredData.length > 0 ? (
+                                    filteredData.map((item) => {
                                         const progress = calculateProgress(item.qty, item.totalMade);
 
                                         return (

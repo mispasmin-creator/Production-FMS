@@ -13,7 +13,8 @@ import {
   ArrowLeft,
   ShieldCheck,
   Check,
-  Beaker
+  Beaker,
+  Search
 } from "lucide-react"
 import { format } from "date-fns"
 import { supabase } from "@/lib/supabase"
@@ -63,6 +64,29 @@ export default function SampleTestPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("pending")
+  const [searchQuery, setSearchQuery] = useState("")
+
+  const filteredPending = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return pendingItems
+    return pendingItems.filter(item =>
+      (item.compositionNo || "").toLowerCase().includes(q) ||
+      (item.orderNo || "").toLowerCase().includes(q) ||
+      (item.partyName || "").toLowerCase().includes(q) ||
+      (item.productName || "").toLowerCase().includes(q)
+    )
+  }, [pendingItems, searchQuery])
+
+  const filteredHistory = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return historyItems
+    return historyItems.filter(item =>
+      (item.compositionNo || "").toLowerCase().includes(q) ||
+      (item.orderNo || "").toLowerCase().includes(q) ||
+      (item.partyName || "").toLowerCase().includes(q) ||
+      (item.productName || "").toLowerCase().includes(q)
+    )
+  }, [historyItems, searchQuery])
 
   // Modal / Action state
   const [selectedItem, setSelectedItem] = useState<SampleItem | null>(null)
@@ -264,7 +288,7 @@ export default function SampleTestPage() {
         <div className="flex gap-2">
            <Badge variant="outline" className="bg-olive-50 px-3 py-1 text-sm shadow-sm border-olive-100 text-olive-700">
              <div className="w-2 h-2 rounded-full bg-olive-500 mr-2 animate-pulse" />
-             {pendingItems.length} Pending
+             {filteredPending.length} Pending
            </Badge>
         </div>
       </div>
@@ -272,22 +296,33 @@ export default function SampleTestPage() {
       <Card className="border-none shadow-sm bg-white">
         <CardContent className="p-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full max-w-md grid-cols-2 mb-8 p-1 bg-slate-100 rounded-xl">
-              <TabsTrigger value="pending" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
-                Pending Tests
-              </TabsTrigger>
-              <TabsTrigger value="history" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
-                Test History
-              </TabsTrigger>
-            </TabsList>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+              <TabsList className="grid w-full max-w-md grid-cols-2 mb-0 p-1 bg-slate-100 rounded-xl">
+                <TabsTrigger value="pending" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
+                  Pending Tests
+                </TabsTrigger>
+                <TabsTrigger value="history" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
+                  Test History
+                </TabsTrigger>
+              </TabsList>
+              <div className="relative w-full sm:w-[300px]">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search sample tests..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 focus-visible:ring-olive-500"
+                />
+              </div>
+            </div>
 
             <TabsContent value="pending" className="mt-0">
                {loading ? (
                  <div className="flex justify-center items-center py-20"><Loader2 className="h-10 w-10 animate-spin text-olive-600" /></div>
-               ) : pendingItems.length === 0 ? (
-                 <div className="text-center py-20 border-2 border-dashed border-slate-200 rounded-3xl bg-slate-50/50">
-                    <CheckCircle2 className="h-16 w-16 text-slate-300 mx-auto mb-4" />
-                    <p className="text-slate-500 text-lg font-medium">All clear! No sample tests pending.</p>
+               ) : filteredPending.length === 0 ? (
+                 <div className="text-center py-20 border-2 border-dashed border-slate-200 rounded-3xl bg-slate-50/50 animate-fade-in flex flex-col items-center justify-center">
+                    <CheckCircle2 className="h-16 w-16 text-slate-300 mb-4" />
+                    <p className="text-slate-500 text-lg font-medium">No pending sample tests found.</p>
                  </div>
                ) : (
                  <div className="overflow-hidden border border-slate-100 rounded-2xl shadow-sm">
@@ -304,7 +339,7 @@ export default function SampleTestPage() {
                        </TableRow>
                      </TableHeader>
                      <TableBody>
-                       {pendingItems.map((item) => (
+                       {filteredPending.map((item) => (
                          <TableRow key={item.id} className="hover:bg-slate-50/50 transition-colors">
                            <TableCell className="font-bold text-olive-600">{item.compositionNo}</TableCell>
                            <TableCell className="font-medium text-slate-700">{item.productionId || "-"}</TableCell>
@@ -345,27 +380,35 @@ export default function SampleTestPage() {
                      </TableRow>
                    </TableHeader>
                    <TableBody>
-                     {historyItems.map((item) => (
-                       <TableRow key={item.id}>
-                         <TableCell className="font-bold text-slate-600">{item.compositionNo}</TableCell>
-                         <TableCell className="text-slate-600">{item.productionId || "-"}</TableCell>
-                         <TableCell className="text-slate-600">{item.orderNo}</TableCell>
-                         <TableCell className="text-slate-600">{item.partyName || "-"}</TableCell>
-                         <TableCell className="font-medium text-slate-700">{item.productName}</TableCell>
-                         <TableCell className="text-slate-600">{item.orderQuantity || "-"}</TableCell>
-                         <TableCell>
-                            <Badge className={cn("px-2 py-1", item.sampleTestStatus === "OK" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700")}>
-                              {item.sampleTestStatus}
-                            </Badge>
-                         </TableCell>
-                         <TableCell className="text-slate-500">{item.sampleTestCompletedAt}</TableCell>
-                         <TableCell className="text-right">
-                            <Button variant="ghost" size="icon" onClick={() => openTestDialog(item)}>
-                               <Eye className="h-5 w-5 text-slate-400" />
-                            </Button>
+                     {filteredHistory.length === 0 ? (
+                       <TableRow>
+                         <TableCell colSpan={9} className="text-center py-12 text-sm text-slate-400 italic">
+                           No test history found.
                          </TableCell>
                        </TableRow>
-                     ))}
+                     ) : (
+                       filteredHistory.map((item) => (
+                         <TableRow key={item.id}>
+                           <TableCell className="font-bold text-slate-600">{item.compositionNo}</TableCell>
+                           <TableCell className="text-slate-600">{item.productionId || "-"}</TableCell>
+                           <TableCell className="text-slate-600">{item.orderNo}</TableCell>
+                           <TableCell className="text-slate-600">{item.partyName || "-"}</TableCell>
+                           <TableCell className="font-medium text-slate-700">{item.productName}</TableCell>
+                           <TableCell className="text-slate-600">{item.orderQuantity || "-"}</TableCell>
+                           <TableCell>
+                              <Badge className={cn("px-2 py-1", item.sampleTestStatus === "OK" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700")}>
+                                {item.sampleTestStatus}
+                              </Badge>
+                           </TableCell>
+                           <TableCell className="text-slate-500">{item.sampleTestCompletedAt}</TableCell>
+                           <TableCell className="text-right">
+                              <Button variant="ghost" size="icon" onClick={() => openTestDialog(item)}>
+                                 <Eye className="h-5 w-5 text-slate-400" />
+                              </Button>
+                           </TableCell>
+                         </TableRow>
+                       ))
+                     )}
                    </TableBody>
                  </Table>
                </div>

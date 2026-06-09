@@ -1,11 +1,11 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth, FIRM_MAP } from "@/lib/auth";
 import { format } from 'date-fns';
 import {
     Loader2, AlertTriangle, RefreshCw, ClipboardList, History,
-    FileCheck, X, Plus, Clock
+    FileCheck, X, Plus, Clock, Search
 } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
@@ -96,6 +96,7 @@ const isOrderPending = (record: SemiProductionRecord): boolean => {
 // ==================== MAIN COMPONENT ====================
 export default function SFJobCardPage() {
     const { user } = useAuth();
+    const [searchQuery, setSearchQuery] = useState("");
     const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedProd, setSelectedProd] = useState<SemiProductionRecord | null>(null);
@@ -260,6 +261,30 @@ export default function SFJobCardPage() {
     const pendingOrders = productionData.filter(isOrderPending);
     const historyOrders = jobCardData;
 
+    const filteredPending = useMemo(() => {
+        return pendingOrders.filter((item) => {
+            return searchQuery.trim() === "" || [
+                item.sfSrNo,
+                item.nameOfSemiFinished,
+                item.notes,
+                item.status,
+                item.firmName
+            ].some(val => String(val || "").toLowerCase().includes(searchQuery.toLowerCase().trim()))
+        })
+    }, [pendingOrders, searchQuery])
+
+    const filteredHistory = useMemo(() => {
+        return historyOrders.filter((item) => {
+            return searchQuery.trim() === "" || [
+                item.sjcSrNo,
+                item.sfSrNo,
+                item.supervisorName,
+                item.productName,
+                item.firmName
+            ].some(val => String(val || "").toLowerCase().includes(searchQuery.toLowerCase().trim()))
+        })
+    }, [historyOrders, searchQuery])
+
     // ==================== RENDER ====================
     if (isLoading) {
         return (
@@ -308,17 +333,28 @@ export default function SFJobCardPage() {
 
                 <CardContent className="p-4 sm:p-6">
                     {/* Header row */}
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                    <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 mb-6">
                         <div>
                             <h3 className="text-lg font-semibold text-slate-800">Job Card Orders</h3>
                             <p className="text-xs text-slate-400 font-medium">
-                                {pendingOrders.length} pending · {historyOrders.length} job cards
+                                {searchQuery ? `${filteredPending.length} / ${pendingOrders.length}` : pendingOrders.length} pending · {searchQuery ? `${filteredHistory.length} / ${historyOrders.length}` : historyOrders.length} job cards
                             </p>
                         </div>
-                        <Button onClick={loadAllData} variant="outline" size="sm" className="h-9">
-                            <RefreshCw className="h-4 w-4 mr-2" />
-                            Refresh
-                        </Button>
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                            <div className="relative w-full sm:w-64">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                <Input
+                                    placeholder="Search job cards..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="pl-10 h-9 rounded-xl border-slate-200 bg-white text-xs focus:ring-olive-500/20 focus:border-olive-500"
+                                />
+                            </div>
+                            <Button onClick={loadAllData} variant="outline" size="sm" className="h-9">
+                                <RefreshCw className="h-4 w-4 mr-2" />
+                                Refresh
+                            </Button>
+                        </div>
                     </div>
 
                     {/* Tabs */}
@@ -334,7 +370,7 @@ export default function SFJobCardPage() {
                             Pending Orders
                             <span className={`ml-2 px-2 py-0.5 text-xs rounded-full font-bold ${activeTab === 'pending' ? 'bg-olive-100 text-olive-700' : 'bg-slate-100 text-slate-600'
                                 }`}>
-                                {pendingOrders.length}
+                                {searchQuery ? `${filteredPending.length} / ${pendingOrders.length}` : pendingOrders.length}
                             </span>
                         </button>
 
@@ -349,14 +385,14 @@ export default function SFJobCardPage() {
                             Job Card History
                             <span className={`ml-2 px-2 py-0.5 text-xs rounded-full font-bold ${activeTab === 'history' ? 'bg-olive-100 text-olive-700' : 'bg-slate-100 text-slate-600'
                                 }`}>
-                                {historyOrders.length}
+                                {searchQuery ? `${filteredHistory.length} / ${historyOrders.length}` : historyOrders.length}
                             </span>
                         </button>
                     </div>
 
                     {/* ── Pending Orders Tab ── */}
                     {activeTab === 'pending' && (
-                        pendingOrders.length === 0 ? (
+                        filteredPending.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-16 text-center">
                                 <FileCheck className="h-16 w-16 text-olive-300 mb-4" />
                                 <p className="font-bold text-slate-600">No Pending Orders Found</p>
@@ -380,7 +416,7 @@ export default function SFJobCardPage() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {pendingOrders.map((order, index) => (
+                                        {filteredPending.map((order: SemiProductionRecord, index: number) => (
                                             <TableRow key={`pending-${order.sfSrNo}-${index}`} className="hover:bg-olive-50/40">
                                                 <TableCell className="whitespace-nowrap">
                                                     <Button
@@ -446,7 +482,7 @@ export default function SFJobCardPage() {
 
                     {/* ── Job Card History Tab ── */}
                     {activeTab === 'history' && (
-                        historyOrders.length === 0 ? (
+                        filteredHistory.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-16 text-center">
                                 <History className="h-16 w-16 text-olive-300 mb-4" />
                                 <p className="font-bold text-slate-600">No Job Cards Found</p>
@@ -467,7 +503,7 @@ export default function SFJobCardPage() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {historyOrders.map((job, index) => (
+                                        {filteredHistory.map((job: SemiJobCardRecord, index: number) => (
                                             <TableRow key={`history-${job.sjcSrNo}-${index}`} className="hover:bg-olive-50/40">
                                                 <TableCell className="whitespace-nowrap text-xs text-slate-500">
                                                     {job.timestamp || '-'}

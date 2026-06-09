@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Loader2, AlertTriangle, CalendarIcon, TestTube, History, Settings, Eye } from "lucide-react"
+import { Loader2, AlertTriangle, CalendarIcon, TestTube, History, Settings, Eye, Search } from "lucide-react"
 import { format } from "date-fns"
 import { supabase } from "@/lib/supabase"
 import { useAuth, FIRM_MAP } from "@/lib/auth"
@@ -215,6 +215,29 @@ export default function LabTesting1Page() {
   const [visiblePendingColumns, setVisiblePendingColumns] = useState<Record<string, boolean>>({})
   const [visibleHistoryColumns, setVisibleHistoryColumns] = useState<Record<string, boolean>>({})
   const [viewingMaterials, setViewingMaterials] = useState<RawMaterial[] | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
+
+  const filteredPending = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return pendingTests
+    return pendingTests.filter(item =>
+      (item.jobCardNo || "").toLowerCase().includes(q) ||
+      (item.productName || "").toLowerCase().includes(q) ||
+      (item.partyName || "").toLowerCase().includes(q) ||
+      (item.supervisorName || "").toLowerCase().includes(q)
+    )
+  }, [pendingTests, searchQuery])
+
+  const filteredHistory = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return historyTests
+    return historyTests.filter(item =>
+      (item.jobCardNo || "").toLowerCase().includes(q) ||
+      (item.productName || "").toLowerCase().includes(q) ||
+      (item.partyName || "").toLowerCase().includes(q) ||
+      (item.testedBy || "").toLowerCase().includes(q)
+    )
+  }, [historyTests, searchQuery])
 
   useEffect(() => {
     const initializeVisibility = (columnsMeta: any[]) => {
@@ -476,7 +499,10 @@ export default function LabTesting1Page() {
       setHistoryTests(filterByFirm(historyFiltered))
 
       setFlowOfMaterialOptions([...new Set((masterData || []).map((row: any) => String(row["Flow Of Material"] || "")).filter(Boolean))])
-      setStatusOptions([...new Set((masterData || []).map((row: any) => String(row["Test Status"] || "")).filter(Boolean))])
+      const statuses = [...new Set((masterData || []).map((row: any) => String(row["Test Status"] || "")).filter(Boolean))]
+      if (!statuses.includes("Tested")) statuses.push("Tested")
+      if (!statuses.includes("Non Tested")) statuses.push("Non Tested")
+      setStatusOptions(statuses)
       setTestedByOptions([...new Set((masterData || []).map((row: any) => String(row["Tested by"] || "")).filter(Boolean))])
 
     } catch (err: any) {
@@ -624,15 +650,26 @@ export default function LabTesting1Page() {
         </CardHeader>
         <CardContent className="p-4 sm:p-6 lg:p-8">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full sm:w-[450px] grid-cols-2 mb-6">
-              <TabsTrigger value="pending"><TestTube className="h-4 w-4 mr-2" /> Pending ({pendingTests.length})</TabsTrigger>
-              <TabsTrigger value="history"><History className="h-4 w-4 mr-2" /> History ({historyTests.length})</TabsTrigger>
-            </TabsList>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <TabsList className="grid w-full sm:w-[450px] grid-cols-2 mb-0">
+                <TabsTrigger value="pending"><TestTube className="h-4 w-4 mr-2" /> Pending ({filteredPending.length})</TabsTrigger>
+                <TabsTrigger value="history"><History className="h-4 w-4 mr-2" /> History ({filteredHistory.length})</TabsTrigger>
+              </TabsList>
+              <div className="relative w-full sm:w-[300px]">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search tests..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 focus-visible:ring-olive-500"
+                />
+              </div>
+            </div>
             <TabsContent value="pending">
-              <Card><CardHeader><div className="flex justify-between items-center"><CardTitle>Pending</CardTitle><ColumnToggler tab="pending" columnsMeta={PENDING_COLUMNS_META} /></div></CardHeader><CardContent><Table><TableHeader><TableRow>{visiblePendingColumnsMeta.map((c) => <TableHead key={c.dataKey}>{c.header}</TableHead>)}</TableRow></TableHeader><TableBody>{pendingTests.length > 0 ? pendingTests.map((p) => <TableRow key={p._rowIndex}>{visiblePendingColumnsMeta.map((c) => <TableCell key={c.dataKey}>{c.dataKey === 'actionColumn' ? <Button size='sm' onClick={() => handleOpenLabTesting(p)}>Perform Test</Button> : c.dataKey === 'rawMaterials' ? renderRawMaterials(p.rawMaterials) : c.dataKey === 'machineHours' ? formatMachineHours(p.machineHours) : (p as any)[c.dataKey] || '-'}</TableCell>)}</TableRow>) : <TableRow><TableCell colSpan={visiblePendingColumnsMeta.length} className="text-center py-8 text-muted-foreground">No pending tests</TableCell></TableRow>}</TableBody></Table></CardContent></Card>
+              <Card><CardHeader><div className="flex justify-between items-center"><CardTitle>Pending ({filteredPending.length})</CardTitle><ColumnToggler tab="pending" columnsMeta={PENDING_COLUMNS_META} /></div></CardHeader><CardContent><Table><TableHeader><TableRow>{visiblePendingColumnsMeta.map((c) => <TableHead key={c.dataKey}>{c.header}</TableHead>)}</TableRow></TableHeader><TableBody>{filteredPending.length > 0 ? filteredPending.map((p) => <TableRow key={p._rowIndex}>{visiblePendingColumnsMeta.map((c) => <TableCell key={c.dataKey}>{c.dataKey === 'actionColumn' ? <Button size='sm' onClick={() => handleOpenLabTesting(p)}>Perform Test</Button> : c.dataKey === 'rawMaterials' ? renderRawMaterials(p.rawMaterials) : c.dataKey === 'machineHours' ? formatMachineHours(p.machineHours) : (p as any)[c.dataKey] || '-'}</TableCell>)}</TableRow>) : <TableRow><TableCell colSpan={visiblePendingColumnsMeta.length} className="text-center py-8 text-muted-foreground">No pending tests</TableCell></TableRow>}</TableBody></Table></CardContent></Card>
             </TabsContent>
             <TabsContent value="history">
-              <Card><CardHeader><div className="flex justify-between items-center"><CardTitle>History</CardTitle><ColumnToggler tab="history" columnsMeta={HISTORY_COLUMNS_META} /></div></CardHeader><CardContent><Table><TableHeader><TableRow>{visibleHistoryColumnsMeta.map((c) => <TableHead key={c.dataKey}>{c.header}</TableHead>)}</TableRow></TableHeader><TableBody>{historyTests.length > 0 ? historyTests.map((t) => <TableRow key={t._rowIndex}>{visibleHistoryColumnsMeta.map((c) => <TableCell key={c.dataKey}>{(t as any)[c.dataKey] || '-'}</TableCell>)}</TableRow>) : <TableRow><TableCell colSpan={visibleHistoryColumnsMeta.length} className="text-center py-8 text-muted-foreground">No history</TableCell></TableRow>}</TableBody></Table></CardContent></Card>
+              <Card><CardHeader><div className="flex justify-between items-center"><CardTitle>History ({filteredHistory.length})</CardTitle><ColumnToggler tab="history" columnsMeta={HISTORY_COLUMNS_META} /></div></CardHeader><CardContent><Table><TableHeader><TableRow>{visibleHistoryColumnsMeta.map((c) => <TableHead key={c.dataKey}>{c.header}</TableHead>)}</TableRow></TableHeader><TableBody>{filteredHistory.length > 0 ? filteredHistory.map((t) => <TableRow key={t._rowIndex}>{visibleHistoryColumnsMeta.map((c) => <TableCell key={c.dataKey}>{(t as any)[c.dataKey] || '-'}</TableCell>)}</TableRow>) : <TableRow><TableCell colSpan={visibleHistoryColumnsMeta.length} className="text-center py-8 text-muted-foreground">No history</TableCell></TableRow>}</TableBody></Table></CardContent></Card>
             </TabsContent>
           </Tabs>
         </CardContent>

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Loader2, AlertTriangle, CheckCircle, History, Settings, User, Eye, Package, FlaskConical, Calendar, Hash, Building2, Tag, Layers, Clock, FileText, X } from "lucide-react"
+import { Loader2, AlertTriangle, CheckCircle, History, Settings, User, Eye, Package, FlaskConical, Calendar, Hash, Building2, Tag, Layers, Clock, FileText, X, Search } from "lucide-react"
 import { format } from "date-fns"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -348,7 +348,7 @@ function SectionHeader({ title, color = "gray" }: { title: string; color?: strin
 
 // --- Test Badge ---
 function TestBadge({ value }: { value: string }) {
-  const isPass = value === "Pass" || value === "Accepted"
+  const isPass = value === "Pass" || value === "Accepted" || value === "Tested"
   const isNA = !value || value === "N/A" || value === "null"
   if (isNA) return <Badge variant="outline" className="text-xs">N/A</Badge>
   return (
@@ -731,6 +731,55 @@ export default function CheckPage() {
   const [devshreeFormErrors, setDevshreeFormErrors] = useState<Record<string, string | null>>({})
 
   const [activeTab, setActiveTab] = useState("hemlal")
+  const [searchQuery, setSearchQuery] = useState("")
+
+  const filteredHemlal = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return hemlalPending
+    return hemlalPending.filter(item =>
+      (item.jobCardNo || "").toLowerCase().includes(q) ||
+      (item.firmName || "").toLowerCase().includes(q) ||
+      (item.productName || "").toLowerCase().includes(q) ||
+      (item.partyName || "").toLowerCase().includes(q) ||
+      (item.supervisorName || "").toLowerCase().includes(q)
+    )
+  }, [hemlalPending, searchQuery])
+
+  const filteredJitendra = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return jitendraPending
+    return jitendraPending.filter(item =>
+      (item.jobCardNo || "").toLowerCase().includes(q) ||
+      (item.firmName || "").toLowerCase().includes(q) ||
+      (item.productName || "").toLowerCase().includes(q) ||
+      (item.partyName || "").toLowerCase().includes(q) ||
+      (item.supervisorName || "").toLowerCase().includes(q)
+    )
+  }, [jitendraPending, searchQuery])
+
+  const filteredDevshree = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return devshreePending
+    return devshreePending.filter(item =>
+      (item.jobCardNo || "").toLowerCase().includes(q) ||
+      (item.firmName || "").toLowerCase().includes(q) ||
+      (item.productName || "").toLowerCase().includes(q) ||
+      (item.partyName || "").toLowerCase().includes(q) ||
+      (item.supervisorName || "").toLowerCase().includes(q)
+    )
+  }, [devshreePending, searchQuery])
+
+  const filteredHistory = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return combinedHistory
+    return combinedHistory.filter(item =>
+      (item.jobCardNo || "").toLowerCase().includes(q) ||
+      (item.firmName || "").toLowerCase().includes(q) ||
+      (item.productName || "").toLowerCase().includes(q) ||
+      (item.partyName || "").toLowerCase().includes(q) ||
+      (item.status || "").toLowerCase().includes(q)
+    )
+  }, [combinedHistory, searchQuery])
 
   // Column visibility - show alwaysVisible + non-raw-material toggleable cols by default
   const initVisibility = (meta: any[]) => {
@@ -884,6 +933,8 @@ export default function CheckPage() {
       setCombinedHistory(historyData)
 
       const statuses: string[] = [...new Set((masterData || []).map((row: any) => String(row["Test Status"] || "")).filter(Boolean))]
+      if (!statuses.includes("Tested")) statuses.push("Tested")
+      if (!statuses.includes("Non Tested")) statuses.push("Non Tested")
       setStatusOptions(statuses)
 
     } catch (err: any) {
@@ -1052,20 +1103,35 @@ export default function CheckPage() {
       <Card className="border-none shadow-sm bg-white">
         <CardContent className="p-4 sm:p-6">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full sm:w-[600px] grid-cols-3 mb-6 p-1 bg-slate-100 rounded-xl">
-              <TabsTrigger value="hemlal" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
-                <User className="h-4 w-4 mr-2" /> Supervisor
-                <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">{hemlalPending.length}</Badge>
-              </TabsTrigger>
-              <TabsTrigger value="devshree" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
-                <CheckCircle className="h-4 w-4 mr-2" /> Production Incharge
-                <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">{devshreePending.length}</Badge>
-              </TabsTrigger>
-              <TabsTrigger value="history" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
-                <History className="h-4 w-4 mr-2" /> History
-                <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">{combinedHistory.length}</Badge>
-              </TabsTrigger>
-            </TabsList>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <TabsList className="grid w-full sm:w-[800px] grid-cols-4 p-1 bg-slate-100 rounded-xl mb-0">
+                <TabsTrigger value="hemlal" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
+                  <User className="h-4 w-4 mr-2" /> Supervisor Anand
+                  <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">{filteredHemlal.length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="jitendra" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
+                  <User className="h-4 w-4 mr-2" /> Supervisor Jitendra
+                  <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">{filteredJitendra.length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="devshree" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
+                  <CheckCircle className="h-4 w-4 mr-2" /> Production Incharge
+                  <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">{filteredDevshree.length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="history" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
+                  <History className="h-4 w-4 mr-2" /> History
+                  <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">{filteredHistory.length}</Badge>
+                </TabsTrigger>
+              </TabsList>
+              <div className="relative w-full sm:w-[300px]">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search tracking..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 focus-visible:ring-olive-500"
+                />
+              </div>
+            </div>
 
             {/* ===== HEMLAL TAB ===== */}
             <TabsContent value="hemlal">
@@ -1074,7 +1140,7 @@ export default function CheckPage() {
                   <div className="flex justify-between items-center">
                     <CardTitle className="text-md font-semibold text-foreground flex items-center">
                       <User className="h-5 w-5 text-olive-600 mr-2" />
-                      Supervisor Pending ({hemlalPending.length})
+                      Supervisor Pending ({filteredHemlal.length})
                     </CardTitle>
                     <ColumnToggler
                       tab="hemlal"
@@ -1094,7 +1160,7 @@ export default function CheckPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {hemlalPending.length > 0 ? hemlalPending.map((item, index) => (
+                        {filteredHemlal.length > 0 ? filteredHemlal.map((item, index) => (
                           <TableRow key={`${item.jobCardNo}-${index}`} className="hover:bg-olive-50/50">
                             {visibleHemlalMeta.map(col => {
                               if (col.dataKey === "actionColumn") return (
@@ -1140,7 +1206,7 @@ export default function CheckPage() {
                   <div className="flex justify-between items-center">
                     <CardTitle className="text-md font-semibold text-foreground flex items-center">
                       <User className="h-5 w-5 text-olive-600 mr-2" />
-                      Jitendra Pending ({jitendraPending.length})
+                      Jitendra Pending ({filteredJitendra.length})
                     </CardTitle>
                     <ColumnToggler
                       tab="jitendra"
@@ -1160,7 +1226,7 @@ export default function CheckPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {jitendraPending.length > 0 ? jitendraPending.map((item, index) => (
+                        {filteredJitendra.length > 0 ? filteredJitendra.map((item, index) => (
                           <TableRow key={`${item.jobCardNo}-${index}`} className="hover:bg-olive-50/50">
                             {visibleJitendraMeta.map(col => {
                               if (col.dataKey === "actionColumn") return (
@@ -1206,7 +1272,7 @@ export default function CheckPage() {
                   <div className="flex justify-between items-center">
                     <CardTitle className="text-md font-semibold text-foreground flex items-center">
                       <CheckCircle className="h-5 w-5 text-olive-600 mr-2" />
-                      Devshree Pending ({devshreePending.length})
+                      Devshree Pending ({filteredDevshree.length})
                     </CardTitle>
                     <ColumnToggler
                       tab="devshree"
@@ -1226,8 +1292,8 @@ export default function CheckPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {devshreePending.length > 0 ? devshreePending.map((item, index) => (
-                          <TableRow key={`${item.jobCardNo}-${index}`} className="hover:bg-olive-50/50">
+                        {filteredDevshree.length > 0 ? filteredDevshree.map((item, idx) => (
+                          <TableRow key={`${item.jobCardNo}-${idx}`} className="hover:bg-olive-50/50">
                             {visibleDevshreeMeta.map(col => {
                               if (col.dataKey === "actionColumn") return (
                                 <TableCell key={col.dataKey} className="whitespace-nowrap">
@@ -1277,7 +1343,7 @@ export default function CheckPage() {
                   <div className="flex justify-between items-center">
                     <CardTitle className="text-md font-semibold text-foreground flex items-center">
                       <History className="h-5 w-5 text-olive-600 mr-2" />
-                      Complete History ({combinedHistory.length})
+                      Complete History ({filteredHistory.length})
                     </CardTitle>
                     <ColumnToggler
                       tab="history"
@@ -1297,7 +1363,7 @@ export default function CheckPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {combinedHistory.length > 0 ? combinedHistory.map((item, index) => (
+                        {filteredHistory.length > 0 ? filteredHistory.map((item, index) => (
                           <TableRow key={item.id || index} className="hover:bg-gray-50/50">
                             {visibleHistoryMeta.map(col => {
                               if (col.dataKey === "type") return (

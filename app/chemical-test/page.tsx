@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Loader2, AlertTriangle, Beaker, History, Settings, Eye } from "lucide-react"
+import { Loader2, AlertTriangle, Beaker, History, Settings, Eye, Search } from "lucide-react"
 import { format } from "date-fns"
 import { supabase } from "@/lib/supabase"
 import { useAuth, FIRM_MAP } from "@/lib/auth"
@@ -189,6 +189,30 @@ export default function ChemicalTestPage() {
   const [visiblePendingColumns, setVisiblePendingColumns] = useState<Record<string, boolean>>({})
   const [visibleHistoryColumns, setVisibleHistoryColumns] = useState<Record<string, boolean>>({})
   const [viewingMaterials, setViewingMaterials] = useState<RawMaterial[] | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
+
+  const filteredPending = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return pendingTests
+    return pendingTests.filter(item =>
+      (item.jobCardNo || "").toLowerCase().includes(q) ||
+      (item.productName || "").toLowerCase().includes(q) ||
+      (item.partyName || "").toLowerCase().includes(q) ||
+      (item.firmName || "").toLowerCase().includes(q)
+    )
+  }, [pendingTests, searchQuery])
+
+  const filteredHistory = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return historyTests
+    return historyTests.filter(item =>
+      (item.jobCardNo || "").toLowerCase().includes(q) ||
+      (item.productName || "").toLowerCase().includes(q) ||
+      (item.partyName || "").toLowerCase().includes(q) ||
+      (item.firmName || "").toLowerCase().includes(q) ||
+      (item.testedBy || "").toLowerCase().includes(q)
+    )
+  }, [historyTests, searchQuery])
 
   const safeFormatDate = (value: any, pattern = "dd/MM/yyyy") => {
     if (!value) return ""
@@ -374,6 +398,8 @@ export default function ChemicalTestPage() {
 
       // Set options from master data
       const statuses = [...new Set((masterData || []).map((row: any) => String(row["Test Status"] || "")).filter(Boolean))]
+      if (!statuses.includes("Tested")) statuses.push("Tested")
+      if (!statuses.includes("Non Tested")) statuses.push("Non Tested")
       setStatusOptions(statuses)
 
       const testedByOpts = [...new Set((masterData || []).map((row: any) => String(row["Tested by"] || "")).filter(Boolean))]
@@ -575,20 +601,31 @@ export default function ChemicalTestPage() {
         </CardHeader>
         <CardContent className="p-4 sm:p-6">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full sm:w-[450px] grid-cols-2 mb-6">
-              <TabsTrigger value="pending" className="flex items-center gap-2">
-                <Beaker className="h-4 w-4" /> Pending Tests
-                <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                  {pendingTests.length}
-                </Badge>
-              </TabsTrigger>
-              <TabsTrigger value="history" className="flex items-center gap-2">
-                <History className="h-4 w-4" /> Test History
-                <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                  {historyTests.length}
-                </Badge>
-              </TabsTrigger>
-            </TabsList>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <TabsList className="grid w-full sm:w-[450px] grid-cols-2 mb-0">
+                <TabsTrigger value="pending" className="flex items-center gap-2">
+                  <Beaker className="h-4 w-4" /> Pending Tests
+                  <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
+                    {filteredPending.length}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger value="history" className="flex items-center gap-2">
+                  <History className="h-4 w-4" /> Test History
+                  <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
+                    {filteredHistory.length}
+                  </Badge>
+                </TabsTrigger>
+              </TabsList>
+              <div className="relative w-full sm:w-[300px]">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search chemical tests..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 focus-visible:ring-olive-500"
+                />
+              </div>
+            </div>
 
             <TabsContent value="pending">
               <Card className="shadow-sm border border-border">
@@ -596,7 +633,7 @@ export default function ChemicalTestPage() {
                   <div className="flex justify-between items-center">
                     <CardTitle className="text-md font-semibold text-foreground">
                       <Beaker className="h-5 w-5 text-primary mr-2" />
-                      Pending Items ({pendingTests.length})
+                      Pending Items ({filteredPending.length})
                     </CardTitle>
                     <ColumnToggler tab="pending" columnsMeta={PENDING_COLUMNS_META} />
                   </div>
@@ -612,8 +649,8 @@ export default function ChemicalTestPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {pendingTests.length > 0 ? (
-                          pendingTests.map((test, index) => (
+                        {filteredPending.length > 0 ? (
+                          filteredPending.map((test, index) => (
                             <TableRow key={`${test.jobCardNo}-${index}`} className="hover:bg-olive-50/50">
                               {visiblePendingColumnsMeta.map((col) => (
                                 <TableCell key={col.dataKey} className="whitespace-nowrap text-sm">
@@ -627,11 +664,11 @@ export default function ChemicalTestPage() {
                                       Chemical Test
                                     </Button>
                                   ) : col.dataKey === "labTest1Status" ? (
-                                    <Badge variant={test.labTest1Status === "Accepted" ? "default" : "destructive"}>
+                                    <Badge variant={test.labTest1Status === "Accepted" || test.labTest1Status === "Tested" ? "default" : "destructive"}>
                                       {test.labTest1Status}
                                     </Badge>
                                   ) : col.dataKey === "labTest2Status" ? (
-                                    <Badge variant={test.labTest2Status === "Pass" ? "default" : "destructive"}>
+                                    <Badge variant={test.labTest2Status === "Pass" || test.labTest2Status === "Tested" ? "default" : "destructive"}>
                                       {test.labTest2Status}
                                     </Badge>
                                   ) : col.dataKey === "rawMaterials" ? (
@@ -671,7 +708,7 @@ export default function ChemicalTestPage() {
                   <div className="flex justify-between items-center">
                     <CardTitle className="text-md font-semibold text-foreground">
                       <History className="h-5 w-5 text-primary mr-2" />
-                      History Items ({historyTests.length})
+                      History Items ({filteredHistory.length})
                     </CardTitle>
                     <ColumnToggler tab="history" columnsMeta={HISTORY_COLUMNS_META} />
                   </div>
@@ -687,13 +724,13 @@ export default function ChemicalTestPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {historyTests.length > 0 ? (
-                          historyTests.map((test, index) => (
+                        {filteredHistory.length > 0 ? (
+                          filteredHistory.map((test, index) => (
                             <TableRow key={`${test.jobCardNo}-${index}`} className="hover:bg-olive-50/50">
                               {visibleHistoryColumnsMeta.map((col) => (
                                 <TableCell key={col.dataKey} className="whitespace-nowrap text-sm">
                                   {col.dataKey === "labTest2Status" ? (
-                                    <Badge variant={test.labTest2Status === "Pass" ? "default" : "destructive"}>
+                                    <Badge variant={test.labTest2Status === "Pass" || test.labTest2Status === "Tested" ? "default" : "destructive"}>
                                       {test.labTest2Status}
                                     </Badge>
                                   ) : (
