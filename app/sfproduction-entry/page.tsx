@@ -28,7 +28,8 @@ import {
 } from "@/lib/semi-finished-supabase";
 
 // ==================== CONSTANTS ====================
-const SEMI_FINISHED_IMAGES_BUCKET = "Semi Finished Images";
+const SEMI_FINISHED_BUCKET = "Semi Finished";
+const SEMI_FINISHED_FOLDER = "Semi Finished Images";
 const MAX_RAW_MATERIALS = 5;
 
 // ==================== TYPE DEFINITIONS ====================
@@ -117,19 +118,18 @@ const isSJCPending = (record: SemiJobCardRecord): boolean => {
 const uploadImageToStorage = async (file: File, fileName: string): Promise<string> => {
     const extension = file.name.split('.').pop() || 'jpg';
     const safeFileName = fileName.replace(/\.[^.]+$/, '');
-    const filePath = `${safeFileName}.${extension}`;
+    const filePath = `${SEMI_FINISHED_FOLDER}/${safeFileName}.${extension}`;
 
     const { error: uploadError } = await supabase.storage
-        .from(SEMI_FINISHED_IMAGES_BUCKET)
+        .from(SEMI_FINISHED_BUCKET)
         .upload(filePath, file, {
-            contentType: file.type || 'image/jpeg',
-            upsert: true,
+            contentType: file.type || 'image/jpeg'
         });
 
     if (uploadError) throw uploadError;
 
     const { data } = supabase.storage
-        .from(SEMI_FINISHED_IMAGES_BUCKET)
+        .from(SEMI_FINISHED_BUCKET)
         .getPublicUrl(filePath);
 
     return data.publicUrl;
