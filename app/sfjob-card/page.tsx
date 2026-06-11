@@ -134,6 +134,33 @@ export default function SFJobCardPage() {
 
             const productions = await fetchSemiProductionRows();
             const productionFirmByNo = new Map(productions.map((row) => [row.sfSrNo, row.firmName]));
+
+            // Build a live map of sfSrNo -> sum of actualMade from job cards
+            // This ensures "Total Made" in pending orders reflects real job card data
+            // even if semi_production."Total Made" column is stale in the DB.
+            const actualMadeBysfSrNo = new Map<string, number>();
+            semiJobCardTable.forEach((row: any) => {
+                const sfNo = String(row.sfSrNo || "");
+                const made = Number(row.actualMade || 0);
+                if (sfNo) {
+                    actualMadeBysfSrNo.set(sfNo, (actualMadeBysfSrNo.get(sfNo) || 0) + made);
+                }
+            });
+
+            // Patch each production record's totalMade AND pending with live-computed values.
+            // pending = qty - totalMade  (so it stays in sync with the actual quantity produced)
+            const patchedProductions = productions.map(p => {
+                const computedTotalMade = actualMadeBysfSrNo.has(p.sfSrNo)
+                    ? actualMadeBysfSrNo.get(p.sfSrNo)!
+                    : p.totalMade;
+                const cancelledQty = Number(p.cancelOrder) || 0;
+                const computedPending = Math.max(p.qty - computedTotalMade - cancelledQty, 0);
+                return {
+                    ...p,
+                    totalMade: computedTotalMade,
+                    pending: computedPending,
+                };
+            });
             
             // Filter by Firm
             const filterByFirm = (data: any[]) => {
@@ -149,7 +176,7 @@ export default function SFJobCardPage() {
                 });
             };
 
-            setProductionData(filterByFirm(productions).sort((a, b) => b._rowIndex - a._rowIndex));
+            setProductionData(filterByFirm(patchedProductions).sort((a, b) => b._rowIndex - a._rowIndex));
 
             const jobCards: SemiJobCardRecord[] = semiJobCardTable
                 .filter((row: any) => row.sjcSrNo && /^SJC-\d+/.test(row.sjcSrNo))
@@ -409,8 +436,6 @@ export default function SFJobCardPage() {
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">Total Qty</TableHead>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">Total Made</TableHead>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">Pending Qty</TableHead>
-                                            <TableHead className="whitespace-nowrap text-xs font-semibold">Planned (K)</TableHead>
-                                            <TableHead className="whitespace-nowrap text-xs font-semibold">Actual (L)</TableHead>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">Notes</TableHead>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">Status</TableHead>
                                         </TableRow>
@@ -446,24 +471,7 @@ export default function SFJobCardPage() {
                                                 <TableCell className="whitespace-nowrap text-sm font-medium text-amber-600">
                                                     {order.pending}
                                                 </TableCell>
-                                                <TableCell className="whitespace-nowrap">
-                                                    {order.planned ? (
-                                                        <Badge className="bg-blue-50 text-blue-600 border-0 text-xs">
-                                                            {formatDisplayDate(order.planned)}
-                                                        </Badge>
-                                                    ) : (
-                                                        <span className="text-slate-400 text-xs">Not Scheduled</span>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell className="whitespace-nowrap">
-                                                    {order.actual ? (
-                                                        <Badge className="bg-emerald-50 text-emerald-600 border-0 text-xs">
-                                                            {formatDisplayDate(order.actual)}
-                                                        </Badge>
-                                                    ) : (
-                                                        <span className="text-slate-400 text-xs">-</span>
-                                                    )}
-                                                </TableCell>
+
                                                 <TableCell className="max-w-[150px] truncate text-sm text-slate-600" title={order.notes}>
                                                     {order.notes || '-'}
                                                 </TableCell>

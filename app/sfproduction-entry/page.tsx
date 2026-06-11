@@ -24,6 +24,7 @@ import {
     getMasterValue,
     SEMI_ACTUAL_TABLE,
     SEMI_JOB_CARD_TABLE,
+    SEMI_PRODUCTION_TABLE,
     toSupabaseDate,
 } from "@/lib/semi-finished-supabase";
 
@@ -347,6 +348,25 @@ export default function SemiActualProductionPage() {
                 })
                 .eq("id", selectedSjc._rowIndex);
             if (updateError) throw updateError;
+
+            // Also update "Total Made" in semi_production table so that
+            // the "Produced" column on Semi Finished Production page and
+            // the "Total Made" column on Semi Job Card Management page show correct data.
+            if (selectedSjc.sfSrNo) {
+                const { data: spRows, error: spFetchErr } = await supabase
+                    .from(SEMI_PRODUCTION_TABLE)
+                    .select("id, \"Total Made\"")
+                    .eq("SF-Sr No.", selectedSjc.sfSrNo)
+                    .limit(1);
+                if (!spFetchErr && spRows && spRows.length > 0) {
+                    const spRow = spRows[0];
+                    const newTotalMade = Number(spRow["Total Made"] || 0) + madeQty;
+                    await supabase
+                        .from(SEMI_PRODUCTION_TABLE)
+                        .update({ "Total Made": newTotalMade })
+                        .eq("id", spRow.id);
+                }
+            }
 
             setSuccessMessage(`Production entry ${nextSerialNo} logged successfully!`);
             setIsModalOpen(false);

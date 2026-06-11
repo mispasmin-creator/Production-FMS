@@ -17,6 +17,7 @@ import { useAuth, FIRM_MAP } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import {
     fetchMasterRows,
+    fetchSemiJobCardRows,
     fetchSemiProductionRows,
     getMasterValue,
     SEMI_PRODUCTION_TABLE,
@@ -118,8 +119,36 @@ export default function Step1List() {
         setLoading(true);
         setError(null);
         try {
-            const semiItems = await fetchSemiProductionRows();
-            
+            const [semiItems, semiJobCardTable] = await Promise.all([
+                fetchSemiProductionRows(),
+                fetchSemiJobCardRows(),
+            ]);
+
+            // Build a live map of sfSrNo -> sum of actualMade from job cards
+            // so "Produced" and "Pending" columns always reflect real data.
+            const actualMadeBysfSrNo = new Map<string, number>();
+            semiJobCardTable.forEach((row: any) => {
+                const sfNo = String(row.sfSrNo || "");
+                const made = Number(row.actualMade || 0);
+                if (sfNo) {
+                    actualMadeBysfSrNo.set(sfNo, (actualMadeBysfSrNo.get(sfNo) || 0) + made);
+                }
+            });
+
+            // Patch totalMade and pending with live-computed values
+            const patchedItems = semiItems.map(p => {
+                const computedTotalMade = actualMadeBysfSrNo.has(p.sfSrNo)
+                    ? actualMadeBysfSrNo.get(p.sfSrNo)!
+                    : p.totalMade;
+                const cancelledQty = Number(p.cancelOrder) || 0;
+                const computedPending = Math.max(p.qty - computedTotalMade - cancelledQty, 0);
+                return {
+                    ...p,
+                    totalMade: computedTotalMade,
+                    pending: computedPending,
+                };
+            });
+
             // Filter by Firm
             const filterByFirm = (data: any[]) => {
                 if (!user?.firm || user?.role?.toLowerCase() === 'admin') return data;
@@ -134,7 +163,7 @@ export default function Step1List() {
                 });
             };
 
-            setSemiProductions(filterByFirm(semiItems).sort((a, b) => b._rowIndex - a._rowIndex));
+            setSemiProductions(filterByFirm(patchedItems).sort((a, b) => b._rowIndex - a._rowIndex));
 
             const masterDataRows = await fetchMasterRows();
             const materials: string[] = [...new Set(masterDataRows.map((row: any) => getMasterValue(row, ["Name Of Raw Material", "Raw Material Name", "Material Name", "M"])).filter(Boolean))] as string[];
