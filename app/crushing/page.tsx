@@ -32,13 +32,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useGoogleSheet, parseGvizDate } from "@/lib/g-sheets";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth";
+import { parseGvizDate } from "@/lib/g-sheets";
 
 // ==================== CONSTANTS ====================
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzVnLwTlFuGrlzyPSa2VWy4h9sU2EQrsuKrPLvQvhZoaoJu8GilGDc5aQTgLliUD7ss/exec";
-const CRUSHING_ACTUAL_SHEET = "Crushing Actual";
-const MASTER_SHEET = "Master";
-const DRIVE_FOLDER_ID = "1H6cGQ1zfKN4V3MSuhKSf1yjCQq591bcH";
+
 
 // ==================== TYPE DEFINITIONS ====================
 interface CrushingRecord {
@@ -59,6 +58,7 @@ interface CrushingRecord {
     endingPhoto: string;
     remarks: string;
     machineHours: number;
+    firmName?: string;
 }
 
 interface MasterItem {
@@ -69,6 +69,7 @@ interface MasterItem {
 // Column Definitions
 const CRUSHING_COLUMNS_META = [
     { header: "Date", dataKey: "date", alwaysVisible: true },
+    { header: "Firm Name", dataKey: "firmName", alwaysVisible: true },
     { header: "Product", dataKey: "product", alwaysVisible: true },
     { header: "Input Qty", dataKey: "inputQty" },
     { header: "Output", dataKey: "output" },
@@ -140,51 +141,34 @@ const formatTimestamp = (date: Date): string => {
     return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
 };
 
-const uploadImageToDrive = async (file: File, fileName: string): Promise<string> => {
+const uploadImageToStorage = async (file: File, fileName: string): Promise<string> => {
     try {
-        const formData = new FormData();
-        formData.append('action', 'uploadFile');
-        formData.append('fileName', fileName);
-        formData.append('mimeType', file.type);
+        const extension = file.name.split('.').pop() || 'jpg';
+        const safeFileName = fileName.replace(/\.[^.]+$/, '');
+        const filePath = `Images/${safeFileName}_${Date.now()}.${extension}`;
 
-        // Convert file to base64
-        const base64Data = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const base64String = reader.result as string;
-                resolve(base64String);
-            };
-            reader.readAsDataURL(file);
-        });
+        const { error: uploadError } = await supabase.storage
+            .from("Crushing")
+            .upload(filePath, file, {
+                contentType: file.type || 'image/jpeg'
+            });
 
-        formData.append('base64Data', base64Data);
-        formData.append('folderId', DRIVE_FOLDER_ID);
+        if (uploadError) throw uploadError;
 
-        const response = await fetch(WEB_APP_URL, {
-            method: 'POST',
-            mode: 'cors',
-            body: formData
-        });
+        const { data } = supabase.storage
+            .from("Crushing")
+            .getPublicUrl(filePath);
 
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const result = await response.json();
-
-        if (!result.success) {
-            throw new Error(result.error || 'Failed to upload image');
-        }
-
-        return result.fileUrl;
+        return data.publicUrl;
     } catch (error) {
-        console.error('Error uploading image:', error);
+        console.error('Error uploading image to Supabase Storage:', error);
         throw error;
     }
 };
 
 // ==================== MAIN COMPONENT ====================
 export default function Step5List() {
+    const { user } = useAuth();
     const [crushingRecords, setCrushingRecords] = useState<CrushingRecord[]>([]);
     const [crushingProducts, setCrushingProducts] = useState<string[]>([]);
     const [finishedGoods, setFinishedGoods] = useState<string[]>([]);
@@ -212,14 +196,12 @@ export default function Step5List() {
         fg4Qty: '',
         remarks: '',
         machineHours: '',
+        firmName: '',
     });
 
     const [startingPhoto, setStartingPhoto] = useState<File | null>(null);
     const [endingPhoto, setEndingPhoto] = useState<File | null>(null);
     const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-
-    const { fetchData: fetchCrushingData } = useGoogleSheet(CRUSHING_ACTUAL_SHEET, { headers: 0 });
-    const { fetchData: fetchMasterData } = useGoogleSheet(MASTER_SHEET, { headers: 0 });
 
     // Auto-dismiss success message
     useEffect(() => {
@@ -233,100 +215,67 @@ export default function Step5List() {
         setError(null);
         
         try {
-            const [crushingTable, masterTable] = await Promise.all([
-                fetchCrushingData(),
-                fetchMasterData(),
+            const [crushingResult, masterResult] = await Promise.all([
+                supabase.from('crushing_actual').select('*').order('id', { ascending: false }),
+                supabase.from('master').select('*')
             ]);
 
-            // Process Crushing Actual data - FIXED COLUMN MAPPING
-           // Process Crushing Actual data - FIXED HEADER SKIPPING
-if (crushingTable && crushingTable.rows && crushingTable.rows.length > 0) {
-    // Skip the first 5 header rows (adjust this number if needed)
-    const HEADER_ROWS_TO_SKIP = 1;
-    const dataRows = crushingTable.rows.slice(HEADER_ROWS_TO_SKIP);
+            if (crushingResult.error) throw crushingResult.error;
+            if (masterResult.error) throw masterResult.error;
 
-    const records: CrushingRecord[] = dataRows
-        .map((row: any, index: number) => {
-            if (!row || !row.c || row.c.every((cell: any) => !cell || cell.v === null || cell.v === '')) {
-                return null;
-            }
+            const crushingRows = crushingResult.data || [];
+            const masterRows = masterResult.data || [];
 
-            return {
-                _rowIndex: HEADER_ROWS_TO_SKIP + index + 1,
-                timestamp: row.c[0]?.v || '',
-                dateOfProduction: row.c[1]?.v || '',
-                crushingProductName: row.c[2]?.v || '',
-                inputQty: Number(row.c[3]?.v || 0),
-                fg1Name: row.c[4]?.v || '',
-                fg1Qty: Number(row.c[5]?.v || 0),
-                fg2Name: row.c[6]?.v || '',
-                fg2Qty: Number(row.c[7]?.v || 0),
-                fg3Name: row.c[8]?.v || '',
-                fg3Qty: Number(row.c[9]?.v || 0),
-                fg4Name: row.c[10]?.v || '',
-                fg4Qty: Number(row.c[11]?.v || 0),
-                startingPhoto: row.c[12]?.v || '',
-                endingPhoto: row.c[13]?.v || '',
-                remarks: row.c[14]?.v || '',
-                machineHours: Number(row.c[15]?.v || 0),
-            };
-        })
-        .filter(Boolean) as CrushingRecord[];
+            // Process Crushing Actual records
+            const records: CrushingRecord[] = crushingRows.map((row: any) => ({
+                _rowIndex: Number(row.id || 0),
+                timestamp: row.Timestamp || '',
+                dateOfProduction: row['Date Of Production'] || '',
+                crushingProductName: row['Crushing Product Name'] || '',
+                inputQty: Number(row['Qty Of Crushing Product'] || 0),
+                fg1Name: row['Finished Goods Name 1'] || '',
+                fg1Qty: Number(row['Qty 1'] || 0),
+                fg2Name: row['Finished Goods Name 2'] || '',
+                fg2Qty: Number(row['Qty 2'] || 0),
+                fg3Name: row['Finished Goods Name 3'] || '',
+                fg3Qty: Number(row['Qty 3'] || 0),
+                fg4Name: row['Finished Goods Name 4'] || '',
+                fg4Qty: Number(row['Qty 4'] || 0),
+                startingPhoto: row['Starting Reading Photo'] || '',
+                endingPhoto: row['Ending Reading Photo'] || '',
+                remarks: row['Remarks'] || '',
+                machineHours: Number(row['Machine Running Hour'] || 0),
+                firmName: row['Firm Name'] || '',
+            }));
+            
+            setCrushingRecords(records.sort((a, b) => b._rowIndex - a._rowIndex));
 
-    setCrushingRecords(records.sort((a, b) => b._rowIndex - a._rowIndex));
-} else {
-    setCrushingRecords([]);
-}
-
-            // Process Master sheet data
-            if (masterTable && masterTable.rows && masterTable.rows.length > 0) {
-                // Find first data row
-                const firstDataRowIndex = masterTable.rows.findIndex((r: any) => 
-                    r && r.c && r.c.some((cell: any) => cell && cell.v !== null && cell.v !== '')
-                );
-                
-                if (firstDataRowIndex !== -1) {
-                    const dataRows = masterTable.rows.slice(firstDataRowIndex);
-                    
-                    const crushingProductsSet = new Set<string>();
-                    const finishedGoodsSet = new Set<string>();
-                    
-                    dataRows.forEach((row: any) => {
-                        if (!row || !row.c) return;
-                        
-                        // Column O is index 14 (Crushing Product Name)
-                        const crushingValue = row.c[14]?.v;
-                        if (crushingValue) {
-                            crushingProductsSet.add(String(crushingValue).trim());
-                        }
-                        
-                        // Column N is index 13 (Finished Goods Name)
-                        const finishedValue = row.c[13]?.v;
-                        if (finishedValue) {
-                            finishedGoodsSet.add(String(finishedValue).trim());
-                        }
-                    });
-                    
-                    setCrushingProducts(Array.from(crushingProductsSet).sort());
-                    setFinishedGoods(Array.from(finishedGoodsSet).sort());
-                    
-                    console.log('Crushing Products:', Array.from(crushingProductsSet)); // Debug log
-                    console.log('Finished Goods:', Array.from(finishedGoodsSet)); // Debug log
-                } else {
-                    setCrushingProducts([]);
-                    setFinishedGoods([]);
+            // Process Master data
+            const crushingProductsSet = new Set<string>();
+            const finishedGoodsSet = new Set<string>();
+            
+            masterRows.forEach((row: any) => {
+                const crushingValue = row['Crushing Product Name'];
+                if (crushingValue) {
+                    crushingProductsSet.add(String(crushingValue).trim());
                 }
-            } else {
-                setCrushingProducts([]);
-                setFinishedGoods([]);
-            }
+                
+                const finishedValue = row['Finished Goods Name'];
+                if (finishedValue) {
+                    finishedGoodsSet.add(String(finishedValue).trim());
+                }
+            });
+            
+            setCrushingProducts(Array.from(crushingProductsSet).sort());
+            setFinishedGoods(Array.from(finishedGoodsSet).sort());
+            
         } catch (err) {
-            console.error("Error loading data:", err);
+            console.error("Error loading data from Supabase:", err);
             setError(`Failed to load data: ${err instanceof Error ? err.message : String(err)}`);
         } finally {
             setLoading(false);
         }
-    }, [fetchCrushingData, fetchMasterData]);
+    }, []);
 
     useEffect(() => {
         loadData();
@@ -338,6 +287,7 @@ if (crushingTable && crushingTable.rows && crushingTable.rows.length > 0) {
         return crushingRecords.filter(record => 
             (record.crushingProductName || "").toLowerCase().includes(q) ||
             (record.remarks || "").toLowerCase().includes(q) ||
+            (record.firmName || "").toLowerCase().includes(q) ||
             (record.fg1Name || "").toLowerCase().includes(q) ||
             (record.fg2Name || "").toLowerCase().includes(q) ||
             (record.fg3Name || "").toLowerCase().includes(q) ||
@@ -352,6 +302,7 @@ if (crushingTable && crushingTable.rows && crushingTable.rows.length > 0) {
         if (!formData.crushingProductName) errors.crushingProductName = "Product name is required";
         if (!formData.inputQty || Number(formData.inputQty) <= 0) errors.inputQty = "Valid input quantity is required";
         if (!formData.machineHours || Number(formData.machineHours) <= 0) errors.machineHours = "Machine hours are required";
+        if (user?.role === 'admin' && !formData.firmName) errors.firmName = "Firm name is required";
         
         setFormErrors(errors);
         return Object.keys(errors).length === 0;
@@ -371,54 +322,44 @@ if (crushingTable && crushingTable.rows && crushingTable.rows.length > 0) {
             let endPhotoUrl = '';
 
             if (startingPhoto) {
-                const fileName = `START_${Date.now()}.jpg`;
-                startPhotoUrl = await uploadImageToDrive(startingPhoto, fileName);
+                const fileName = `START_${Date.now()}`;
+                startPhotoUrl = await uploadImageToStorage(startingPhoto, fileName);
             }
             if (endingPhoto) {
-                const fileName = `END_${Date.now()}.jpg`;
-                endPhotoUrl = await uploadImageToDrive(endingPhoto, fileName);
+                const fileName = `END_${Date.now()}`;
+                endPhotoUrl = await uploadImageToStorage(endingPhoto, fileName);
             }
 
-            const timestamp = formatTimestamp(new Date());
+            const timestamp = new Date().toISOString();
 
-            // Prepare row data for Crushing Actual sheet - FIXED COLUMN MAPPING
-            const rowData = [
-                timestamp,                          // Col A: Timestamp
-                formData.dateOfProduction,          // Col B: Date Of Production
-                formData.crushingProductName,       // Col C: Crushing Product Name
-                Number(formData.inputQty),          // Col D: Input Qty
-                formData.fg1Name || '',             // Col E: Finished Goods Name 1
-                Number(formData.fg1Qty) || 0,       // Col F: Qty 1
-                formData.fg2Name || '',             // Col G: Finished Goods Name 2
-                Number(formData.fg2Qty) || 0,       // Col H: Qty 2
-                formData.fg3Name || '',             // Col I: Finished Goods Name 3
-                Number(formData.fg3Qty) || 0,       // Col J: Qty 3
-                formData.fg4Name || '',             // Col K: Finished Goods Name 4
-                Number(formData.fg4Qty) || 0,       // Col L: Qty 4
-                startPhotoUrl,                       // Col M: Starting Photo
-                endPhotoUrl,                         // Col N: Ending Photo
-                formData.remarks || '',              // Col O: Remarks
-                Number(formData.machineHours) || 0,  // Col P: Machine Hours
-            ];
+            // Determine firm name based on user role
+            const firmNameValue = user?.role === 'admin' ? formData.firmName : (user?.firm || '');
 
-            console.log('Submitting row data:', rowData); // Debug log
+            // Insert new crushing record into Supabase
+            const { error: insertError } = await supabase
+                .from('crushing_actual')
+                .insert({
+                    "Timestamp": timestamp,
+                    "Date Of Production": formData.dateOfProduction,
+                    "Crushing Product Name": formData.crushingProductName,
+                    "Qty Of Crushing Product": Number(formData.inputQty),
+                    "Finished Goods Name 1": formData.fg1Name || '',
+                    "Qty 1": Number(formData.fg1Qty) || 0,
+                    "Finished Goods Name 2": formData.fg2Name || '',
+                    "Qty 2": Number(formData.fg2Qty) || 0,
+                    "Finished Goods Name 3": formData.fg3Name || '',
+                    "Qty 3": Number(formData.fg3Qty) || 0,
+                    "Finished Goods Name 4": formData.fg4Name || '',
+                    "Qty 4": Number(formData.fg4Qty) || 0,
+                    "Starting Reading Photo": startPhotoUrl,
+                    "Ending Reading Photo": endPhotoUrl,
+                    "Remarks": formData.remarks || '',
+                    "Machine Running Hour": Number(formData.machineHours) || 0,
+                    "Firm Name": firmNameValue || '',
+                });
 
-            const insertBody = new URLSearchParams({
-                action: "insert",
-                sheetName: CRUSHING_ACTUAL_SHEET,
-                rowData: JSON.stringify(rowData),
-            });
-
-            const response = await fetch(WEB_APP_URL, {
-                method: 'POST',
-                body: insertBody
-            });
-
-            const result = await response.json();
-            console.log('Submit result:', result); // Debug log
-
-            if (!result.success) {
-                throw new Error(result.error || 'Failed to save crushing record');
+            if (insertError) {
+                throw insertError;
             }
 
             setSuccessMessage('Crushing record saved successfully!');
@@ -439,6 +380,7 @@ if (crushingTable && crushingTable.rows && crushingTable.rows.length > 0) {
                 fg4Qty: '',
                 remarks: '',
                 machineHours: '',
+                firmName: '',
             });
             setStartingPhoto(null);
             setEndingPhoto(null);
@@ -564,6 +506,13 @@ if (crushingTable && crushingTable.rows && crushingTable.rows.length > 0) {
                                                     <Calendar className="h-3 w-3 mr-1 text-slate-400" />
                                                     {formatDisplayDate(record.dateOfProduction)}
                                                 </div>
+                                            </TableCell>
+
+                                            {/* Firm Name */}
+                                            <TableCell className="whitespace-nowrap">
+                                                <span className="text-sm font-semibold text-slate-800">
+                                                    {record.firmName || '-'}
+                                                </span>
                                             </TableCell>
 
                                             {/* Product */}
@@ -702,6 +651,29 @@ if (crushingTable && crushingTable.rows && crushingTable.rows.length > 0) {
                                 required
                             />
                         </div>
+
+                        {/* Firm Name Selection for Admin only */}
+                        {user?.role === 'admin' && (
+                            <div className="space-y-2">
+                                <Label htmlFor="firmName">Firm Name *</Label>
+                                <Select
+                                    value={formData.firmName}
+                                    onValueChange={(value) => setFormData({ ...formData, firmName: value })}
+                                >
+                                    <SelectTrigger id="firmName" className={formErrors.firmName ? "border-red-500" : ""}>
+                                        <SelectValue placeholder="Select firm name..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Purab">Purab</SelectItem>
+                                        <SelectItem value="Pmmpl">Pmmpl</SelectItem>
+                                        <SelectItem value="Rkl">Rkl</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                {formErrors.firmName && (
+                                    <p className="text-xs text-red-500">{formErrors.firmName}</p>
+                                )}
+                            </div>
+                        )}
 
                         {/* Crushing Product Name - Dropdown from Master Column O */}
                         <div className="space-y-2">
@@ -1024,6 +996,12 @@ if (crushingTable && crushingTable.rows && crushingTable.rows.length > 0) {
                                     <p className="text-xs text-slate-400 font-medium">Date</p>
                                     <p className="text-sm font-semibold text-slate-700">
                                         {formatDisplayDate(selectedRecord.dateOfProduction)}
+                                    </p>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-slate-400 font-medium">Firm Name</p>
+                                    <p className="text-sm font-semibold text-slate-700">
+                                        {selectedRecord.firmName || '-'}
                                     </p>
                                 </div>
                                 <div>
