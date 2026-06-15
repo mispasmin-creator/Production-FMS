@@ -57,6 +57,8 @@ interface HistoryItem {
   dateOfTest2: string
   testedBy: string
   test2Status: string
+  bdAt110?: string
+  ccsAt100?: string
   ccsAt1100: string
   plcAt1100: string
   bdAt1100: string
@@ -128,6 +130,8 @@ const HISTORY_COLUMNS_META = [
   { header: "Date of Test 2", dataKey: "dateOfTest2", toggleable: true },
   { header: "Tested By", dataKey: "testedBy", toggleable: true },
   { header: "Test 2 Status", dataKey: "test2Status", toggleable: true },
+  { header: "BD at 110°C", dataKey: "bdAt110", toggleable: true },
+  { header: "CCS at 100°C", dataKey: "ccsAt100", toggleable: true },
   { header: "CCS at 1100°C", dataKey: "ccsAt1100", toggleable: true },
   { header: "PLC at 1100°C", dataKey: "plcAt1100", toggleable: true },
   { header: "BD at 1100°C", dataKey: "bdAt1100", toggleable: true },
@@ -278,6 +282,8 @@ export default function LabTesting2Page() {
           status3: row["Status3"] || row["Status 3"],
           dateOfTest2: row["DateOfTest2"] || row["Date Of Test 2"],
           testedBy2: row["TestedBy2"] || row["Tested By 2"],
+          bdAt110: row["BDAt110C"] || row["BD At 110C"],
+          ccsAt100: row["CCSAt100C"] || row["CCS At 100C"],
           bdAt1100: row["BDAt1100C"] || row["BD At 1100C"],
           ccsAt1100: row["CCSAt1100C"] || row["CCS At 1100C"],
           plcAt1100: row["PLCAt1100C"] || row["PLC At 1100C"],
@@ -385,6 +391,8 @@ export default function LabTesting2Page() {
             dateOfTest2: row.dateOfTest2 ? format(new Date(row.dateOfTest2), "dd/MM/yyyy") : "",
             testedBy: String(row.testedBy2 || ""),
             test2Status: String(row.status3 || "N/A"),
+            bdAt110: String(row.bdAt110 || ""),
+            ccsAt100: String(row.ccsAt100 || ""),
             ccsAt1100: String(row.ccsAt1100 || ""),
             plcAt1100: String(row.plcAt1100 || ""),
             bdAt1100: String(row.bdAt1100 || ""),

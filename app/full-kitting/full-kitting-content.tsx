@@ -418,6 +418,7 @@ export default function CheckPage() {
           firmName: string;
           productionId?: number | string;
           uploadSo?: string;
+          productName?: string;
         }
       >();
       const productionKeys = new Set<string>();
@@ -432,6 +433,7 @@ export default function CheckPage() {
             firmName: row["Firm Name"] || "",
             productionId: row.id,
             uploadSo: row["Upload SO"] || "",
+            productName: productName,
           };
           if (!prodMap.has(doNo)) prodMap.set(doNo, prodInfo);
           prodMap.set(makeOrderProductKey(doNo, productName), prodInfo);
@@ -495,7 +497,13 @@ export default function CheckPage() {
         if (isVerified(doNo, productName)) return;
 
         const key = makeOrderProductKey(doNo, productName);
-        const meta = orderMetaMap.get(key) || orderMetaMap.get(doNo);
+        let meta = orderMetaMap.get(key);
+        if (!meta) {
+          const fallback = orderMetaMap.get(doNo);
+          if (fallback && (!fallback.productName || !productName || normalize(fallback.productName) === normalize(productName))) {
+            meta = fallback;
+          }
+        }
 
         pendingMap.set(key, {
           id: row.id,
@@ -534,8 +542,15 @@ export default function CheckPage() {
         )
           return;
 
-        const enriched = prodMap.get(key) ||
-          prodMap.get(doNo) || {
+        let enriched = prodMap.get(key);
+        if (!enriched) {
+          const fallback = prodMap.get(doNo);
+          if (fallback && (!fallback.productName || !productName || normalize(fallback.productName) === normalize(productName))) {
+            enriched = fallback;
+          }
+        }
+        if (!enriched) {
+          enriched = {
             plannedDate: "",
             expectedDeliveryDate: "",
             priority: "",
@@ -543,6 +558,7 @@ export default function CheckPage() {
             productionId: "",
             uploadSo: "",
           };
+        }
 
         pendingMap.set(key, {
           id: row.id,
@@ -600,19 +616,29 @@ export default function CheckPage() {
         }
         const orderNo = String(row["Order No."] || "").trim();
         const productName = String(row["product name"] || "").trim();
-        const meta =
-          orderMetaMap.get(makeOrderProductKey(orderNo, productName)) ||
-          orderMetaMap.get(orderNo);
-        const enriched = prodMap.get(
-          makeOrderProductKey(orderNo, productName),
-        ) ||
-          prodMap.get(orderNo) || {
+        let meta = orderMetaMap.get(makeOrderProductKey(orderNo, productName));
+        if (!meta) {
+          const fallback = orderMetaMap.get(orderNo);
+          if (fallback && (!fallback.productName || !productName || normalize(fallback.productName) === normalize(productName))) {
+            meta = fallback;
+          }
+        }
+        let enriched = prodMap.get(makeOrderProductKey(orderNo, productName));
+        if (!enriched) {
+          const fallback = prodMap.get(orderNo);
+          if (fallback && (!fallback.productName || !productName || normalize(fallback.productName) === normalize(productName))) {
+            enriched = fallback;
+          }
+        }
+        if (!enriched) {
+          enriched = {
             plannedDate: "",
             expectedDeliveryDate: "",
             priority: "",
             firmName: "",
             productionId: "",
           };
+        }
         return {
           id: row.id,
           productionId: enriched.productionId || "",

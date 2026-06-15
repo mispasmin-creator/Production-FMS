@@ -120,7 +120,7 @@ export default function CompositionQCPage() {
       const normalize = (value: any) => String(value || "").trim().toLowerCase()
       const makeOrderProductKey = (orderNo: any, productName: any) => `${normalize(orderNo)}::${normalize(productName)}`
 
-      const orderReceiptMetaMap = new Map<string, { rate: number; firm: string; party: string; checkDeliveryInStockOrNot: string }>()
+      const orderReceiptMetaMap = new Map<string, { rate: number; firm: string; party: string; checkDeliveryInStockOrNot: string; productName?: string }>()
       ;(orderReceiptData || []).forEach((p: any) => {
         const doNo = String(p["DO-Delivery Order No."] || "").trim()
         const productName = String(p["Product Name"] || "").trim()
@@ -130,6 +130,7 @@ export default function CompositionQCPage() {
             firm: String(p["Firm Name"] || ""),
             party: String(p["Party Names"] || ""),
             checkDeliveryInStockOrNot: String(p["check_delivery_in_stock_or_not"] || ""),
+            productName,
           }
           orderReceiptMetaMap.set(makeOrderProductKey(doNo, productName), meta)
           if (!orderReceiptMetaMap.has(doNo)) orderReceiptMetaMap.set(doNo, meta)
@@ -184,14 +185,32 @@ export default function CompositionQCPage() {
         const doNo      = String(jc["Delivery Order No."] || "").trim()
         const productName = String(jc["Product Name"] || "").trim()
         const apRow     = apMap.get(jobCardNo)
-        const costRow   = costMap.get(makeOrderProductKey(doNo, productName)) || costMap.get(doNo)
+        let costRow = costMap.get(makeOrderProductKey(doNo, productName));
+        if (!costRow) {
+          const fallback = costMap.get(doNo);
+          if (fallback && (!fallback["product name"] || !productName || normalize(fallback["product name"]) === normalize(productName))) {
+            costRow = fallback;
+          }
+        }
 
         if (!apRow || !costRow) continue // can't compare without both sides
 
-        const orderMeta          = orderReceiptMetaMap.get(makeOrderProductKey(doNo, productName)) || orderReceiptMetaMap.get(doNo)
+        let orderMeta = orderReceiptMetaMap.get(makeOrderProductKey(doNo, productName));
+        if (!orderMeta) {
+          const fallback = orderReceiptMetaMap.get(doNo);
+          if (fallback && (!fallback.productName || !productName || normalize(fallback.productName) === normalize(productName))) {
+            orderMeta = fallback;
+          }
+        }
         if (!orderMeta || orderMeta.checkDeliveryInStockOrNot !== "For Production Planning") continue
 
-        const productionMeta     = productionMetaMap.get(makeOrderProductKey(doNo, productName)) || productionMetaMap.get(doNo)
+        let productionMeta = productionMetaMap.get(makeOrderProductKey(doNo, productName));
+        if (!productionMeta) {
+          const fallback = productionMetaMap.get(doNo);
+          if (fallback && (!fallback.productName || !productName || normalize(fallback.productName) === normalize(productName))) {
+            productionMeta = fallback;
+          }
+        }
         const firmName           = productionMeta?.firm || orderMeta?.firm || String(jc["Firm Name"] || "")
         const fgQty              = Number(apRow["Quantity Of FG"] || 0)
         const productRate         = productionMeta?.rate || orderMeta?.rate || Number(costRow["SELLING PRICE"] || 0)
