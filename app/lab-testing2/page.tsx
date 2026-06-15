@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Loader2, AlertTriangle, CalendarIcon, TestTube2, History, Settings, Eye, Search } from "lucide-react"
+import { Loader2, AlertTriangle, CalendarIcon, TestTube2, History, Settings, Eye, Search, FileDown } from "lucide-react"
 import { format } from "date-fns"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/lib/auth"
@@ -18,6 +18,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
+import { jsPDF } from "jspdf"
+import autoTable from "jspdf-autotable"
 
 // Type Definitions
 interface RawMaterial {
@@ -160,6 +162,20 @@ const normalizeKey = (value: any) => String(value || "").trim().toLowerCase()
 const makeOrderProductKey = (orderNo: any, productName: any) =>
   `${normalizeKey(orderNo)}::${normalizeKey(productName)}`
 
+const parseUIDate = (dateStr: string) => {
+  if (!dateStr || dateStr === "-") return null
+  const parts = dateStr.split("/")
+  if (parts.length !== 3) return null
+  const day = parseInt(parts[0], 10)
+  const month = parseInt(parts[1], 10) - 1
+  let year = parseInt(parts[2], 10)
+  if (parts[2].length === 2) {
+    year += 2000
+  }
+  const date = new Date(year, month, day)
+  return isNaN(date.getTime()) ? null : date
+}
+
 export default function LabTesting2Page() {
   const { user } = useAuth()
   const [pendingTests, setPendingTests] = useState<ProductionItem[]>([])
@@ -178,28 +194,109 @@ export default function LabTesting2Page() {
   const [visibleHistoryColumns, setVisibleHistoryColumns] = useState<Record<string, boolean>>({})
   const [viewingMaterials, setViewingMaterials] = useState<RawMaterial[] | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
+  const [fromDate, setFromDate] = useState("")
+  const [toDate, setToDate] = useState("")
 
   const filteredPending = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
-    if (!q) return pendingTests
-    return pendingTests.filter(item =>
+    let list = pendingTests
+
+    if (fromDate || toDate) {
+      const from = fromDate ? new Date(fromDate) : null
+      if (from) from.setHours(0, 0, 0, 0)
+      const to = toDate ? new Date(toDate) : null
+      if (to) to.setHours(23, 59, 59, 999)
+
+      list = list.filter((item) => {
+        const itemDate = parseUIDate(item.dateOfProduction || item.plannedDate || "")
+        if (!itemDate) return false
+        if (from && itemDate < from) return false
+        if (to && itemDate > to) return false
+        return true
+      })
+    }
+
+    if (!q) return list
+    return list.filter(item =>
       (item.jobCardNo || "").toLowerCase().includes(q) ||
       (item.productName || "").toLowerCase().includes(q) ||
       (item.partyName || "").toLowerCase().includes(q) ||
       (item.supervisorName || "").toLowerCase().includes(q)
     )
-  }, [pendingTests, searchQuery])
+  }, [pendingTests, searchQuery, fromDate, toDate])
 
   const filteredHistory = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
-    if (!q) return historyTests
-    return historyTests.filter(item =>
+    let list = historyTests
+
+    if (fromDate || toDate) {
+      const from = fromDate ? new Date(fromDate) : null
+      if (from) from.setHours(0, 0, 0, 0)
+      const to = toDate ? new Date(toDate) : null
+      if (to) to.setHours(23, 59, 59, 999)
+
+      list = list.filter((item) => {
+        const itemDate = parseUIDate(item.dateOfTest2)
+        if (!itemDate) return false
+        if (from && itemDate < from) return false
+        if (to && itemDate > to) return false
+        return true
+      })
+    }
+
+    if (!q) return list
+    return list.filter(item =>
       (item.jobCardNo || "").toLowerCase().includes(q) ||
       (item.productName || "").toLowerCase().includes(q) ||
       (item.partyName || "").toLowerCase().includes(q) ||
       (item.testedBy || "").toLowerCase().includes(q)
     )
-  }, [historyTests, searchQuery])
+  }, [historyTests, searchQuery, fromDate, toDate])
+
+  const handleExportPDF = () => {
+    const doc = new jsPDF("landscape")
+    const isPending = activeTab === "pending"
+    const title = isPending ? "Lab Testing 2 - Pending Tests" : "Lab Testing 2 - Test History"
+    const columnsMeta = isPending ? visiblePendingColumnsMeta : visibleHistoryColumnsMeta
+    const dataList = isPending ? filteredPending : filteredHistory
+
+    const exportColumns = columnsMeta.filter(col => col.dataKey !== "actionColumn")
+    const headers = exportColumns.map(col => col.header)
+    const rows = dataList.map(item => {
+      return exportColumns.map(col => {
+        const key = col.dataKey
+        const value = (item as any)[key]
+        if (key === "rawMaterials") {
+          const materials = value as RawMaterial[]
+          if (!materials || materials.length === 0) return "-"
+          return materials.map(m => `${m.name}: ${m.quantity}`).join(", ")
+        }
+        if (key === "machineHours") {
+          return formatMachineHours(value)
+        }
+        return value !== undefined && value !== null ? String(value) : "-"
+      })
+    })
+
+    doc.setFontSize(16)
+    doc.text(title, 14, 15)
+
+    if (fromDate || toDate) {
+      doc.setFontSize(10)
+      doc.text(`Date Range: ${fromDate || "Any"} to ${toDate || "Any"}`, 14, 22)
+    }
+
+    autoTable(doc, {
+      head: [headers],
+      body: rows,
+      startY: fromDate || toDate ? 25 : 18,
+      theme: "grid",
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [107, 110, 48] },
+    })
+
+    doc.save(`${title.toLowerCase().replace(/ /g, "_")}_${format(new Date(), "yyyyMMdd")}.pdf`)
+  }
 
   useEffect(() => {
     const initializeVisibility = (columnsMeta: any[]) => {
@@ -606,8 +703,8 @@ export default function LabTesting2Page() {
         </CardHeader>
         <CardContent className="p-4 sm:p-6 lg:p-8">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-              <TabsList className="grid w-full sm:w-[450px] grid-cols-2 mb-0">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
+              <TabsList className="grid w-full lg:w-[450px] grid-cols-2 mb-0 shrink-0">
                 <TabsTrigger value="pending" className="flex items-center gap-2">
                   <TestTube2 className="h-4 w-4" /> Pending Tests
                   <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
@@ -621,14 +718,52 @@ export default function LabTesting2Page() {
                   </Badge>
                 </TabsTrigger>
               </TabsList>
-              <div className="relative w-full sm:w-[300px]">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search tests..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 focus-visible:ring-olive-500"
-                />
+              <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">From:</span>
+                  <Input
+                    type="date"
+                    value={fromDate}
+                    onChange={(e) => setFromDate(e.target.value)}
+                    className="w-[130px] h-8 text-xs focus-visible:ring-olive-500"
+                  />
+                  <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">To:</span>
+                  <Input
+                    type="date"
+                    value={toDate}
+                    onChange={(e) => setToDate(e.target.value)}
+                    className="w-[130px] h-8 text-xs focus-visible:ring-olive-500"
+                  />
+                  {(fromDate || toDate) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setFromDate("")
+                        setToDate("")
+                      }}
+                      className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-olive-50"
+                    >
+                      Clear
+                    </Button>
+                  )}
+                </div>
+                <div className="relative w-full sm:w-[200px]">
+                  <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search tests..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-8 h-8 text-xs focus-visible:ring-olive-500"
+                  />
+                </div>
+                <Button
+                  onClick={handleExportPDF}
+                  className="bg-olive-600 hover:bg-olive-700 text-white text-xs h-8 px-3 gap-1.5"
+                >
+                  <FileDown className="h-4 w-4" />
+                  Export PDF
+                </Button>
               </div>
             </div>
 
