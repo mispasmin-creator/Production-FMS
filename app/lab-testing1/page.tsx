@@ -86,6 +86,7 @@ interface HistoryItem {
   aluminaPercentage?: string
   ironPercentage?: string
   plannedDate?: string
+  labTest1Remarks?: string
 }
 
 // Table Names
@@ -159,6 +160,7 @@ const HISTORY_COLUMNS_META = [
   { header: "Sieve Analysis Test", dataKey: "sieveAnalysisTest", toggleable: true },
   { header: "BD at 110°C", dataKey: "bdAt110", toggleable: true },
   { header: "CCS at 100°C", dataKey: "ccsAt100", toggleable: true },
+  { header: "Remarks", dataKey: "labTest1Remarks", toggleable: true },
 ]
 
 // Initial State for Form
@@ -172,6 +174,7 @@ const initialFormState = {
   whatToBeMixed: "",
   flowOfMaterial: "",
   sieveAnalysis: "",
+  labTest1Remarks: "",
 }
 
 const hasValue = (value: any) => {
@@ -457,6 +460,7 @@ export default function LabTesting1Page() {
           sieveAnalysis: row["SieveAnalysis"] || row["Sieve Analysis"],
           bdAt110: row["BDAt110C"] || row["BD At 110C"],
           ccsAt100: row["CCSAt100C"] || row["CCS At 100C"],
+          labTest1Remarks: row["LabTest1Remarks"] || "",
         }
       }
 
@@ -589,6 +593,7 @@ export default function LabTesting1Page() {
             ironPercentage: costingData.ironPercentage || "-",
             plannedDate: costingData.plannedDate || "-",
             firmName: String(row.firmName || jobCard?.["Firm Name"] || ""),
+            labTest1Remarks: String(row.labTest1Remarks || ""),
           }
         })
         .sort((a, b) => new Date(b.test1CompletedAt).getTime() - new Date(a.test1CompletedAt).getTime())
@@ -628,14 +633,22 @@ export default function LabTesting1Page() {
   const validateForm = () => {
     const errors: Record<string, string | null> = {}
     if (!formData.testStatus) errors.testStatus = "Status is required."
-    if (!formData.dateOfTest) errors.dateOfTest = "Date of Test is required."
-    if (!formData.flowOfMaterial) errors.flowOfMaterial = "Flow of Material is required."
-    if (!formData.wcPercentage || Number(formData.wcPercentage) <= 0) {
-      errors.wcPercentage = "Valid WC % is required."
-    } else if (Number(formData.wcPercentage) > 100) {
-      errors.wcPercentage = "Percentage cannot be over 100."
+    
+    if (formData.testStatus !== "Non Tested") {
+      if (!formData.dateOfTest) errors.dateOfTest = "Date of Test is required."
+      if (!formData.flowOfMaterial) errors.flowOfMaterial = "Flow of Material is required."
+      if (!formData.wcPercentage || Number(formData.wcPercentage) <= 0) {
+        errors.wcPercentage = "Valid WC % is required."
+      } else if (Number(formData.wcPercentage) > 100) {
+        errors.wcPercentage = "Percentage cannot be over 100."
+      }
+      if (!formData.testedBy) errors.testedBy = "Tested By is required."
+    } else {
+      if (!formData.labTest1Remarks || !formData.labTest1Remarks.trim()) {
+        errors.labTest1Remarks = "Remark is required for Non Tested."
+      }
     }
-    if (!formData.testedBy) errors.testedBy = "Tested By is required."
+    
     setFormErrors(errors)
     return Object.keys(errors).length === 0
   }
@@ -646,21 +659,39 @@ export default function LabTesting1Page() {
     try {
       const jobCardNo = selectedProduction.jobCardNo.trim()
       const now = new Date().toISOString()
+      const isNonTested = formData.testStatus === "Non Tested"
+      
+      const payload: any = {
+        "Actual2": now,
+        "Planned3": format(new Date(), "yyyy-MM-dd"),
+        "Status2": String(formData.testStatus),
+      }
+
+      if (!isNonTested) {
+        payload["DateOfTest1"] = format(formData.dateOfTest, "yyyy-MM-dd")
+        payload["WCPercentage"] = Number(formData.wcPercentage) || null
+        payload["TestedBy1"] = String(formData.testedBy)
+        payload["InitialSettingTime"] = String(formData.initialSettingTime)
+        payload["FlowOfMaterial"] = String(formData.flowOfMaterial)
+        payload["FinalSettingTime"] = String(formData.finalSettingTime)
+        payload["WhatToBeMixed"] = String(formData.whatToBeMixed)
+        payload["SieveAnalysis"] = String(formData.sieveAnalysis)
+        payload["LabTest1Remarks"] = null
+      } else {
+        payload["DateOfTest1"] = null
+        payload["WCPercentage"] = null
+        payload["TestedBy1"] = null
+        payload["InitialSettingTime"] = null
+        payload["FlowOfMaterial"] = null
+        payload["FinalSettingTime"] = null
+        payload["WhatToBeMixed"] = null
+        payload["SieveAnalysis"] = null
+        payload["LabTest1Remarks"] = String(formData.labTest1Remarks)
+      }
+
       const { error: updateErr } = await supabase
         .from(ACTUAL_PRODUCTION_TABLE)
-        .update({
-          "Actual2": now,
-          "Planned3": format(new Date(), "yyyy-MM-dd"),
-          "Status2": String(formData.testStatus),
-          "DateOfTest1": format(formData.dateOfTest, "yyyy-MM-dd"),
-          "WCPercentage": Number(formData.wcPercentage),
-          "TestedBy1": String(formData.testedBy),
-          "InitialSettingTime": String(formData.initialSettingTime),
-          "FlowOfMaterial": String(formData.flowOfMaterial),
-          "FinalSettingTime": String(formData.finalSettingTime),
-          "WhatToBeMixed": String(formData.whatToBeMixed),
-          "SieveAnalysis": String(formData.sieveAnalysis),
-        })
+        .update(payload)
         .eq("id", selectedProduction._rowIndex)
       if (updateErr) throw updateErr
       alert("Lab Test 1 data saved successfully!")
@@ -747,26 +778,27 @@ export default function LabTesting1Page() {
         </CardHeader>
         <CardContent className="p-4 sm:p-6 lg:p-8">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
+            <div className="flex flex-col gap-4 mb-6">
               <TabsList className="grid w-full lg:w-[450px] grid-cols-2 mb-0 shrink-0">
                 <TabsTrigger value="pending"><TestTube className="h-4 w-4 mr-2" /> Pending ({filteredPending.length})</TabsTrigger>
                 <TabsTrigger value="history"><History className="h-4 w-4 mr-2" /> History ({filteredHistory.length})</TabsTrigger>
               </TabsList>
-              <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+              
+              <div className="flex flex-wrap items-center gap-3 w-full bg-slate-50/50 p-3 rounded-xl border border-slate-100 shadow-sm">
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">From:</span>
                   <Input
                     type="date"
                     value={fromDate}
                     onChange={(e) => setFromDate(e.target.value)}
-                    className="w-[130px] h-8 text-xs focus-visible:ring-olive-500"
+                    className="w-[130px] h-8 text-xs focus-visible:ring-olive-500 bg-white"
                   />
                   <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">To:</span>
                   <Input
                     type="date"
                     value={toDate}
                     onChange={(e) => setToDate(e.target.value)}
-                    className="w-[130px] h-8 text-xs focus-visible:ring-olive-500"
+                    className="w-[130px] h-8 text-xs focus-visible:ring-olive-500 bg-white"
                   />
                   {(fromDate || toDate) && (
                     <Button
@@ -788,16 +820,18 @@ export default function LabTesting1Page() {
                     placeholder="Search tests..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8 h-8 text-xs focus-visible:ring-olive-500"
+                    className="pl-8 h-8 text-xs focus-visible:ring-olive-500 bg-white"
                   />
                 </div>
-                <Button
-                  onClick={handleExportPDF}
-                  className="bg-olive-600 hover:bg-olive-700 text-white text-xs h-8 px-3 gap-1.5"
-                >
-                  <FileDown className="h-4 w-4" />
-                  Export PDF
-                </Button>
+                <div className="ml-auto">
+                  <Button
+                    onClick={handleExportPDF}
+                    className="bg-olive-600 hover:bg-olive-700 text-white text-xs h-8 px-3 gap-1.5"
+                  >
+                    <FileDown className="h-4 w-4" />
+                    Export PDF
+                  </Button>
+                </div>
               </div>
             </div>
             <TabsContent value="pending">
@@ -846,49 +880,66 @@ export default function LabTesting1Page() {
                 </Select>
                 {formErrors.testStatus && <p className="text-xs text-red-500">{formErrors.testStatus}</p>}
               </div>
-              <div className="space-y-1">
-                <Label>Date of Test *</Label>
-                <Popover>
-                  <PopoverTrigger asChild><Button variant="outline" className="w-full text-left justify-start">{format(formData.dateOfTest, "PPP")}</Button></PopoverTrigger>
-                  <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={formData.dateOfTest} onSelect={(d) => d && handleFormChange("dateOfTest", d)} /></PopoverContent>
-                </Popover>
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="wcPercentage">WC Percentage % *</Label>
-                <Input id="wcPercentage" type="number" step="0.1" value={formData.wcPercentage} onChange={(e) => handleFormChange("wcPercentage", e.target.value)} className={formErrors.wcPercentage ? "border-red-500" : ""} />
-                {formErrors.wcPercentage && <p className="text-xs text-red-500">{formErrors.wcPercentage}</p>}
-              </div>
+              
+              {formData.testStatus === "Non Tested" && (
+                <div className="space-y-1 col-span-2">
+                  <Label htmlFor="labTest1Remarks">Remarks *</Label>
+                  <Input id="labTest1Remarks" placeholder="Enter reason for not testing..." value={formData.labTest1Remarks} onChange={(e) => handleFormChange("labTest1Remarks", e.target.value)} className={formErrors.labTest1Remarks ? "border-red-500" : ""} />
+                  {formErrors.labTest1Remarks && <p className="text-xs text-red-500">{formErrors.labTest1Remarks}</p>}
+                </div>
+              )}
+              
+              {formData.testStatus !== "Non Tested" && (
+                <>
+                  <div className="space-y-1">
+                    <Label>Date of Test *</Label>
+                    <Popover>
+                      <PopoverTrigger asChild><Button variant="outline" className="w-full text-left justify-start">{format(formData.dateOfTest, "PPP")}</Button></PopoverTrigger>
+                      <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={formData.dateOfTest} onSelect={(d) => d && handleFormChange("dateOfTest", d)} /></PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="wcPercentage">WC Percentage % *</Label>
+                    <Input id="wcPercentage" type="number" step="0.1" value={formData.wcPercentage} onChange={(e) => handleFormChange("wcPercentage", e.target.value)} className={formErrors.wcPercentage ? "border-red-500" : ""} />
+                    {formErrors.wcPercentage && <p className="text-xs text-red-500">{formErrors.wcPercentage}</p>}
+                  </div>
+                </>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-1">
-                <Label>Tested By *</Label>
-                <Select value={formData.testedBy} onValueChange={(v) => handleFormChange("testedBy", v)}>
-                  <SelectTrigger className={formErrors.testedBy ? "border-red-500" : ""}><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>{testedByOptions.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
-                </Select>
-                {formErrors.testedBy && <p className="text-xs text-red-500">{formErrors.testedBy}</p>}
-              </div>
-            </div>
+            {formData.testStatus !== "Non Tested" && (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <Label>Tested By *</Label>
+                    <Select value={formData.testedBy} onValueChange={(v) => handleFormChange("testedBy", v)}>
+                      <SelectTrigger className={formErrors.testedBy ? "border-red-500" : ""}><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>{testedByOptions.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                    </Select>
+                    {formErrors.testedBy && <p className="text-xs text-red-500">{formErrors.testedBy}</p>}
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1"><Label htmlFor="initialSettingTime">Initial Setting Time</Label><Input id="initialSettingTime" placeholder="e.g. 2 hours" value={formData.initialSettingTime} onChange={(e) => handleFormChange("initialSettingTime", e.target.value)} /></div>
-              <div className="space-y-1"><Label htmlFor="finalSettingTime">Final Setting Time</Label><Input id="finalSettingTime" placeholder="e.g. 5 hours" value={formData.finalSettingTime} onChange={(e) => handleFormChange("finalSettingTime", e.target.value)} /></div>
-            </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1"><Label htmlFor="initialSettingTime">Initial Setting Time</Label><Input id="initialSettingTime" placeholder="e.g. 2 hours" value={formData.initialSettingTime} onChange={(e) => handleFormChange("initialSettingTime", e.target.value)} /></div>
+                  <div className="space-y-1"><Label htmlFor="finalSettingTime">Final Setting Time</Label><Input id="finalSettingTime" placeholder="e.g. 5 hours" value={formData.finalSettingTime} onChange={(e) => handleFormChange("finalSettingTime", e.target.value)} /></div>
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label>Flow Of Material *</Label>
-                <Select value={formData.flowOfMaterial} onValueChange={(v) => handleFormChange("flowOfMaterial", v)}>
-                  <SelectTrigger className={formErrors.flowOfMaterial ? "border-red-500" : ""}><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>{flowOfMaterialOptions.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
-                </Select>
-                {formErrors.flowOfMaterial && <p className="text-xs text-red-500">{formErrors.flowOfMaterial}</p>}
-              </div>
-              <div className="space-y-1"><Label htmlFor="whatToBeMixed">What To Be Mixed</Label><Input id="whatToBeMixed" value={formData.whatToBeMixed} onChange={(e) => handleFormChange("whatToBeMixed", e.target.value)} /></div>
-            </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label>Flow Of Material *</Label>
+                    <Select value={formData.flowOfMaterial} onValueChange={(v) => handleFormChange("flowOfMaterial", v)}>
+                      <SelectTrigger className={formErrors.flowOfMaterial ? "border-red-500" : ""}><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>{flowOfMaterialOptions.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                    </Select>
+                    {formErrors.flowOfMaterial && <p className="text-xs text-red-500">{formErrors.flowOfMaterial}</p>}
+                  </div>
+                  <div className="space-y-1"><Label htmlFor="whatToBeMixed">What To Be Mixed</Label><Input id="whatToBeMixed" value={formData.whatToBeMixed} onChange={(e) => handleFormChange("whatToBeMixed", e.target.value)} /></div>
+                </div>
 
-            <div className="space-y-1"><Label htmlFor="sieveAnalysis">Sieve Analysis</Label><Textarea id="sieveAnalysis" value={formData.sieveAnalysis} onChange={(e) => handleFormChange("sieveAnalysis", e.target.value)} /></div>
+                <div className="space-y-1"><Label htmlFor="sieveAnalysis">Sieve Analysis</Label><Textarea id="sieveAnalysis" value={formData.sieveAnalysis} onChange={(e) => handleFormChange("sieveAnalysis", e.target.value)} /></div>
+              </>
+            )}
 
             <div className="flex justify-end gap-2 pt-4 border-t">
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
