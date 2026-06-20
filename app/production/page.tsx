@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Loader2, AlertTriangle, Settings, Plus, X, Factory, History, Eye, Search } from "lucide-react"
+import { Loader2, AlertTriangle, Settings, Plus, X, Factory, History, Eye, Search, XCircle } from "lucide-react"
 import { format } from "date-fns"
 import { supabase } from "@/lib/supabase"
 import { useAuth, FIRM_MAP } from "@/lib/auth"
@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Toaster } from "@/components/ui/toaster"
+import { Textarea } from "@/components/ui/textarea"
 
 // Type Definitions
 interface RawMaterial {
@@ -63,6 +64,7 @@ interface HistoryItem extends ProductionItem {
   productionTimestamp?: string
   serialNumber?: string
   quantityFG?: string
+  status?: string
 }
 
 interface CompositionItem {
@@ -212,6 +214,9 @@ export default function ProductionPage() {
   const [error, setError] = useState<string | null>(null)
   const [selectedJobCard, setSelectedJobCard] = useState<ProductionItem | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isCancelJcDialogOpen, setIsCancelJcDialogOpen] = useState(false)
+  const [cancelJcRemarks, setCancelJcRemarks] = useState("")
+  const [cancelJcQty, setCancelJcQty] = useState("")
   const [activeTab, setActiveTab] = useState("pending")
   const [visiblePendingColumns, setVisiblePendingColumns] = useState<Record<string, boolean>>({})
   const [visibleHistoryColumns, setVisibleHistoryColumns] = useState<Record<string, boolean>>({})
@@ -291,6 +296,7 @@ export default function ProductionPage() {
           machineHours: row["Machine Running hour"] || "-",
           remarks: row["Remarks1"] || "",
           rawMaterials: materials,
+          status: String(row["Status"] || "active").toLowerCase(),
         }
       }).filter(r => r.jobCardNo)
 
@@ -402,6 +408,8 @@ export default function ProductionPage() {
           quantity: Number(jobCard?.["Quantity"] || 0),
           plannedDate: "",
           notes: "",
+          status: productionRecord.status,
+          productRate: Number(prodInfo?.["product_rate"] || 0),
         } as HistoryItem
       })
 
@@ -843,6 +851,54 @@ export default function ProductionPage() {
     }
   }
 
+  const handleOpenCancelJcFromPending = (item: ProductionItem) => {
+    setSelectedJobCard(item)
+    setCancelJcRemarks("")
+    setCancelJcQty(String((item.quantity || 0) - (item.totalMade || 0)))
+    setIsCancelJcDialogOpen(true)
+  }
+
+  const handleCancelJcSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedJobCard) return
+    if (!cancelJcQty || Number(cancelJcQty) <= 0) {
+      alert("Please enter a valid cancel quantity")
+      return
+    }
+    if (!cancelJcRemarks.trim()) {
+      alert("Please enter reason for cancellation")
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const currentNotes = selectedJobCard.notes || ""
+      const updatedNotes = currentNotes 
+        ? `${currentNotes}\nCancelled: ${cancelJcRemarks} (Qty: ${cancelJcQty})` 
+        : `Cancelled: ${cancelJcRemarks} (Qty: ${cancelJcQty})`
+
+      const { error } = await supabase
+        .from(JOBCARDS_TABLE)
+        .update({
+          Status: "cancelled",
+          Notes: updatedNotes
+        })
+        .eq("id", selectedJobCard._rowIndex)
+
+      if (error) throw error
+
+      alert(`Job Card ${selectedJobCard.jobCardNo} cancelled successfully!`)
+      setIsCancelJcDialogOpen(false)
+      setIsDialogOpen(false)
+      await loadAllData()
+    } catch (err: any) {
+      console.error("Cancel job card error:", err)
+      alert(`Error: ${err.message}`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   if (loading)
     return (
       <div className="flex justify-center items-center h-screen">
@@ -1097,6 +1153,103 @@ export default function ProductionPage() {
               </TableBody>
             </Table>
           </div>
+          {(() => {
+            const activeMaterials = isAdmin ? editedViewingMaterials : viewingMaterials?.materials || [];
+
+            const totalQty = activeMaterials.reduce((sum, material) => {
+              const nameLower = (material.name || "").trim().toLowerCase();
+              if (
+                nameLower === "shmp" ||
+                nameLower === "ppf" ||
+                nameLower === "ssf 304" ||
+                nameLower === "ssf 310" ||
+                nameLower === "pp bag (25 kgs)" ||
+                nameLower === "pp bag (50 kgs)" ||
+                nameLower === "ton bag(1 ton)" ||
+                nameLower === "pp bag 25kg" ||
+                nameLower === "pp bag 25 kg"
+              ) {
+                return sum;
+              }
+              return sum + (Number(material.quantity) || 0);
+            }, 0);
+
+            const viewedItem = historyProductions.find(item => item._rowIndex === viewingMaterials?.rowId);
+            const fgQuantity = viewedItem ? (Number(viewedItem.actualQuantity) || 0) : 0;
+
+            const roundedTotal = Number(totalQty.toFixed(2));
+            const roundedFG = Number(fgQuantity.toFixed(2));
+
+            const isExceeded = roundedFG > 0 && roundedTotal > roundedFG;
+            const isLow = roundedFG > 0 && roundedTotal > 0 && roundedTotal < roundedFG;
+
+
+
+            // Find specific quantities for PP Bags, PPF, SHMP
+            const pp25 = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "pp bag (25 kgs)");
+            const pp50 = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "pp bag (50 kgs)");
+            const pp25kg = activeMaterials.find(m => {
+              const nameLower = (m.name || "").trim().toLowerCase();
+              return nameLower === "pp bag 25kg" || nameLower === "pp bag 25 kg";
+            });
+            const shmp = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "shmp");
+            const ppf = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "ppf");
+
+            const pp25Qty = pp25 ? (Number(pp25.quantity) || 0) : 0;
+            const pp50Qty = pp50 ? (Number(pp50.quantity) || 0) : 0;
+            const pp25kgQty = pp25kg ? (Number(pp25kg.quantity) || 0) : 0;
+            const shmpQty = shmp ? (Number(shmp.quantity) || 0) : 0;
+            const ppfQty = ppf ? (Number(ppf.quantity) || 0) : 0;
+
+            return (
+              <div className="mt-4 pt-4 border-t space-y-2 text-sm font-semibold text-slate-800">
+                <div className={`flex justify-between border-b pb-1 ${isExceeded ? "text-red-600 bg-red-50 p-1.5 rounded-lg border border-red-200" : isLow ? "text-orange-600 bg-orange-50 p-1.5 rounded-lg border border-orange-200" : ""}`}>
+                  <span>Total Qty :</span>
+                  <span>{totalQty.toFixed(2)}</span>
+                </div>
+                {(pp25Qty > 0 || pp50Qty > 0 || pp25kgQty > 0) && (
+                  <div className="space-y-1 pt-1">
+                    <div className="text-xs text-slate-400 uppercase tracking-wider font-bold">Packaging Bags</div>
+                    {pp25Qty > 0 && (
+                      <div className="flex justify-between text-slate-600 font-medium pl-2">
+                        <span>PP Bag (25 kgs):</span>
+                        <span>{pp25Qty}</span>
+                      </div>
+                    )}
+                    {pp50Qty > 0 && (
+                      <div className="flex justify-between text-slate-600 font-medium pl-2">
+                        <span>Pp Bag (50 kgs):</span>
+                        <span>{pp50Qty}</span>
+                      </div>
+                    )}
+                    {pp25kgQty > 0 && (
+                      <div className="flex justify-between text-slate-600 font-medium pl-2">
+                        <span>PP BAG 25KG:</span>
+                        <span>{pp25kgQty}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {(shmpQty > 0 || ppfQty > 0) && (
+                  <div className="space-y-1 pt-1 border-t border-dashed mt-1">
+                    <div className="text-xs text-slate-400 uppercase tracking-wider font-bold">Excluded Additives</div>
+                    {shmpQty > 0 && (
+                      <div className="flex justify-between text-slate-600 font-medium pl-2">
+                        <span>SHMP:</span>
+                        <span>{shmpQty}</span>
+                      </div>
+                    )}
+                    {ppfQty > 0 && (
+                      <div className="flex justify-between text-slate-600 font-medium pl-2">
+                        <span>PPF:</span>
+                        <span>{ppfQty}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           {isAdmin && (
             <div className="flex justify-end gap-2 pt-4 border-t">
               <Button
@@ -1339,6 +1492,101 @@ export default function ProductionPage() {
                           <p className="text-xs text-red-600">{formErrors.rawMaterials}</p>
                         )}
                       </div>
+
+                      {(() => {
+                        const activeMaterials = formData.rawMaterials;
+
+                        const totalQty = activeMaterials.reduce((sum, material) => {
+                          const nameLower = (material.name || "").trim().toLowerCase();
+                          if (
+                            nameLower === "shmp" ||
+                            nameLower === "ppf" ||
+                            nameLower === "ssf 304" ||
+                            nameLower === "ssf 310" ||
+                            nameLower === "pp bag (25 kgs)" ||
+                            nameLower === "pp bag (50 kgs)" ||
+                            nameLower === "ton bag(1 ton)" ||
+                            nameLower === "pp bag 25kg" ||
+                            nameLower === "pp bag 25 kg"
+                          ) {
+                            return sum;
+                          }
+                          return sum + (Number(material.quantity) || 0);
+                        }, 0);
+
+                        const fgQuantity = Number(formData.quantityFG) || 0;
+
+                        const roundedTotal = Number(totalQty.toFixed(2));
+                        const roundedFG = Number(fgQuantity.toFixed(2));
+
+                        const isExceeded = roundedFG > 0 && roundedTotal > roundedFG;
+                        const isLow = roundedFG > 0 && roundedTotal > 0 && roundedTotal < roundedFG;
+
+                        // Find specific quantities for PP Bags, PPF, SHMP
+                        const pp25 = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "pp bag (25 kgs)");
+                        const pp50 = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "pp bag (50 kgs)");
+                        const pp25kg = activeMaterials.find(m => {
+                          const nameLower = (m.name || "").trim().toLowerCase();
+                          return nameLower === "pp bag 25kg" || nameLower === "pp bag 25 kg";
+                        });
+                        const shmp = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "shmp");
+                        const ppf = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "ppf");
+
+                        const pp25Qty = pp25 ? (Number(pp25.quantity) || 0) : 0;
+                        const pp50Qty = pp50 ? (Number(pp50.quantity) || 0) : 0;
+                        const pp25kgQty = pp25kg ? (Number(pp25kg.quantity) || 0) : 0;
+                        const shmpQty = shmp ? (Number(shmp.quantity) || 0) : 0;
+                        const ppfQty = ppf ? (Number(ppf.quantity) || 0) : 0;
+
+                        return (
+                          <div className="mt-4 pt-4 border-t space-y-2 text-sm font-semibold text-slate-800">
+                            <div className={`flex justify-between border-b pb-1 ${isExceeded ? "text-red-600 bg-red-50 p-1.5 rounded-lg border border-red-200" : isLow ? "text-orange-600 bg-orange-50 p-1.5 rounded-lg border border-orange-200" : ""}`}>
+                              <span>Total Qty :</span>
+                              <span>{totalQty.toFixed(2)}</span>
+                            </div>
+                            {(pp25Qty > 0 || pp50Qty > 0 || pp25kgQty > 0) && (
+                              <div className="space-y-1 pt-1">
+                                <div className="text-xs text-slate-400 uppercase tracking-wider font-bold">Packaging Bags</div>
+                                {pp25Qty > 0 && (
+                                  <div className="flex justify-between text-slate-600 font-medium pl-2">
+                                    <span>PP Bag (25 kgs):</span>
+                                    <span>{pp25Qty}</span>
+                                  </div>
+                                )}
+                                {pp50Qty > 0 && (
+                                  <div className="flex justify-between text-slate-600 font-medium pl-2">
+                                    <span>Pp Bag (50 kgs):</span>
+                                    <span>{pp50Qty}</span>
+                                  </div>
+                                )}
+                                {pp25kgQty > 0 && (
+                                  <div className="flex justify-between text-slate-600 font-medium pl-2">
+                                    <span>PP BAG 25KG:</span>
+                                    <span>{pp25kgQty}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {(shmpQty > 0 || ppfQty > 0) && (
+                              <div className="space-y-1 pt-1 border-t border-dashed mt-1">
+                                <div className="text-xs text-slate-400 uppercase tracking-wider font-bold">Excluded Additives</div>
+                                {shmpQty > 0 && (
+                                  <div className="flex justify-between text-slate-600 font-medium pl-2">
+                                    <span>SHMP:</span>
+                                    <span>{shmpQty}</span>
+                                  </div>
+                                )}
+                                {ppfQty > 0 && (
+                                  <div className="flex justify-between text-slate-600 font-medium pl-2">
+                                    <span>PPF:</span>
+                                    <span>{ppfQty}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
 
                   </div>
@@ -1393,13 +1641,80 @@ export default function ProductionPage() {
             </div>
 
 
-            <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
-                Cancel
+            <div className="flex justify-between items-center pt-4 border-t">
+              <div>
+                {selectedJobCard && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => handleOpenCancelJcFromPending(selectedJobCard)}
+                    disabled={isSubmitting}
+                  >
+                    Cancel Job Card
+                  </Button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmitting} className="bg-olive-600 text-white hover:bg-olive-700">
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save Production
+                </Button>
+              </div>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel Job Card Dialog */}
+      <Dialog open={isCancelJcDialogOpen} onOpenChange={setIsCancelJcDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancel Job Card: {selectedJobCard?.jobCardNo}</DialogTitle>
+            <DialogDescription>
+              Enter the quantity to cancel and provide remarks/reason.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCancelJcSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="cancelJcQty">Cancel Quantity *</Label>
+              <Input
+                id="cancelJcQty"
+                type="number"
+                min="0"
+                value={cancelJcQty}
+                onChange={(e) => setCancelJcQty(e.target.value)}
+                placeholder="Enter quantity to cancel"
+                required
+              />
+              {selectedJobCard && (
+                <p className="text-xs text-gray-500">
+                  Total Job Card Quantity: {selectedJobCard.quantity} (Pending: {(selectedJobCard.quantity || 0) - (selectedJobCard.totalMade || 0)})
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="cancelJcRemarks">Remarks *</Label>
+              <Textarea
+                id="cancelJcRemarks"
+                value={cancelJcRemarks}
+                onChange={(e) => setCancelJcRemarks(e.target.value)}
+                placeholder="Enter reason for cancellation"
+                rows={3}
+                required
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button type="button" variant="outline" onClick={() => setIsCancelJcDialogOpen(false)} disabled={isSubmitting}>
+                No, Keep it
               </Button>
-              <Button type="submit" disabled={isSubmitting} className="bg-olive-600 text-white hover:bg-olive-700">
+              <Button type="submit" variant="destructive" disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save Production
+                Yes, Cancel Job Card
               </Button>
             </div>
           </form>

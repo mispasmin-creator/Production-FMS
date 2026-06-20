@@ -41,6 +41,7 @@ interface Order {
   totalMade?: number
   pending?: number
   id?: number
+  orderCancel?: boolean
 }
 
 
@@ -111,10 +112,6 @@ const HISTORY_COLUMNS_META = [
   { header: "Date of Production", dataKey: "dateOfProduction", toggleable: true },
   { header: "Shift", dataKey: "shift", toggleable: true },
   { header: "Total Made", dataKey: "totalMade", toggleable: true },
-  // { header: "Cancel Qty", dataKey: "cancelQty", toggleable: true },
-  // { header: "Remarks", dataKey: "cancelRemarks", toggleable: true },
-  // { header: "Status", dataKey: "status", toggleable: true },
-  // { header: "Cancel Action", dataKey: "cancelAction", toggleable: false, alwaysVisible: true },
 ]
 
 export default function JobCardsPage() {
@@ -131,6 +128,9 @@ export default function JobCardsPage() {
   const [selectedJobCard, setSelectedJobCard] = useState<JobCard | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
+  const [isCancelOrderDialogOpen, setIsCancelOrderDialogOpen] = useState(false)
+  const [cancelOrderRemarks, setCancelOrderRemarks] = useState("")
+  const [cancelOrderQty, setCancelOrderQty] = useState("")
   const [activeTab, setActiveTab] = useState("pending")
   const [visiblePendingColumns, setVisiblePendingColumns] = useState<Record<string, boolean>>({})
   const [visibleHistoryColumns, setVisibleHistoryColumns] = useState<Record<string, boolean>>({})
@@ -246,8 +246,9 @@ export default function JobCardsPage() {
           totalMade: totalMadeSum,
           pending: orderQty - quantitySum,
           note: "",
+          orderCancel: prodRow ? !!prodRow["Order Cancel"] : false,
         }
-      }).filter((order) => Number(order.pending || 0) > 0)
+      }).filter((order) => Number(order.pending || 0) > 0 && !order.orderCancel)
 
       // Process job cards history
       const processedHistory: JobCard[] = allJobCardsData
@@ -495,6 +496,50 @@ export default function JobCardsPage() {
       await loadAllData()
     } catch (err: any) {
       console.error("Cancel error:", err)
+      setError(err.message)
+      alert(`Error: ${err.message}`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleOpenCancelOrderFromPending = (order: Order) => {
+    setSelectedOrder(order)
+    setCancelOrderRemarks("")
+    setCancelOrderQty(String(order.pending || ""))
+    setIsCancelOrderDialogOpen(true)
+  }
+
+  const handleCancelOrderSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!selectedOrder || !selectedOrder.productionId) return
+    if (!cancelOrderQty || Number(cancelOrderQty) <= 0) {
+      alert("Please enter a valid cancel quantity")
+      return
+    }
+    if (!cancelOrderRemarks.trim()) {
+      alert("Please enter reason for cancellation")
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const { error: updateError } = await supabase
+        .from(PRODUCTION_TABLE)
+        .update({
+          "Order Cancel": true,
+          Reason: `Qty: ${cancelOrderQty} - ${cancelOrderRemarks}`
+        })
+        .eq("id", selectedOrder.productionId)
+
+      if (updateError) throw updateError
+
+      alert(`Order for DO: ${selectedOrder.deliveryOrderNo} cancelled successfully!`)
+      setIsCancelOrderDialogOpen(false)
+      setIsDialogOpen(false)
+      await loadAllData()
+    } catch (err: any) {
+      console.error("Cancel order error:", err)
       setError(err.message)
       alert(`Error: ${err.message}`)
     } finally {
@@ -974,14 +1019,28 @@ export default function JobCardsPage() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting} className="bg-olive-600 text-white hover:bg-olive-700">
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Create Job Card
-              </Button>
+            <div className="flex justify-between items-center pt-4 border-t">
+              <div>
+                {selectedOrder && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => handleOpenCancelOrderFromPending(selectedOrder)}
+                    disabled={isSubmitting}
+                  >
+                    Cancel Order
+                  </Button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmitting} className="bg-olive-600 text-white hover:bg-olive-700">
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Create Job Card
+                </Button>
+              </div>
             </div>
           </form>
         </DialogContent>
@@ -1041,6 +1100,59 @@ export default function JobCardsPage() {
               <Button type="submit" variant="destructive" disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Yes, Cancel
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel Order Dialog */}
+      <Dialog open={isCancelOrderDialogOpen} onOpenChange={setIsCancelOrderDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancel Order: {selectedOrder?.deliveryOrderNo}</DialogTitle>
+            <DialogDescription>
+              Enter the quantity to cancel and provide remarks/reason.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCancelOrderSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="cancelOrderQty">Cancel Quantity *</Label>
+              <Input
+                id="cancelOrderQty"
+                type="number"
+                min="0"
+                value={cancelOrderQty}
+                onChange={(e) => setCancelOrderQty(e.target.value)}
+                placeholder="Enter quantity to cancel"
+                required
+              />
+              {selectedOrder && (
+                <p className="text-xs text-gray-500">
+                  Total Order Quantity: {selectedOrder.orderQuantity} (Pending: {selectedOrder.pending})
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="cancelOrderRemarks">Reason / Remarks *</Label>
+              <Textarea
+                id="cancelOrderRemarks"
+                value={cancelOrderRemarks}
+                onChange={(e) => setCancelOrderRemarks(e.target.value)}
+                placeholder="Enter reason for cancellation"
+                rows={3}
+                required
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button type="button" variant="outline" onClick={() => setIsCancelOrderDialogOpen(false)} disabled={isSubmitting}>
+                No, Keep it
+              </Button>
+              <Button type="submit" variant="destructive" disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Yes, Cancel Order
               </Button>
             </div>
           </form>
