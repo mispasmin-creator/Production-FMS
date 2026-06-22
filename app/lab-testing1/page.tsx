@@ -316,21 +316,32 @@ export default function LabTesting1Page() {
       })
     })
 
-    doc.setFontSize(16)
-    doc.text(title, 14, 15)
+    const colCount = exportColumns.length
+    const fontSize = colCount > 15 ? 6 : colCount > 11 ? 7 : 8
+    const cellPadding = colCount > 15 ? 1 : colCount > 11 ? 1.5 : 2
+    const startY = fromDate || toDate ? 22 : 15
+
+    doc.setFontSize(14)
+    doc.text(title, 8, 10)
 
     if (fromDate || toDate) {
-      doc.setFontSize(10)
-      doc.text(`Date Range: ${fromDate || "Any"} to ${toDate || "Any"}`, 14, 22)
+      doc.setFontSize(9)
+      doc.text(`Date Range: ${fromDate || "Any"} to ${toDate || "Any"}`, 8, 16)
     }
 
     autoTable(doc, {
       head: [headers],
       body: rows,
-      startY: fromDate || toDate ? 25 : 18,
+      startY: startY,
+      margin: { left: 8, right: 8 },
       theme: "grid",
-      styles: { fontSize: 8, cellPadding: 2 },
+      styles: { 
+        fontSize: fontSize, 
+        cellPadding: cellPadding,
+        overflow: "linebreak" 
+      },
       headStyles: { fillColor: [107, 110, 48] },
+      bodyStyles: { textColor: [0, 0, 0] }
     })
 
     doc.save(`${title.toLowerCase().replace(/ /g, "_")}_${format(new Date(), "yyyyMMdd")}.pdf`)
@@ -801,10 +812,125 @@ export default function LabTesting1Page() {
               </div>
             </div>
             <TabsContent value="pending">
-              <Card><CardHeader><div className="flex justify-between items-center"><CardTitle>Pending ({filteredPending.length})</CardTitle><ColumnToggler tab="pending" columnsMeta={PENDING_COLUMNS_META} /></div></CardHeader><CardContent><Table><TableHeader><TableRow>{visiblePendingColumnsMeta.map((c) => <TableHead key={c.dataKey}>{c.header}</TableHead>)}</TableRow></TableHeader><TableBody>{filteredPending.length > 0 ? filteredPending.map((p) => <TableRow key={p._rowIndex}>{visiblePendingColumnsMeta.map((c) => <TableCell key={c.dataKey}>{c.dataKey === 'actionColumn' ? <Button size='sm' onClick={() => handleOpenLabTesting(p)}>Perform Test</Button> : c.dataKey === 'rawMaterials' ? renderRawMaterials(p.rawMaterials) : c.dataKey === 'machineHours' ? formatMachineHours(p.machineHours) : (p as any)[c.dataKey] || '-'}</TableCell>)}</TableRow>) : <TableRow><TableCell colSpan={visiblePendingColumnsMeta.length} className="text-center py-8 text-muted-foreground">No pending tests</TableCell></TableRow>}</TableBody></Table></CardContent></Card>
+              <Card className="shadow-sm border border-border">
+                <CardHeader className="py-3 px-4 bg-olive-50 rounded-md p-2">
+                  <div className="flex justify-between items-center">
+                    <CardTitle className="text-md font-semibold text-foreground">
+                      <TestTube className="h-5 w-5 text-primary mr-2" />
+                      Pending Items ({filteredPending.length})
+                    </CardTitle>
+                    <ColumnToggler tab="pending" columnsMeta={PENDING_COLUMNS_META} />
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-muted/50">
+                        <TableRow>
+                          {visiblePendingColumnsMeta.map((col) => (
+                            <TableHead key={col.dataKey}>{col.header}</TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredPending.length > 0 ? (
+                          filteredPending.map((p, index) => (
+                            <TableRow key={`${p.jobCardNo}-${index}`} className="hover:bg-olive-50/50">
+                              {visiblePendingColumnsMeta.map((col) => (
+                                <TableCell key={col.dataKey} className="whitespace-nowrap text-sm py-2 px-3">
+                                  {col.dataKey === "actionColumn" ? (
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleOpenLabTesting(p)}
+                                      className="bg-olive-600 text-white hover:bg-olive-700"
+                                    >
+                                      <TestTube className="mr-2 h-4 w-4" />
+                                      Perform Test 1
+                                    </Button>
+                                  ) : col.dataKey === "rawMaterials" ? (
+                                    renderRawMaterials(p.rawMaterials)
+                                  ) : col.dataKey === "machineHours" ? (
+                                    formatMachineHours(p.machineHours)
+                                  ) : (
+                                    (p as any)[col.dataKey] || "-"
+                                  )}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={visiblePendingColumnsMeta.length} className="h-48">
+                              <div className="flex flex-col items-center justify-center text-center border-2 border-dashed border-olive-200/50 bg-olive-50/50 rounded-lg mx-4 my-4 flex-1">
+                                <TestTube className="h-12 w-12 text-olive-500 mb-3" />
+                                <p className="font-medium text-foreground">No Pending Tests</p>
+                                <p className="text-sm text-muted-foreground">All required tests have been completed.</p>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
             </TabsContent>
             <TabsContent value="history">
-              <Card><CardHeader><div className="flex justify-between items-center"><CardTitle>History ({filteredHistory.length})</CardTitle><ColumnToggler tab="history" columnsMeta={HISTORY_COLUMNS_META} /></div></CardHeader><CardContent><Table><TableHeader><TableRow>{visibleHistoryColumnsMeta.map((c) => <TableHead key={c.dataKey}>{c.header}</TableHead>)}</TableRow></TableHeader><TableBody>{filteredHistory.length > 0 ? filteredHistory.map((t) => <TableRow key={t._rowIndex}>{visibleHistoryColumnsMeta.map((c) => <TableCell key={c.dataKey}>{(t as any)[c.dataKey] || '-'}</TableCell>)}</TableRow>) : <TableRow><TableCell colSpan={visibleHistoryColumnsMeta.length} className="text-center py-8 text-muted-foreground">No history</TableCell></TableRow>}</TableBody></Table></CardContent></Card>
+              <Card className="shadow-sm border border-border">
+                <CardHeader className="py-3 px-4 bg-olive-50 rounded-md p-2">
+                  <div className="flex justify-between items-center">
+                    <CardTitle className="text-md font-semibold text-foreground">
+                      <History className="h-5 w-5 text-primary mr-2" />
+                      History Items ({filteredHistory.length})
+                    </CardTitle>
+                    <ColumnToggler tab="history" columnsMeta={HISTORY_COLUMNS_META} />
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-muted/50">
+                        <TableRow>
+                          {visibleHistoryColumnsMeta.map((col) => (
+                            <TableHead key={col.dataKey}>{col.header}</TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredHistory.length > 0 ? (
+                          filteredHistory.map((t, index) => (
+                            <TableRow key={`${t.jobCardNo}-${index}`} className="hover:bg-olive-50/50">
+                              {visibleHistoryColumnsMeta.map((col) => (
+                                <TableCell key={col.dataKey} className="whitespace-nowrap text-sm py-2 px-3">
+                                  {col.dataKey === "testStatus" ? (
+                                    <Badge variant={t.testStatus === "Tested" || t.testStatus === "Accepted" || t.testStatus === "Pass" ? "default" : "destructive"}>
+                                      {t.testStatus}
+                                    </Badge>
+                                  ) : (
+                                    (t as any)[col.dataKey] || "-"
+                                  )}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={visibleHistoryColumnsMeta.length} className="h-48">
+                              <div className="flex flex-col items-center justify-center text-center border-2 border-dashed border-olive-200/50 bg-olive-50/50 rounded-lg mx-4 my-4 flex-1">
+                                <History className="h-12 w-12 text-olive-500 mb-3" />
+                                <p className="font-medium text-foreground">No Test History</p>
+                                <p className="text-sm text-muted-foreground">
+                                  Completed test records will appear here.
+                                </p>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
             </TabsContent>
           </Tabs>
         </CardContent>
@@ -853,42 +979,48 @@ export default function LabTesting1Page() {
                   <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={formData.dateOfTest} onSelect={(d) => d && handleFormChange("dateOfTest", d)} /></PopoverContent>
                 </Popover>
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="wcPercentage">WC Percentage % *</Label>
-                <Input id="wcPercentage" type="number" step="0.1" value={formData.wcPercentage} onChange={(e) => handleFormChange("wcPercentage", e.target.value)} className={formErrors.wcPercentage ? "border-red-500" : ""} />
-                {formErrors.wcPercentage && <p className="text-xs text-red-500">{formErrors.wcPercentage}</p>}
-              </div>
+              {formData.testStatus?.toLowerCase() !== "non tested" && (
+                <div className="space-y-1">
+                  <Label htmlFor="wcPercentage">WC Percentage % *</Label>
+                  <Input id="wcPercentage" type="number" step="0.1" value={formData.wcPercentage} onChange={(e) => handleFormChange("wcPercentage", e.target.value)} className={formErrors.wcPercentage ? "border-red-500" : ""} />
+                  {formErrors.wcPercentage && <p className="text-xs text-red-500">{formErrors.wcPercentage}</p>}
+                </div>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-1">
-                <Label>Tested By *</Label>
-                <Select value={formData.testedBy} onValueChange={(v) => handleFormChange("testedBy", v)}>
-                  <SelectTrigger className={formErrors.testedBy ? "border-red-500" : ""}><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>{testedByOptions.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
-                </Select>
-                {formErrors.testedBy && <p className="text-xs text-red-500">{formErrors.testedBy}</p>}
-              </div>
-            </div>
+            {formData.testStatus?.toLowerCase() !== "non tested" && (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <Label>Tested By *</Label>
+                    <Select value={formData.testedBy} onValueChange={(v) => handleFormChange("testedBy", v)}>
+                      <SelectTrigger className={formErrors.testedBy ? "border-red-500" : ""}><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>{testedByOptions.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                    </Select>
+                    {formErrors.testedBy && <p className="text-xs text-red-500">{formErrors.testedBy}</p>}
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1"><Label htmlFor="initialSettingTime">Initial Setting Time</Label><Input id="initialSettingTime" placeholder="e.g. 2 hours" value={formData.initialSettingTime} onChange={(e) => handleFormChange("initialSettingTime", e.target.value)} /></div>
-              <div className="space-y-1"><Label htmlFor="finalSettingTime">Final Setting Time</Label><Input id="finalSettingTime" placeholder="e.g. 5 hours" value={formData.finalSettingTime} onChange={(e) => handleFormChange("finalSettingTime", e.target.value)} /></div>
-            </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1"><Label htmlFor="initialSettingTime">Initial Setting Time</Label><Input id="initialSettingTime" placeholder="e.g. 2 hours" value={formData.initialSettingTime} onChange={(e) => handleFormChange("initialSettingTime", e.target.value)} /></div>
+                  <div className="space-y-1"><Label htmlFor="finalSettingTime">Final Setting Time</Label><Input id="finalSettingTime" placeholder="e.g. 5 hours" value={formData.finalSettingTime} onChange={(e) => handleFormChange("finalSettingTime", e.target.value)} /></div>
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label>Flow Of Material *</Label>
-                <Select value={formData.flowOfMaterial} onValueChange={(v) => handleFormChange("flowOfMaterial", v)}>
-                  <SelectTrigger className={formErrors.flowOfMaterial ? "border-red-500" : ""}><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>{flowOfMaterialOptions.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
-                </Select>
-                {formErrors.flowOfMaterial && <p className="text-xs text-red-500">{formErrors.flowOfMaterial}</p>}
-              </div>
-              <div className="space-y-1"><Label htmlFor="whatToBeMixed">What To Be Mixed</Label><Input id="whatToBeMixed" value={formData.whatToBeMixed} onChange={(e) => handleFormChange("whatToBeMixed", e.target.value)} /></div>
-            </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label>Flow Of Material *</Label>
+                    <Select value={formData.flowOfMaterial} onValueChange={(v) => handleFormChange("flowOfMaterial", v)}>
+                      <SelectTrigger className={formErrors.flowOfMaterial ? "border-red-500" : ""}><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>{flowOfMaterialOptions.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                    </Select>
+                    {formErrors.flowOfMaterial && <p className="text-xs text-red-500">{formErrors.flowOfMaterial}</p>}
+                  </div>
+                  <div className="space-y-1"><Label htmlFor="whatToBeMixed">What To Be Mixed</Label><Input id="whatToBeMixed" value={formData.whatToBeMixed} onChange={(e) => handleFormChange("whatToBeMixed", e.target.value)} /></div>
+                </div>
 
-            <div className="space-y-1"><Label htmlFor="sieveAnalysis">Sieve Analysis</Label><Textarea id="sieveAnalysis" value={formData.sieveAnalysis} onChange={(e) => handleFormChange("sieveAnalysis", e.target.value)} /></div>
+                <div className="space-y-1"><Label htmlFor="sieveAnalysis">Sieve Analysis</Label><Textarea id="sieveAnalysis" value={formData.sieveAnalysis} onChange={(e) => handleFormChange("sieveAnalysis", e.target.value)} /></div>
+              </>
+            )}
 
             <div className="flex justify-end gap-2 pt-4 border-t">
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>

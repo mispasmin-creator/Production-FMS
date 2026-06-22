@@ -278,21 +278,32 @@ export default function LabTesting2Page() {
       })
     })
 
-    doc.setFontSize(16)
-    doc.text(title, 14, 15)
+    const colCount = exportColumns.length
+    const fontSize = colCount > 15 ? 6 : colCount > 11 ? 7 : 8
+    const cellPadding = colCount > 15 ? 1 : colCount > 11 ? 1.5 : 2
+    const startY = fromDate || toDate ? 22 : 15
+
+    doc.setFontSize(14)
+    doc.text(title, 8, 10)
 
     if (fromDate || toDate) {
-      doc.setFontSize(10)
-      doc.text(`Date Range: ${fromDate || "Any"} to ${toDate || "Any"}`, 14, 22)
+      doc.setFontSize(9)
+      doc.text(`Date Range: ${fromDate || "Any"} to ${toDate || "Any"}`, 8, 16)
     }
 
     autoTable(doc, {
       head: [headers],
       body: rows,
-      startY: fromDate || toDate ? 25 : 18,
+      startY: startY,
+      margin: { left: 8, right: 8 },
       theme: "grid",
-      styles: { fontSize: 8, cellPadding: 2 },
+      styles: { 
+        fontSize: fontSize, 
+        cellPadding: cellPadding,
+        overflow: "linebreak" 
+      },
       headStyles: { fillColor: [107, 110, 48] },
+      bodyStyles: { textColor: [0, 0, 0] }
     })
 
     doc.save(`${title.toLowerCase().replace(/ /g, "_")}_${format(new Date(), "yyyyMMdd")}.pdf`)
@@ -719,20 +730,21 @@ export default function LabTesting2Page() {
                 </TabsTrigger>
               </TabsList>
               <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">From:</span>
+                <div className="flex items-center gap-2 border border-input rounded-md px-3 h-9 bg-gray-50/50 shadow-sm">
+                  <CalendarIcon className="h-4 w-4 text-olive-600 shrink-0" />
+                  <span className="text-xs font-semibold text-gray-600">Date Filter:</span>
                   <Input
                     type="date"
                     value={fromDate}
                     onChange={(e) => setFromDate(e.target.value)}
-                    className="w-[130px] h-8 text-xs focus-visible:ring-olive-500"
+                    className="w-[135px] h-full text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 p-0 cursor-pointer"
                   />
-                  <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">To:</span>
+                  <span className="text-xs text-gray-400 font-bold px-1">→</span>
                   <Input
                     type="date"
                     value={toDate}
                     onChange={(e) => setToDate(e.target.value)}
-                    className="w-[130px] h-8 text-xs focus-visible:ring-olive-500"
+                    className="w-[135px] h-full text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 p-0 cursor-pointer"
                   />
                   {(fromDate || toDate) && (
                     <Button
@@ -742,24 +754,24 @@ export default function LabTesting2Page() {
                         setFromDate("")
                         setToDate("")
                       }}
-                      className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-olive-50"
+                      className="h-6 px-1.5 ml-1 text-[10px] font-bold text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
                     >
                       Clear
                     </Button>
                   )}
                 </div>
                 <div className="relative w-full sm:w-[200px]">
-                  <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                   <Input
                     placeholder="Search tests..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8 h-8 text-xs focus-visible:ring-olive-500"
+                    className="pl-8 h-9 text-xs focus-visible:ring-olive-500"
                   />
                 </div>
                 <Button
                   onClick={handleExportPDF}
-                  className="bg-olive-600 hover:bg-olive-700 text-white text-xs h-8 px-3 gap-1.5"
+                  className="bg-olive-600 hover:bg-olive-700 text-white text-xs h-9 px-3 gap-1.5"
                 >
                   <FileDown className="h-4 w-4" />
                   Export PDF
