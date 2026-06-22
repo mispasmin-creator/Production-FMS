@@ -1006,26 +1006,6 @@ export default function LabTesting1Page() {
                 </Select>
                 {formErrors.testStatus && <p className="text-xs text-red-500">{formErrors.testStatus}</p>}
               </div>
-<<<<<<< HEAD
-              <div className="space-y-1">
-                <Label>Date of Test *</Label>
-                <Popover>
-                  <PopoverTrigger asChild><Button variant="outline" className="w-full text-left justify-start">{format(formData.dateOfTest, "PPP")}</Button></PopoverTrigger>
-                  <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={formData.dateOfTest} onSelect={(d) => d && handleFormChange("dateOfTest", d)} /></PopoverContent>
-                </Popover>
-              </div>
-              {formData.testStatus?.toLowerCase() !== "non tested" && (
-                <div className="space-y-1">
-                  <Label htmlFor="wcPercentage">WC Percentage % *</Label>
-                  <Input id="wcPercentage" type="number" step="0.1" value={formData.wcPercentage} onChange={(e) => handleFormChange("wcPercentage", e.target.value)} className={formErrors.wcPercentage ? "border-red-500" : ""} />
-                  {formErrors.wcPercentage && <p className="text-xs text-red-500">{formErrors.wcPercentage}</p>}
-                </div>
-              )}
-            </div>
-
-            {formData.testStatus?.toLowerCase() !== "non tested" && (
-=======
-              
               {formData.testStatus === "Non Tested" && (
                 <div className="space-y-1 col-span-2">
                   <Label htmlFor="labTest1Remarks">Remarks *</Label>
@@ -1053,7 +1033,6 @@ export default function LabTesting1Page() {
             </div>
 
             {formData.testStatus !== "Non Tested" && (
->>>>>>> 10f5fa83c882959a18eb9278e2430d880930e9f9
               <>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-1">
