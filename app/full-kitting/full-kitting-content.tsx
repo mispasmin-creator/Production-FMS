@@ -136,6 +136,14 @@ interface CostingHistoryItem {
   priority?: string;
   status?: string;
   firmName: string;
+  partyName?: string;
+  orderQuantity?: number;
+  note?: string;
+  productRate?: string;
+  uploadSo?: string;
+  crmName?: string;
+  quantityDelivered?: string;
+  productionPending?: string;
 }
 
 // --- Constants ---
@@ -434,6 +442,14 @@ export default function CheckPage() {
             productionId: row.id,
             uploadSo: row["Upload SO"] || "",
             productName: productName,
+            partyName: row["Party Name"] || "",
+            orderQuantity: Number(row["Order Quantity"] || 0),
+            note: row["Note"] || "",
+            status: row["Status"] || "",
+            crmName: row["Crm Name"] || "",
+            quantityDelivered: String(row["Quantity Delivered"] || ""),
+            productionPending: String(row["Production Pending"] || ""),
+            productRate: String(row["product_rate"] || ""),
           };
           if (!prodMap.has(doNo)) prodMap.set(doNo, prodInfo);
           prodMap.set(makeOrderProductKey(doNo, productName), prodInfo);
@@ -637,6 +653,15 @@ export default function CheckPage() {
             priority: "",
             firmName: "",
             productionId: "",
+            uploadSo: "",
+            partyName: "",
+            orderQuantity: 0,
+            note: "",
+            status: "",
+            crmName: "",
+            quantityDelivered: "",
+            productionPending: "",
+            productRate: "",
           };
         }
         return {
@@ -659,7 +684,15 @@ export default function CheckPage() {
           plannedDate: enriched.plannedDate,
           expectedDeliveryDate: enriched.expectedDeliveryDate,
           priority: enriched.priority,
-          status: row["Status"] || "",
+          status: row["Status"] || meta?.status || enriched.status || "",
+          partyName: meta?.partyName || enriched.partyName || "",
+          orderQuantity: meta?.orderQuantity || enriched.orderQuantity || 0,
+          note: meta?.note || enriched.note || "",
+          productRate: meta?.productRate || enriched.productRate || "",
+          uploadSo: meta?.uploadSo || enriched.uploadSo || "",
+          crmName: meta?.crmName || enriched.crmName || "",
+          quantityDelivered: meta?.quantityDelivered || enriched.quantityDelivered || "",
+          productionPending: meta?.productionPending || enriched.productionPending || "",
         };
       });
 
@@ -819,22 +852,27 @@ export default function CheckPage() {
   const loadHistoryItemForRevision = (item: CostingHistoryItem) => {
     setSelectedHistoryItem(item);
     // Find the matching production item or build a mock
-    const prodItem = pendingChecks.find(
-      (p) => p.deliveryOrderNo === item.orderNo,
+    const prodItem: ProductionItem = pendingChecks.find(
+      (p) => p.deliveryOrderNo === item.orderNo && p.productName === item.productName,
     ) || {
-      id: 0,
-      timestamp: "",
-      firmName: "",
+      id: Number(item.productionId) || 0,
+      productionId: item.productionId,
+      timestamp: item.timestamp,
+      firmName: item.firmName,
       deliveryOrderNo: item.orderNo,
-      partyName: "",
+      partyName: item.partyName || "",
       productName: item.productName,
-      orderQuantity: 0,
+      orderQuantity: item.orderQuantity || 0,
       expectedDeliveryDate: item.expectedDeliveryDate || "",
       priority: item.priority || "",
-      note: "",
+      note: item.note || "",
       plannedDate: item.plannedDate,
-      status: "",
-      uploadSo: "",
+      status: item.status || "",
+      uploadSo: item.uploadSo,
+      productRate: item.productRate,
+      crmName: item.crmName,
+      quantityDelivered: item.quantityDelivered,
+      productionPending: item.productionPending,
     };
     setSelectedCheck(prodItem);
 
