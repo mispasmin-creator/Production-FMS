@@ -555,6 +555,16 @@ export default function ProductionPage() {
     })
   }, [historyProductions, searchQuery, fromDate, toDate])
 
+  const pendingTotalMadeQty = useMemo(
+    () => filteredPending.reduce((total, item) => total + (Number(item.totalMade) || 0), 0),
+    [filteredPending]
+  )
+
+  const historyTotalMadeQty = useMemo(
+    () => filteredHistory.reduce((total, item) => total + (Number(item.actualQuantity) || 0), 0),
+    [filteredHistory]
+  )
+
   const handleOpenDialog = (jobCard: ProductionItem) => {
     setSelectedJobCard(jobCard)
     const parsedProductionDate = jobCard.dateOfProduction
@@ -991,20 +1001,28 @@ export default function ProductionPage() {
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full sm:w-[450px] grid-cols-2 mb-6 p-1 bg-slate-100 rounded-xl">
-              <TabsTrigger value="pending" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
-                <Factory className="h-4 w-4 mr-2" /> Pending
-                <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                  {searchQuery || fromDate || toDate ? `${filteredPending.length} / ${pendingProductions.length}` : pendingProductions.length}
-                </Badge>
-              </TabsTrigger>
-              <TabsTrigger value="history" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
-                <History className="h-4 w-4 mr-2" /> History
-                <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                  {searchQuery || fromDate || toDate ? `${filteredHistory.length} / ${historyProductions.length}` : historyProductions.length}
-                </Badge>
-              </TabsTrigger>
-            </TabsList>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+              <TabsList className="grid w-full sm:w-[450px] grid-cols-2 p-1 bg-slate-100 rounded-xl">
+                <TabsTrigger value="pending" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
+                  <Factory className="h-4 w-4 mr-2" /> Pending
+                  <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
+                    {searchQuery || fromDate || toDate ? `${filteredPending.length} / ${pendingProductions.length}` : pendingProductions.length}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger value="history" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
+                  <History className="h-4 w-4 mr-2" /> History
+                  <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
+                    {searchQuery || fromDate || toDate ? `${filteredHistory.length} / ${historyProductions.length}` : historyProductions.length}
+                  </Badge>
+                </TabsTrigger>
+              </TabsList>
+              <div className="text-sm font-semibold text-slate-700 sm:text-right">
+                Total Made Qty:{" "}
+                <span className="text-olive-700">
+                  {(activeTab === "pending" ? pendingTotalMadeQty : historyTotalMadeQty).toLocaleString()}
+                </span>
+              </div>
+            </div>
 
             <TabsContent value="pending" className="mt-0">
               <Card className="shadow-sm border-border">
