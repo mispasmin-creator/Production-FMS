@@ -1507,7 +1507,7 @@ export default function CheckPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="devshreeActualQty">Actual Quantity *</Label>
-              <Input id="devshreeActualQty" type="number" step="1" min="0" value={devshreeFormData.actualQty} onChange={(e) => setDevshreeFormData(p => ({ ...p, actualQty: e.target.value }))} className={devshreeFormErrors.actualQty ? "border-red-500" : ""} />
+              <Input id="devshreeActualQty" type="number" step="any" min="0" value={devshreeFormData.actualQty} onChange={(e) => setDevshreeFormData(p => ({ ...p, actualQty: e.target.value }))} className={devshreeFormErrors.actualQty ? "border-red-500" : ""} />
               {devshreeFormErrors.actualQty && <p className="text-xs text-red-600 mt-1">{devshreeFormErrors.actualQty}</p>}
             </div>
             <div className="flex justify-end gap-2 pt-4 border-t">

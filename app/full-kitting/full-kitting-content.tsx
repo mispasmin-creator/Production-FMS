@@ -417,18 +417,7 @@ export default function CheckPage() {
         uploadSo: String(pick(row, ["Upload SO"]) || ""),
       });
 
-      const prodMap = new Map<
-        string,
-        {
-          plannedDate: string;
-          expectedDeliveryDate: string;
-          priority: string;
-          firmName: string;
-          productionId?: number | string;
-          uploadSo?: string;
-          productName?: string;
-        }
-      >();
+      const prodMap = new Map<string, any>();
       const productionKeys = new Set<string>();
       (allProdData || []).forEach((row: any) => {
         const doNo = String(row["Delivery Order No."] || "").trim();
