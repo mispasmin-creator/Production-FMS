@@ -92,6 +92,7 @@ interface LabItem {
   productRate: number;       // from production table (actual selling price)
   gpPercentage: number;
   gpActual: string;
+  manufacturingCost: number;
   alumina: number;
   iron: number;
   bd: number;
@@ -289,6 +290,7 @@ export default function PIApprovalPage() {
           productRate,
           gpPercentage: Number(row["GP %AGE"] || 0),
           gpActual: row["GP %AGE Actual"] ? String(row["GP %AGE Actual"]) : "",
+          manufacturingCost: Number(row["Manufacturing Cost"] || 0),
           alumina: Number(row["alumina"] || 0),
           iron: Number(row["iron"] || 0),
           bd: Number(row["BD"] || 0),
@@ -340,13 +342,15 @@ export default function PIApprovalPage() {
     const totalRmCost = item.rmValues.reduce((sum, rm) => sum + rm.cost, 0);
     // Use product_rate (selling price from production/job card) for profit calculation
     const rate = item.productRate || item.sellingPrice;
-    setManualMfgCost(0);
-    setTotalCost(totalRmCost);
+    const mfgCost = item.manufacturingCost || 0;
+    setManualMfgCost(mfgCost);
+    const newTotalCost = totalRmCost + mfgCost;
+    setTotalCost(newTotalCost);
     // profit = selling_price - (total_cost + manufacturing_cost)
-    const initialProfit = rate - totalRmCost;
-    setTotalProfit(initialProfit);
-    const initialGP = rate > 0 ? (initialProfit / rate) * 100 : 0;
-    setManualGP(initialGP);
+    const profit = rate - newTotalCost;
+    setTotalProfit(profit);
+    const initialGP = item.gpActual ? Number(item.gpActual) : (rate > 0 ? (profit / rate) * 100 : 0);
+    setManualGP(Number(initialGP.toFixed(2)));
   };
 
   // ── Calculation Logic ──
@@ -842,7 +846,9 @@ export default function PIApprovalPage() {
                       <div className="space-y-2">
                         <Label className="text-sm font-bold text-slate-600 flex justify-between">
                           Manufacturing Cost 
-                          <span className="text-[10px] text-slate-400 font-normal uppercase mt-1">(Editable)</span>
+                          <span className="text-[10px] text-slate-400 font-normal uppercase mt-1">
+                            {actionMode === "review" ? "(Editable)" : ""}
+                          </span>
                         </Label>
                         <div className="relative">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-semibold">₹</span>
@@ -856,7 +862,8 @@ export default function PIApprovalPage() {
                               const val = e.target.value;
                               if (val !== "") setManualMfgCost(Math.max(0, Number(Number(val).toFixed(2))));
                             }}
-                            className="pl-9 h-12 text-xl font-bold bg-white border-slate-300 focus:ring-indigo-500 shadow-sm"
+                            disabled={actionMode === "view"}
+                            className="pl-9 h-12 text-xl font-bold bg-white border-slate-300 focus:ring-indigo-500 shadow-sm disabled:opacity-80 disabled:bg-slate-100 disabled:text-slate-600"
                           />
                         </div>
                       </div>
@@ -864,7 +871,9 @@ export default function PIApprovalPage() {
                       <div className="space-y-2">
                         <Label className="text-sm font-bold text-slate-600 flex justify-between">
                           GP % 
-                          <span className="text-[10px] text-slate-400 font-normal uppercase mt-1">(Editable)</span>
+                          <span className="text-[10px] text-slate-400 font-normal uppercase mt-1">
+                            {actionMode === "review" ? "(Editable)" : ""}
+                          </span>
                         </Label>
                         <div className="relative">
                           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-semibold">%</span>
@@ -878,7 +887,8 @@ export default function PIApprovalPage() {
                               const val = e.target.value;
                               if (val !== "") setManualGP(Math.max(0, Number(Number(val).toFixed(2))));
                             }}
-                            className="pr-9 h-12 text-xl font-bold bg-white border-slate-300 focus:ring-indigo-500 shadow-sm"
+                            disabled={actionMode === "view"}
+                            className="pr-9 h-12 text-xl font-bold bg-white border-slate-300 focus:ring-indigo-500 shadow-sm disabled:opacity-80 disabled:bg-slate-100 disabled:text-slate-600"
                           />
                         </div>
                       </div>

@@ -221,6 +221,11 @@ export default function ProductionPage() {
   const [visiblePendingColumns, setVisiblePendingColumns] = useState<Record<string, boolean>>({})
   const [visibleHistoryColumns, setVisibleHistoryColumns] = useState<Record<string, boolean>>({})
   const [formData, setFormData] = useState(initialFormData)
+  // RM Summary states
+  const [summaryStartDate, setSummaryStartDate] = useState("")
+  const [summaryEndDate, setSummaryEndDate] = useState("")
+  const [summaryProduct, setSummaryProduct] = useState("all")
+  const [summaryMaterial, setSummaryMaterial] = useState("all")
   const [formErrors, setFormErrors] = useState<Record<string, string | null>>({})
   const [viewingMaterials, setViewingMaterials] = useState<{ rowId: number | string; materials: RawMaterial[] } | null>(null)
   const [editedViewingMaterials, setEditedViewingMaterials] = useState<RawMaterial[]>([])
@@ -564,6 +569,96 @@ export default function ProductionPage() {
     () => filteredHistory.reduce((total, item) => total + (Number(item.actualQuantity) || 0), 0),
     [filteredHistory]
   )
+
+  const uniqueProducts = useMemo(() => {
+    const products = new Set<string>()
+    historyProductions.forEach(p => {
+      if (p.status !== "cancelled" && p.productName) products.add(p.productName.trim())
+    })
+    return Array.from(products).sort()
+  }, [historyProductions])
+
+  const uniqueMaterials = useMemo(() => {
+    const mats = new Set<string>()
+    historyProductions.forEach(p => {
+      if (p.status !== "cancelled") {
+        p.rawMaterials.forEach(rm => {
+          if (rm.name && rm.name.trim() !== "" && Number(rm.quantity) > 0) mats.add(rm.name.trim())
+        })
+      }
+    })
+    return Array.from(mats).sort()
+  }, [historyProductions])
+
+  const materialSummaryData = useMemo(() => {
+    if (!summaryStartDate && !summaryEndDate && !summaryMaterial && !summaryProduct) {
+      return { totalQty: 0, matchingRuns: [] }
+    }
+
+    let totalQty = 0
+    const matchingRuns: any[] = []
+
+    historyProductions.forEach((run) => {
+      if (run.status === "cancelled") return
+
+      if (run.dateOfProduction) {
+        const itemDate = parseDDMMYYYY(run.dateOfProduction)
+        if (itemDate) {
+          if (summaryStartDate) {
+            const start = new Date(summaryStartDate)
+            start.setHours(0, 0, 0, 0)
+            if (itemDate < start) return
+          }
+          if (summaryEndDate) {
+            const end = new Date(summaryEndDate)
+            end.setHours(23, 59, 59, 999)
+            if (itemDate > end) return
+          }
+        } else {
+          return
+        }
+      } else {
+        return
+      }
+
+      if (summaryProduct && summaryProduct !== "all") {
+        if (normalizeKey(run.productName) !== normalizeKey(summaryProduct)) {
+          return
+        }
+      }
+
+      let materialQtyFound = 0
+      let hasMaterial = false
+
+      if (summaryMaterial && summaryMaterial !== "all") {
+        const targetMatNormalized = normalizeKey(summaryMaterial)
+        const matchedMat = run.rawMaterials.find(rm => normalizeKey(rm.name) === targetMatNormalized)
+        if (matchedMat) {
+          materialQtyFound = Number(matchedMat.quantity) || 0
+          hasMaterial = true
+        }
+      } else {
+        run.rawMaterials.forEach(rm => {
+          materialQtyFound += Number(rm.quantity) || 0
+        })
+        hasMaterial = run.rawMaterials.length > 0
+      }
+
+      if (hasMaterial) {
+        totalQty += materialQtyFound
+        matchingRuns.push({
+          ...run,
+          specificMaterialQty: materialQtyFound
+        })
+      }
+    })
+
+    return { totalQty, matchingRuns }
+  }, [historyProductions, summaryStartDate, summaryEndDate, summaryProduct, summaryMaterial])
+
+  const summaryFGQty = useMemo(() => {
+    return materialSummaryData.matchingRuns.reduce((sum, run) => sum + (Number(run.actualQuantity) || 0), 0)
+  }, [materialSummaryData])
 
   const handleOpenDialog = (jobCard: ProductionItem) => {
     setSelectedJobCard(jobCard)
@@ -1002,7 +1097,7 @@ export default function ProductionPage() {
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-              <TabsList className="grid w-full sm:w-[450px] grid-cols-2 p-1 bg-slate-100 rounded-xl">
+              <TabsList className="grid w-full sm:w-[600px] grid-cols-3 p-1 bg-slate-100 rounded-xl">
                 <TabsTrigger value="pending" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
                   <Factory className="h-4 w-4 mr-2" /> Pending
                   <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
@@ -1015,11 +1110,22 @@ export default function ProductionPage() {
                     {searchQuery || fromDate || toDate ? `${filteredHistory.length} / ${historyProductions.length}` : historyProductions.length}
                   </Badge>
                 </TabsTrigger>
+                <TabsTrigger value="rm-summary" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
+                  <Search className="h-4 w-4 mr-2" /> RM Summary
+                  <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
+                    {materialSummaryData.matchingRuns.length}
+                  </Badge>
+                </TabsTrigger>
               </TabsList>
               <div className="text-sm font-semibold text-slate-700 sm:text-right">
                 Total Made Qty:{" "}
                 <span className="text-olive-700">
-                  {(activeTab === "pending" ? pendingTotalMadeQty : historyTotalMadeQty).toLocaleString()}
+                  {(activeTab === "pending"
+                    ? pendingTotalMadeQty
+                    : activeTab === "history"
+                      ? historyTotalMadeQty
+                      : summaryFGQty
+                  ).toLocaleString()}
                 </span>
               </div>
             </div>
@@ -1111,6 +1217,155 @@ export default function ProductionPage() {
                           <TableRow>
                             <TableCell colSpan={visibleHistoryColumnsMeta.length} className="h-24 text-center">
                               No history found.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="rm-summary" className="mt-0">
+              <Card className="shadow-sm border-border bg-white rounded-xl">
+                <CardHeader className="py-3 px-4 bg-olive-50/70 rounded-t-lg border-b border-slate-100 flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base font-semibold text-slate-800">Raw Material Consumption Summary</CardTitle>
+                    <CardDescription className="text-xs text-slate-500 mt-0.5">Calculate total consumption of raw materials within a date range.</CardDescription>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-6 space-y-6">
+                  {/* Filters inside tab */}
+                  <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-200 shadow-inner grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="sumFromDate" className="text-xs font-bold text-slate-600 uppercase tracking-wider">Start Date</Label>
+                      <Input
+                        id="sumFromDate"
+                        type="date"
+                        value={summaryStartDate}
+                        onChange={(e) => setSummaryStartDate(e.target.value)}
+                        className="h-10 rounded-xl border-slate-200 bg-white focus:ring-olive-500/20"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="sumToDate" className="text-xs font-bold text-slate-600 uppercase tracking-wider">End Date</Label>
+                      <Input
+                        id="sumToDate"
+                        type="date"
+                        value={summaryEndDate}
+                        onChange={(e) => setSummaryEndDate(e.target.value)}
+                        className="h-10 rounded-xl border-slate-200 bg-white focus:ring-olive-500/20"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Product Name</Label>
+                      <Select value={summaryProduct} onValueChange={setSummaryProduct}>
+                        <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-white">
+                          <SelectValue placeholder="All Products" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          <SelectItem value="all">All Products</SelectItem>
+                          {uniqueProducts.map((p) => (
+                            <SelectItem key={p} value={p}>
+                              {p}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Raw Material Name</Label>
+                      <Select value={summaryMaterial} onValueChange={setSummaryMaterial}>
+                        <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-white">
+                          <SelectValue placeholder="Select Raw Material" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          <SelectItem value="all">All Materials</SelectItem>
+                          {uniqueMaterials.map((m) => (
+                            <SelectItem key={m} value={m}>
+                              {m}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col md:flex-row justify-between gap-4">
+                    <div className="w-full md:w-1/3">
+                      <div className="bg-gradient-to-r from-olive-50 to-olive-100/50 p-6 rounded-2xl border border-olive-200/60 shadow-sm flex flex-col justify-center items-center text-center h-full min-h-[160px]">
+                        <p className="text-xs font-bold text-olive-800 uppercase tracking-widest mb-1">Total Consumption</p>
+                        <p className="text-4xl font-black text-olive-900">
+                          {materialSummaryData.totalQty.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                        </p>
+                        {summaryMaterial && summaryMaterial !== "all" ? (
+                          <p className="text-xs text-olive-700 mt-1.5 font-medium">
+                            of <span className="font-bold">{summaryMaterial}</span>
+                          </p>
+                        ) : (
+                          <p className="text-xs text-olive-700 mt-1.5 font-medium">of All Raw Materials</p>
+                        )}
+                        {(summaryStartDate || summaryEndDate) && (
+                          <p className="text-[10px] text-slate-400 mt-2">
+                            {summaryStartDate ? format(new Date(summaryStartDate), "dd/MM/yyyy") : "Start"} — {summaryEndDate ? format(new Date(summaryEndDate), "dd/MM/yyyy") : "End"}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="w-full md:w-2/3 flex flex-col justify-end">
+                      <div className="flex gap-3 justify-end mb-1">
+                        <Button
+                          variant="outline"
+                          type="button"
+                          onClick={() => {
+                            setSummaryStartDate("")
+                            setSummaryEndDate("")
+                            setSummaryProduct("all")
+                            setSummaryMaterial("all")
+                          }}
+                          className="h-10 px-4 rounded-xl border-slate-200 hover:bg-slate-50 font-semibold text-sm bg-white"
+                          disabled={!summaryStartDate && !summaryEndDate && summaryProduct === "all" && summaryMaterial === "all"}
+                        >
+                          Reset Summary Filters
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Matching logs table */}
+                  <div className="border rounded-xl overflow-hidden shadow-sm">
+                    <Table>
+                      <TableHeader className="bg-slate-50">
+                        <TableRow>
+                          {visibleHistoryColumnsMeta.map((col) => (
+                            <TableHead key={col.dataKey}>{col.header}</TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {materialSummaryData.matchingRuns.length > 0 ? (
+                          materialSummaryData.matchingRuns.map((item) => (
+                            <TableRow key={item._rowIndex} className="hover:bg-olive-50/50 transition-colors">
+                              {visibleHistoryColumnsMeta.map((col) => (
+                                <TableCell key={col.dataKey} className="whitespace-nowrap text-sm py-2 px-3">
+                                  {col.dataKey === "rawMaterials"
+                                    ? renderRawMaterials(item)
+                                    : col.dataKey === "machineHours"
+                                      ? formatMachineHours((item as any)[col.dataKey])
+                                      : (item as any)[col.dataKey] || "-"}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={visibleHistoryColumnsMeta.length} className="h-32 text-center text-slate-400 italic">
+                              No matching production runs found for the selected criteria.
                             </TableCell>
                           </TableRow>
                         )}
