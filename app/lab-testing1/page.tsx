@@ -158,9 +158,6 @@ const HISTORY_COLUMNS_META = [
   { header: "What To Be Mixed", dataKey: "whatToBeMixed", toggleable: true },
   { header: "Flow of Material", dataKey: "flowOfMaterial", toggleable: true },
   { header: "Sieve Analysis Test", dataKey: "sieveAnalysisTest", toggleable: true },
-  { header: "BD at 110°C", dataKey: "bdAt110", toggleable: true },
-  { header: "CCS at 100°C", dataKey: "ccsAt100", toggleable: true },
-  { header: "Remarks", dataKey: "labTest1Remarks", toggleable: true },
 ]
 
 // Initial State for Form
