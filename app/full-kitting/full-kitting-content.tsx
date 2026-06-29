@@ -458,7 +458,7 @@ export default function CheckPage() {
         }
       });
 
-      // Build set of verified DO numbers
+      
       const verifiedKeys = new Set<string>();
       const verifiedDosWithoutProduct = new Set<string>();
       (costData || []).forEach((row: any) => {
