@@ -196,9 +196,8 @@ function Sidebar({
   return (
     <aside
       className={cn(
-        "flex flex-col border-r border-gray-100 bg-white transition-all duration-300 ease-in-out",
-        isMinimized ? "w-16" : "w-64",
-        "h-screen fixed top-0 left-0 z-20 shadow-sm",
+        "flex flex-col border-r border-gray-100 bg-white transition-all duration-300 ease-in-out h-screen fixed top-0 left-0 z-20 shadow-sm",
+        isMinimized ? "-translate-x-full sm:translate-x-0 w-64 sm:w-16" : "translate-x-0 w-64"
       )}
     >
       {/* Header */}
@@ -378,6 +377,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (user && isAuthPage) router.push("/");
   }, [user, isAuthLoading, pathname, router]);
 
+  useEffect(() => {
+    // Whenever pathname changes, minimize sidebar on mobile screens
+    if (typeof window !== "undefined" && window.innerWidth < 640) {
+      setIsSidebarMinimized(true);
+    }
+  }, [pathname]);
+
   if (isAuthLoading || (!user && pathname !== "/login")) {
     return <FullPageLoader />;
   }
@@ -388,6 +394,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex">
+      {/* Backdrop overlay for mobile view when sidebar is open */}
+      {!isSidebarMinimized && (
+        <div
+          className="sm:hidden fixed inset-0 bg-black/40 z-10 transition-opacity"
+          onClick={toggleSidebar}
+        />
+      )}
+
+      {/* Floating hamburger button for mobile view when sidebar is minimized */}
+      {isSidebarMinimized && (
+        <button
+          onClick={toggleSidebar}
+          className="sm:hidden fixed top-4 left-4 z-30 p-2 rounded-lg bg-white border border-gray-200 text-slate-700 shadow-md hover:bg-slate-50 transition-colors"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+      )}
+
       <Sidebar
         isMinimized={isSidebarMinimized}
         toggleMinimize={toggleSidebar}
@@ -395,7 +419,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main
         className={cn(
           "flex-1 bg-gray-50 p-4 sm:p-6 lg:p-8 transition-all duration-300 ease-in-out min-h-screen min-w-0 max-w-full overflow-x-hidden",
-          isSidebarMinimized ? "ml-16" : "ml-64",
+          isSidebarMinimized ? "ml-0 sm:ml-16" : "ml-0 sm:ml-64",
         )}
       >
         {children}

@@ -232,12 +232,28 @@ export default function LabTesting1Page() {
   const [visibleHistoryColumns, setVisibleHistoryColumns] = useState<Record<string, boolean>>({})
   const [viewingMaterials, setViewingMaterials] = useState<RawMaterial[] | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
+  const [productFilter, setProductFilter] = useState("all")
   const [fromDate, setFromDate] = useState("")
   const [toDate, setToDate] = useState("")
+
+  const uniqueProductsForFilter = useMemo(() => {
+    const products = new Set<string>()
+    pendingTests.forEach((item) => {
+      if (item.productName) products.add(item.productName.trim())
+    })
+    historyTests.forEach((item) => {
+      if (item.productName) products.add(item.productName.trim())
+    })
+    return Array.from(products).sort()
+  }, [pendingTests, historyTests])
 
   const filteredPending = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
     let list = pendingTests
+
+    if (productFilter !== "all") {
+      list = list.filter((item) => String(item.productName || "").trim().toLowerCase() === productFilter.toLowerCase())
+    }
 
     if (fromDate || toDate) {
       const from = fromDate ? new Date(fromDate) : null
@@ -261,11 +277,15 @@ export default function LabTesting1Page() {
       (item.partyName || "").toLowerCase().includes(q) ||
       (item.supervisorName || "").toLowerCase().includes(q)
     )
-  }, [pendingTests, searchQuery, fromDate, toDate])
+  }, [pendingTests, searchQuery, fromDate, toDate, productFilter])
 
   const filteredHistory = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
     let list = historyTests
+
+    if (productFilter !== "all") {
+      list = list.filter((item) => String(item.productName || "").trim().toLowerCase() === productFilter.toLowerCase())
+    }
 
     if (fromDate || toDate) {
       const from = fromDate ? new Date(fromDate) : null
@@ -289,7 +309,17 @@ export default function LabTesting1Page() {
       (item.partyName || "").toLowerCase().includes(q) ||
       (item.testedBy || "").toLowerCase().includes(q)
     )
-  }, [historyTests, searchQuery, fromDate, toDate])
+  }, [historyTests, searchQuery, fromDate, toDate, productFilter])
+
+  const pendingTotalQty = useMemo(
+    () => filteredPending.reduce((total, item) => total + (Number(item.quantity) || 0), 0),
+    [filteredPending]
+  )
+
+  const historyTotalQty = useMemo(
+    () => filteredHistory.reduce((total, item) => total + (Number(item.quantity) || 0), 0),
+    [filteredHistory]
+  )
 
   const handleExportPDF = () => {
     const doc = new jsPDF("landscape")
@@ -787,27 +817,43 @@ export default function LabTesting1Page() {
         <CardContent className="p-4 sm:p-6 lg:p-8">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <div className="flex flex-col gap-4 mb-6">
-              <TabsList className="grid w-full lg:w-[450px] grid-cols-2 mb-0 shrink-0">
-                <TabsTrigger value="pending"><TestTube className="h-4 w-4 mr-2" /> Pending ({filteredPending.length})</TabsTrigger>
-                <TabsTrigger value="history"><History className="h-4 w-4 mr-2" /> History ({filteredHistory.length})</TabsTrigger>
-              </TabsList>
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <TabsList className="grid w-full lg:w-[450px] grid-cols-2 mb-0 shrink-0">
+                  <TabsTrigger value="pending"><TestTube className="h-4 w-4 mr-2" /> Pending ({filteredPending.length})</TabsTrigger>
+                  <TabsTrigger value="history"><History className="h-4 w-4 mr-2" /> History ({filteredHistory.length})</TabsTrigger>
+                </TabsList>
+
+                <div className="text-sm font-semibold text-slate-700 lg:text-right">
+                  Total Quantity:{" "}
+                  <span className="text-olive-700">
+                    {(activeTab === "pending"
+                      ? pendingTotalQty
+                      : historyTotalQty
+                    ).toLocaleString()}
+                  </span>
+                </div>
+              </div>
               
               <div className="flex flex-wrap items-center gap-3 w-full bg-slate-50/50 p-3 rounded-xl border border-slate-100 shadow-sm">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">From:</span>
-                  <Input
-                    type="date"
-                    value={fromDate}
-                    onChange={(e) => setFromDate(e.target.value)}
-                    className="w-[130px] h-8 text-xs focus-visible:ring-olive-500 bg-white"
-                  />
-                  <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">To:</span>
-                  <Input
-                    type="date"
-                    value={toDate}
-                    onChange={(e) => setToDate(e.target.value)}
-                    className="w-[130px] h-8 text-xs focus-visible:ring-olive-500 bg-white"
-                  />
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <span className="text-xs text-muted-foreground font-semibold whitespace-nowrap">From:</span>
+                    <Input
+                      type="date"
+                      value={fromDate}
+                      onChange={(e) => setFromDate(e.target.value)}
+                      className="w-full sm:w-[130px] h-8 text-xs focus-visible:ring-olive-500 bg-white"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <span className="text-xs text-muted-foreground font-semibold whitespace-nowrap">To:</span>
+                    <Input
+                      type="date"
+                      value={toDate}
+                      onChange={(e) => setToDate(e.target.value)}
+                      className="w-full sm:w-[130px] h-8 text-xs focus-visible:ring-olive-500 bg-white"
+                    />
+                  </div>
                   {(fromDate || toDate) && (
                     <Button
                       variant="ghost"
@@ -816,11 +862,26 @@ export default function LabTesting1Page() {
                         setFromDate("")
                         setToDate("")
                       }}
-                      className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-olive-50"
+                      className="h-8 px-2 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded shrink-0 self-end sm:self-auto"
                     >
-                      Clear
+                      Clear Date
                     </Button>
                   )}
+                </div>
+                <div className="w-[180px]">
+                  <Select value={productFilter} onValueChange={setProductFilter}>
+                    <SelectTrigger className="h-8 text-xs bg-white focus-visible:ring-olive-500">
+                      <SelectValue placeholder="All Products" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      <SelectItem value="all">All Products</SelectItem>
+                      {uniqueProductsForFilter.map((p) => (
+                        <SelectItem key={p} value={p}>
+                          {p}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="relative w-full sm:w-[200px]">
                   <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />

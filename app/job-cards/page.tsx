@@ -132,6 +132,7 @@ export default function JobCardsPage() {
   const [cancelOrderRemarks, setCancelOrderRemarks] = useState("")
   const [cancelOrderQty, setCancelOrderQty] = useState("")
   const [activeTab, setActiveTab] = useState("pending")
+  const [firmFilter, setFirmFilter] = useState("all")
   const [visiblePendingColumns, setVisiblePendingColumns] = useState<Record<string, boolean>>({})
   const [visibleHistoryColumns, setVisibleHistoryColumns] = useState<Record<string, boolean>>({})
 
@@ -325,8 +326,23 @@ export default function JobCardsPage() {
     loadAllData()
   }, [loadAllData])
 
+  const uniqueFirmsForFilter = useMemo(() => {
+    const firms = new Set<string>()
+    pendingOrders.forEach((item) => {
+      if (item.firmName) firms.add(item.firmName)
+    })
+    historyJobCards.forEach((item) => {
+      if (item.firmName) firms.add(item.firmName)
+    })
+    return Array.from(firms).sort()
+  }, [pendingOrders, historyJobCards])
+
   const filteredPending = useMemo(() => {
-    return pendingOrders.filter((item) => {
+    let data = pendingOrders
+    if (firmFilter !== "all") {
+      data = data.filter((item) => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase())
+    }
+    return data.filter((item) => {
       return searchQuery.trim() === "" || [
         item.deliveryOrderNo,
         item.firmName,
@@ -335,10 +351,14 @@ export default function JobCardsPage() {
         item.priority
       ].some(val => String(val || "").toLowerCase().includes(searchQuery.toLowerCase().trim()))
     })
-  }, [pendingOrders, searchQuery])
+  }, [pendingOrders, searchQuery, firmFilter])
 
   const filteredHistory = useMemo(() => {
-    return historyJobCards.filter((item) => {
+    let data = historyJobCards
+    if (firmFilter !== "all") {
+      data = data.filter((item) => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase())
+    }
+    return data.filter((item) => {
       return searchQuery.trim() === "" || [
         item.jobCardNo,
         item.firmName,
@@ -350,7 +370,7 @@ export default function JobCardsPage() {
         item.shift
       ].some(val => String(val || "").toLowerCase().includes(searchQuery.toLowerCase().trim()))
     })
-  }, [historyJobCards, searchQuery])
+  }, [historyJobCards, searchQuery, firmFilter])
 
   const handleOpenDialog = (order: Order) => {
     setSelectedOrder(order)
@@ -547,6 +567,35 @@ export default function JobCardsPage() {
     }
   }
 
+  const handleExportCSV = () => {
+    const dataToExport = activeTab === "pending" ? filteredPending : filteredHistory
+    const columnsToExport = activeTab === "pending" ? visiblePendingOrdersColumns : visibleHistoryJobCardsColumns
+
+    if (dataToExport.length === 0) {
+      alert("Export karne ke liye koi data nahi hai.")
+      return
+    }
+
+    const headers = columnsToExport.map(col => `"${col.header.replace(/"/g, '""')}"`).join(",")
+    const rows = dataToExport.map(item => {
+      return columnsToExport.map(col => {
+        const val = item[col.dataKey as keyof typeof item]
+        const strVal = val !== null && val !== undefined ? String(val) : ""
+        return `"${strVal.replace(/"/g, '""')}"`
+      }).join(",")
+    })
+
+    const csvContent = "\uFEFF" + [headers, ...rows].join("\n")
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.setAttribute("href", url)
+    link.setAttribute("download", `${activeTab}_job_cards_${format(new Date(), "yyyy-MM-dd")}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
 
   const handleToggleColumn = (tab: string, dataKey: string, checked: boolean) => {
     const setter = tab === "pending" ? setVisiblePendingColumns : setVisibleHistoryColumns
@@ -614,15 +663,35 @@ export default function JobCardsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4 sm:p-6 lg:p-8">
-          {/* Search Bar */}
-          <div className="relative mb-6 w-full max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Search by JC No, DO No, Product or Party..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 h-10 rounded-xl border-gray-200 focus:ring-olive-500/20 focus:border-olive-500 bg-white text-sm"
-            />
+          {/* Search & Filter Bar */}
+          <div className="flex flex-col sm:flex-row gap-3 mb-6 items-start sm:items-center w-full max-w-2xl">
+            <div className="w-48">
+              <Select
+                value={firmFilter}
+                onValueChange={setFirmFilter}
+              >
+                <SelectTrigger className="h-10 rounded-xl border-gray-200 focus:ring-olive-500/20 focus:border-olive-500 bg-white">
+                  <SelectValue placeholder="All Firms" />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl">
+                  <SelectItem value="all">All Firms</SelectItem>
+                  {uniqueFirmsForFilter.map((firm) => (
+                    <SelectItem key={firm} value={firm}>
+                      {firm}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="relative flex-1 w-full sm:max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search by JC No, DO No, Product or Party..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 h-10 rounded-xl border-gray-200 focus:ring-olive-500/20 focus:border-olive-500 bg-white text-sm"
+              />
+            </div>
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
@@ -630,13 +699,13 @@ export default function JobCardsPage() {
               <TabsTrigger value="pending" className="flex items-center gap-2">
                 <FileCheck className="h-4 w-4" /> Pending Orders{" "}
                 <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                  {searchQuery ? `${filteredPending.length} / ${pendingOrders.length}` : pendingOrders.length}
+                  {(searchQuery || firmFilter !== "all") ? `${filteredPending.length} / ${pendingOrders.length}` : pendingOrders.length}
                 </Badge>
               </TabsTrigger>
               <TabsTrigger value="history" className="flex items-center gap-2">
                 <History className="h-4 w-4" /> Job Card History{" "}
                 <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                  {searchQuery ? `${filteredHistory.length} / ${historyJobCards.length}` : historyJobCards.length}
+                  {(searchQuery || firmFilter !== "all") ? `${filteredHistory.length} / ${historyJobCards.length}` : historyJobCards.length}
                 </Badge>
               </TabsTrigger>
             </TabsList>
@@ -647,60 +716,70 @@ export default function JobCardsPage() {
                   <div className="flex flex-wrap justify-between items-center bg-olive-50 rounded-md p-2 gap-4">
                     <CardTitle className="flex items-center text-md font-semibold text-foreground">
                       <FileCheck className="h-5 w-5 text-primary mr-2" />
-                      Pending for Production ({searchQuery ? `${filteredPending.length} / ${pendingOrders.length}` : pendingOrders.length})
+                      Pending for Production ({(searchQuery || firmFilter !== "all") ? `${filteredPending.length} / ${pendingOrders.length}` : pendingOrders.length})
                     </CardTitle>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm" className="h-8 text-xs bg-transparent">
-                          <Settings className="mr-1.5 h-3.5 w-3.5" />
-                          View Columns
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[220px] p-3">
-                        <div className="grid gap-2">
-                          <p className="text-sm font-medium">Toggle Columns</p>
-                          <div className="flex items-center justify-between mt-1 mb-2">
-                            <Button
-                              variant="link"
-                              size="sm"
-                              className="p-0 h-auto text-xs"
-                              onClick={() => handleSelectAllColumns("pending", PENDING_ORDERS_COLUMNS_META, true)}
-                            >
-                              Select All
-                            </Button>
-                            <span className="text-gray-300 mx-1">|</span>
-                            <Button
-                              variant="link"
-                              size="sm"
-                              className="p-0 h-auto text-xs"
-                              onClick={() => handleSelectAllColumns("pending", PENDING_ORDERS_COLUMNS_META, false)}
-                            >
-                              Deselect All
-                            </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs bg-transparent border-olive-200 hover:bg-olive-50/50 font-semibold"
+                        onClick={handleExportCSV}
+                      >
+                        Export CSV
+                      </Button>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" size="sm" className="h-8 text-xs bg-transparent">
+                            <Settings className="mr-1.5 h-3.5 w-3.5" />
+                            View Columns
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[220px] p-3">
+                          <div className="grid gap-2">
+                            <p className="text-sm font-medium">Toggle Columns</p>
+                            <div className="flex items-center justify-between mt-1 mb-2">
+                              <Button
+                                variant="link"
+                                size="sm"
+                                className="p-0 h-auto text-xs"
+                                onClick={() => handleSelectAllColumns("pending", PENDING_ORDERS_COLUMNS_META, true)}
+                              >
+                                Select All
+                              </Button>
+                              <span className="text-gray-300 mx-1">|</span>
+                              <Button
+                                variant="link"
+                                size="sm"
+                                className="p-0 h-auto text-xs"
+                                onClick={() => handleSelectAllColumns("pending", PENDING_ORDERS_COLUMNS_META, false)}
+                              >
+                                Deselect All
+                              </Button>
+                            </div>
+                            <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                              {PENDING_ORDERS_COLUMNS_META.filter((col) => col.toggleable).map((col) => (
+                                <div key={`toggle-pending-${col.dataKey}`} className="flex items-center space-x-2">
+                                  <Checkbox
+                                    id={`toggle-pending-${col.dataKey}`}
+                                    checked={!!visiblePendingColumns[col.dataKey]}
+                                    onCheckedChange={(checked) =>
+                                      handleToggleColumn("pending", col.dataKey, Boolean(checked))
+                                    }
+                                    disabled={col.alwaysVisible}
+                                  />
+                                  <Label
+                                    htmlFor={`toggle-pending-${col.dataKey}`}
+                                    className="text-xs font-normal cursor-pointer"
+                                  >
+                                    {col.header}
+                                  </Label>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                          <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                            {PENDING_ORDERS_COLUMNS_META.filter((col) => col.toggleable).map((col) => (
-                              <div key={`toggle-pending-${col.dataKey}`} className="flex items-center space-x-2">
-                                <Checkbox
-                                  id={`toggle-pending-${col.dataKey}`}
-                                  checked={!!visiblePendingColumns[col.dataKey]}
-                                  onCheckedChange={(checked) =>
-                                    handleToggleColumn("pending", col.dataKey, Boolean(checked))
-                                  }
-                                  disabled={col.alwaysVisible}
-                                />
-                                <Label
-                                  htmlFor={`toggle-pending-${col.dataKey}`}
-                                  className="text-xs font-normal cursor-pointer"
-                                >
-                                  {col.header}
-                                </Label>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="p-0 flex-1 flex flex-col">
@@ -761,60 +840,70 @@ export default function JobCardsPage() {
                   <div className="flex flex-wrap justify-between items-center bg-olive-50 rounded-md p-2 gap-4">
                     <CardTitle className="flex items-center text-md font-semibold text-foreground">
                       <History className="h-5 w-5 text-primary mr-2" />
-                      Job Card History ({searchQuery ? `${filteredHistory.length} / ${historyJobCards.length}` : historyJobCards.length})
+                      Job Card History ({(searchQuery || firmFilter !== "all") ? `${filteredHistory.length} / ${historyJobCards.length}` : historyJobCards.length})
                     </CardTitle>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm" className="h-8 text-xs bg-transparent">
-                          <Settings className="mr-1.5 h-3.5 w-3.5" />
-                          View Columns
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[220px] p-3">
-                        <div className="grid gap-2">
-                          <p className="text-sm font-medium">Toggle Columns</p>
-                          <div className="flex items-center justify-between mt-1 mb-2">
-                            <Button
-                              variant="link"
-                              size="sm"
-                              className="p-0 h-auto text-xs"
-                              onClick={() => handleSelectAllColumns("history", HISTORY_COLUMNS_META, true)}
-                            >
-                              Select All
-                            </Button>
-                            <span className="text-gray-300 mx-1">|</span>
-                            <Button
-                              variant="link"
-                              size="sm"
-                              className="p-0 h-auto text-xs"
-                              onClick={() => handleSelectAllColumns("history", HISTORY_COLUMNS_META, false)}
-                            >
-                              Deselect All
-                            </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs bg-transparent border-olive-200 hover:bg-olive-50/50 font-semibold"
+                        onClick={handleExportCSV}
+                      >
+                        Export CSV
+                      </Button>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" size="sm" className="h-8 text-xs bg-transparent">
+                            <Settings className="mr-1.5 h-3.5 w-3.5" />
+                            View Columns
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[220px] p-3">
+                          <div className="grid gap-2">
+                            <p className="text-sm font-medium">Toggle Columns</p>
+                            <div className="flex items-center justify-between mt-1 mb-2">
+                              <Button
+                                variant="link"
+                                size="sm"
+                                className="p-0 h-auto text-xs"
+                                onClick={() => handleSelectAllColumns("history", HISTORY_COLUMNS_META, true)}
+                              >
+                                Select All
+                              </Button>
+                              <span className="text-gray-300 mx-1">|</span>
+                              <Button
+                                variant="link"
+                                size="sm"
+                                className="p-0 h-auto text-xs"
+                                onClick={() => handleSelectAllColumns("history", HISTORY_COLUMNS_META, false)}
+                              >
+                                Deselect All
+                              </Button>
+                            </div>
+                            <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                              {HISTORY_COLUMNS_META.filter((col) => col.toggleable).map((col) => (
+                                <div key={`toggle-history-${col.dataKey}`} className="flex items-center space-x-2">
+                                  <Checkbox
+                                    id={`toggle-history-${col.dataKey}`}
+                                    checked={!!visibleHistoryColumns[col.dataKey]}
+                                    onCheckedChange={(checked) =>
+                                      handleToggleColumn("history", col.dataKey, Boolean(checked))
+                                    }
+                                    disabled={col.alwaysVisible}
+                                  />
+                                  <Label
+                                    htmlFor={`toggle-history-${col.dataKey}`}
+                                    className="text-xs font-normal cursor-pointer"
+                                  >
+                                    {col.header}
+                                  </Label>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                          <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                            {HISTORY_COLUMNS_META.filter((col) => col.toggleable).map((col) => (
-                              <div key={`toggle-history-${col.dataKey}`} className="flex items-center space-x-2">
-                                <Checkbox
-                                  id={`toggle-history-${col.dataKey}`}
-                                  checked={!!visibleHistoryColumns[col.dataKey]}
-                                  onCheckedChange={(checked) =>
-                                    handleToggleColumn("history", col.dataKey, Boolean(checked))
-                                  }
-                                  disabled={col.alwaysVisible}
-                                />
-                                <Label
-                                  htmlFor={`toggle-history-${col.dataKey}`}
-                                  className="text-xs font-normal cursor-pointer"
-                                >
-                                  {col.header}
-                                </Label>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="p-0 flex-1 flex flex-col">

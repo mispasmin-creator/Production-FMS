@@ -139,6 +139,7 @@ export default function OrdersPage() {
   const [cancelQuantity, setCancelQuantity] = useState("");
   const [cancelReason, setCancelReason] = useState("");
   const [activeTab, setActiveTab] = useState("all");
+  const [firmFilter, setFirmFilter] = useState("all");
   const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
 
   // Column visibility state
@@ -586,6 +587,13 @@ export default function OrdersPage() {
     }
   };
 
+  const uniqueFirmsForFilter = useMemo(() => {
+    const firms = productionData
+      .map((item) => item.firmName)
+      .filter((name): name is string => typeof name === "string" && name.trim() !== "");
+    return Array.from(new Set(firms)).sort();
+  }, [productionData]);
+
   const filteredData = useMemo(() => {
     // 1. Filter by Firm first
     let baseData = productionData;
@@ -599,6 +607,13 @@ export default function OrdersPage() {
           return fName.includes(firmSearch) || fName.includes(mappedFirmLower);
         });
       });
+    }
+
+    // Filter by selected firm filter
+    if (firmFilter !== "all") {
+      baseData = baseData.filter(
+        (item) => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase()
+      );
     }
 
     // 2. Filter by search query
@@ -630,7 +645,7 @@ export default function OrdersPage() {
     if (activeTab === "cancelled")
       return baseData.filter((item) => item.orderCancel);
     return baseData;
-  }, [productionData, activeTab, user, searchQuery]);
+  }, [productionData, activeTab, user, searchQuery, firmFilter]);
 
   const visibleColumnsMeta = useMemo(
     () => JOBCARD_COLUMNS_META.filter((col) => visibleColumns[col.dataKey]),
@@ -864,6 +879,24 @@ export default function OrdersPage() {
             </Tabs>
 
             <div className="flex items-center gap-3 w-full lg:w-auto">
+              <div className="w-48">
+                <Select
+                  value={firmFilter}
+                  onValueChange={setFirmFilter}
+                >
+                  <SelectTrigger className="h-10 rounded-xl border-gray-200 focus:ring-olive-500/20 focus:border-olive-500">
+                    <SelectValue placeholder="All Firms" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl">
+                    <SelectItem value="all">All Firms</SelectItem>
+                    {uniqueFirmsForFilter.map((firm) => (
+                      <SelectItem key={firm} value={firm}>
+                        {firm}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="relative flex-1 lg:w-64">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input

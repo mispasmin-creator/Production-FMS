@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { Loader2, AlertTriangle, Settings, Plus, X, Factory, History, Eye, Search, XCircle } from "lucide-react"
 import { format } from "date-fns"
+import * as XLSX from "xlsx"
 import { supabase } from "@/lib/supabase"
 import { useAuth, FIRM_MAP } from "@/lib/auth"
 
@@ -233,6 +234,7 @@ export default function ProductionPage() {
   const isAdmin = user?.role?.toLowerCase() === "admin"
 
   const [searchQuery, setSearchQuery] = useState("")
+  const [firmFilter, setFirmFilter] = useState("all")
   const [fromDate, setFromDate] = useState("")
   const [toDate, setToDate] = useState("")
 
@@ -479,8 +481,23 @@ export default function ProductionPage() {
     loadAllData()
   }, [loadAllData])
 
+  const uniqueFirmsForFilter = useMemo(() => {
+    const firms = new Set<string>()
+    pendingProductions.forEach((item) => {
+      if (item.firmName) firms.add(item.firmName)
+    })
+    historyProductions.forEach((item) => {
+      if (item.firmName) firms.add(item.firmName)
+    })
+    return Array.from(firms).sort()
+  }, [pendingProductions, historyProductions])
+
   const filteredPending = useMemo(() => {
-    return pendingProductions.filter((item) => {
+    let data = pendingProductions
+    if (firmFilter !== "all") {
+      data = data.filter((item) => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase())
+    }
+    return data.filter((item) => {
       // 1. Search Query filter
       const matchesSearch = searchQuery.trim() === "" || [
         item.jobCardNo,
@@ -517,10 +534,14 @@ export default function ProductionPage() {
 
       return matchesSearch && matchesDate
     })
-  }, [pendingProductions, searchQuery, fromDate, toDate])
+  }, [pendingProductions, searchQuery, fromDate, toDate, firmFilter])
 
   const filteredHistory = useMemo(() => {
-    return historyProductions.filter((item) => {
+    let data = historyProductions
+    if (firmFilter !== "all") {
+      data = data.filter((item) => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase())
+    }
+    return data.filter((item) => {
       // 1. Search Query filter
       const matchesSearch = searchQuery.trim() === "" || [
         item.jobCardNo,
@@ -558,7 +579,7 @@ export default function ProductionPage() {
 
       return matchesSearch && matchesDate
     })
-  }, [historyProductions, searchQuery, fromDate, toDate])
+  }, [historyProductions, searchQuery, fromDate, toDate, firmFilter])
 
   const pendingTotalMadeQty = useMemo(
     () => filteredPending.reduce((total, item) => total + (Number(item.totalMade) || 0), 0),
@@ -598,7 +619,12 @@ export default function ProductionPage() {
     let totalQty = 0
     const matchingRuns: any[] = []
 
-    historyProductions.forEach((run) => {
+    let data = historyProductions
+    if (firmFilter !== "all") {
+      data = data.filter((item) => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase())
+    }
+
+    data.forEach((run) => {
       if (run.status === "cancelled") return
 
       if (run.dateOfProduction) {
@@ -654,11 +680,36 @@ export default function ProductionPage() {
     })
 
     return { totalQty, matchingRuns }
-  }, [historyProductions, summaryStartDate, summaryEndDate, summaryProduct, summaryMaterial])
+  }, [historyProductions, summaryStartDate, summaryEndDate, summaryProduct, summaryMaterial, firmFilter])
 
   const summaryFGQty = useMemo(() => {
     return materialSummaryData.matchingRuns.reduce((sum, run) => sum + (Number(run.actualQuantity) || 0), 0)
   }, [materialSummaryData])
+
+  // Breakdown: group by productName → sum actualQuantity
+  const fgBreakdown = useMemo(() => {
+    const map = new Map<string, number>()
+    materialSummaryData.matchingRuns.forEach((run) => {
+      const key = String(run.productName || "").trim() || "Unknown"
+      map.set(key, (map.get(key) || 0) + (Number(run.actualQuantity) || 0))
+    })
+    return Array.from(map.entries()).map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty)
+  }, [materialSummaryData])
+
+  // Breakdown: group by material name → sum quantity (respects summaryMaterial filter)
+  const rmBreakdown = useMemo(() => {
+    const map = new Map<string, number>()
+    materialSummaryData.matchingRuns.forEach((run) => {
+      run.rawMaterials.forEach((rm: any) => {
+        const matName = String(rm.name || "").trim() || "Unknown"
+        if (summaryMaterial && summaryMaterial !== "all") {
+          if (normalizeKey(matName) !== normalizeKey(summaryMaterial)) return
+        }
+        map.set(matName, (map.get(matName) || 0) + (Number(rm.quantity) || 0))
+      })
+    })
+    return Array.from(map.entries()).map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty)
+  }, [materialSummaryData, summaryMaterial])
 
   const handleOpenDialog = (jobCard: ProductionItem) => {
     setSelectedJobCard(jobCard)
@@ -823,6 +874,127 @@ export default function ProductionPage() {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const handleExportCSV = () => {
+    if (activeTab === "rm-summary") {
+      if (rmBreakdown.length === 0 && fgBreakdown.length === 0 && materialSummaryData.matchingRuns.length === 0) {
+        alert("Export karne ke liye pehle date range ya filter select karein.")
+        return
+      }
+
+      const wb = XLSX.utils.book_new()
+
+      // ── Sheet 1: Summary (cards breakdown) ──
+      const summaryRows: any[][] = []
+      
+      // Header row 1
+      summaryRows.push([
+        "RAW MATERIAL CONSUMPTION BREAKDOWN", 
+        "", 
+        "", 
+        "FINISHED GOOD TOTAL QTY BREAKDOWN"
+      ])
+      
+      // Header row 2
+      summaryRows.push([
+        "Raw Material Name", 
+        "Total Qty Consumed", 
+        "", 
+        "Finished Good Name", 
+        "Total Actual Qty"
+      ])
+      
+      // Data rows mapped side-by-side
+      const maxLength = Math.max(rmBreakdown.length, fgBreakdown.length)
+      for (let i = 0; i < maxLength; i++) {
+        const rm = rmBreakdown[i]
+        const fg = fgBreakdown[i]
+        summaryRows.push([
+          rm ? rm.name : "",
+          rm ? rm.qty : "",
+          "", // Column C spacing
+          fg ? fg.name : "",
+          fg ? fg.qty : ""
+        ])
+      }
+
+      const ws1 = XLSX.utils.aoa_to_sheet(summaryRows)
+      // Column widths setting for all columns
+      ws1["!cols"] = [
+        { wch: 35 }, // A: RM Name
+        { wch: 20 }, // B: RM Qty
+        { wch: 5 },  // C: Spacer
+        { wch: 35 }, // D: FG Name
+        { wch: 20 }  // E: FG Qty
+      ]
+      XLSX.utils.book_append_sheet(wb, ws1, "Summary")
+
+      // ── Sheet 2: Details (matching runs table) ──
+      const tableHeaders = visibleHistoryColumnsMeta.map(col => col.header)
+      const tableRows = materialSummaryData.matchingRuns.map(item =>
+        visibleHistoryColumnsMeta.map(col => {
+          const val = item[col.dataKey as keyof typeof item]
+          if (val === null || val === undefined) return ""
+          if (col.dataKey === "rawMaterials" && Array.isArray(val)) {
+            return val.map((rm: RawMaterial) => `${rm.name}: ${rm.quantity}`).join("; ")
+          }
+          if (col.dataKey === "machineHours") return formatMachineHours(val)
+          return String(val)
+        })
+      )
+
+      const ws2 = XLSX.utils.aoa_to_sheet([tableHeaders, ...tableRows])
+      ws2["!cols"] = tableHeaders.map(() => ({ wch: 20 }))
+      XLSX.utils.book_append_sheet(wb, ws2, "Details")
+
+      XLSX.writeFile(wb, `rm_summary_${format(new Date(), "yyyy-MM-dd")}.xlsx`)
+      return
+    }
+
+    let dataToExport: any[] = []
+    let columnsToExport: ColumnMeta[] = []
+
+    if (activeTab === "pending") {
+      dataToExport = filteredPending
+      columnsToExport = visiblePendingColumnsMeta
+    } else if (activeTab === "history") {
+      dataToExport = filteredHistory
+      columnsToExport = visibleHistoryColumnsMeta
+    }
+
+    if (dataToExport.length === 0) {
+      alert("Export karne ke liye koi data nahi hai.")
+      return
+    }
+
+    const headers = columnsToExport.map(col => `"${col.header.replace(/"/g, '""')}"`).join(",")
+    const rows = dataToExport.map(item => {
+      return columnsToExport.map(col => {
+        const val = item[col.dataKey as keyof typeof item]
+        let strVal = ""
+        if (val !== null && val !== undefined) {
+          if (col.dataKey === "rawMaterials" && Array.isArray(val)) {
+            strVal = val.map((rm: RawMaterial) => `${rm.name}: ${rm.quantity}`).join("; ")
+          } else if (col.dataKey === "machineHours") {
+            strVal = formatMachineHours(val)
+          } else {
+            strVal = String(val)
+          }
+        }
+        return `"${strVal.replace(/"/g, '""')}"`
+      }).join(",")
+    })
+
+    const csvContent = "\uFEFF" + [headers, ...rows].join("\n")
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.setAttribute("href", url)
+    link.setAttribute("download", `${activeTab}_production_${format(new Date(), "yyyy-MM-dd")}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
   }
 
   const ColumnToggler = ({ tab, columnsMeta }: { tab: string; columnsMeta: ColumnMeta[] }) => (
@@ -1042,6 +1214,26 @@ export default function ProductionPage() {
         <CardContent className="p-2 sm:p-4 lg:p-6">
           {/* Filters Bar */}
           <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row flex-wrap gap-4 items-end mb-6">
+            <div className="space-y-1.5 w-full sm:w-[200px]">
+              <Label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Firm Name</Label>
+              <Select
+                value={firmFilter}
+                onValueChange={setFirmFilter}
+              >
+                <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-white focus:ring-olive-500/20">
+                  <SelectValue placeholder="All Firms" />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl">
+                  <SelectItem value="all">All Firms</SelectItem>
+                  {uniqueFirmsForFilter.map((firm) => (
+                    <SelectItem key={firm} value={firm}>
+                      {firm}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-1.5 flex-1 min-w-[200px]">
               <Label htmlFor="search" className="text-xs font-bold text-slate-600 uppercase tracking-wider">Search</Label>
               <div className="relative">
@@ -1084,11 +1276,12 @@ export default function ProductionPage() {
                 type="button"
                 onClick={() => {
                   setSearchQuery("")
+                  setFirmFilter("all")
                   setFromDate("")
                   setToDate("")
                 }}
                 className="h-10 px-4 rounded-xl border-slate-200 hover:bg-slate-50 font-semibold text-sm w-full bg-white whitespace-nowrap"
-                disabled={!searchQuery && !fromDate && !toDate}
+                disabled={!searchQuery && firmFilter === "all" && !fromDate && !toDate}
               >
                 Clear Filters
               </Button>
@@ -1101,13 +1294,13 @@ export default function ProductionPage() {
                 <TabsTrigger value="pending" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
                   <Factory className="h-4 w-4 mr-2" /> Pending
                   <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                    {searchQuery || fromDate || toDate ? `${filteredPending.length} / ${pendingProductions.length}` : pendingProductions.length}
+                    {searchQuery || firmFilter !== "all" || fromDate || toDate ? `${filteredPending.length} / ${pendingProductions.length}` : pendingProductions.length}
                   </Badge>
                 </TabsTrigger>
                 <TabsTrigger value="history" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
                   <History className="h-4 w-4 mr-2" /> History
                   <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                    {searchQuery || fromDate || toDate ? `${filteredHistory.length} / ${historyProductions.length}` : historyProductions.length}
+                    {searchQuery || firmFilter !== "all" || fromDate || toDate ? `${filteredHistory.length} / ${historyProductions.length}` : historyProductions.length}
                   </Badge>
                 </TabsTrigger>
                 <TabsTrigger value="rm-summary" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
@@ -1132,9 +1325,19 @@ export default function ProductionPage() {
 
             <TabsContent value="pending" className="mt-0">
               <Card className="shadow-sm border-border">
-                <CardHeader className="py-2 px-3 bg-olive-50/70 rounded-t-lg">
+                <CardHeader className="py-2 px-3 bg-olive-50/70 rounded-t-lg flex flex-row items-center justify-between">
                   <CardTitle className="text-base font-semibold">Pending Items</CardTitle>
-                  <ColumnToggler tab="pending" columnsMeta={PENDING_COLUMNS_META} />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs bg-white border-slate-200 hover:bg-slate-50 font-semibold"
+                      onClick={handleExportCSV}
+                    >
+                      Export CSV
+                    </Button>
+                    <ColumnToggler tab="pending" columnsMeta={PENDING_COLUMNS_META} />
+                  </div>
                 </CardHeader>
                 <CardContent className="p-0">
                   <div className="overflow-x-auto">
@@ -1184,9 +1387,19 @@ export default function ProductionPage() {
 
             <TabsContent value="history" className="mt-0">
               <Card className="shadow-sm border-border">
-                <CardHeader className="py-2 px-3 bg-olive-50/70 rounded-t-lg">
+                <CardHeader className="py-2 px-3 bg-olive-50/70 rounded-t-lg flex flex-row items-center justify-between">
                   <CardTitle className="text-base font-semibold">Production History</CardTitle>
-                  <ColumnToggler tab="history" columnsMeta={HISTORY_COLUMNS_META} />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs bg-white border-slate-200 hover:bg-slate-50 font-semibold"
+                      onClick={handleExportCSV}
+                    >
+                      Export CSV
+                    </Button>
+                    <ColumnToggler tab="history" columnsMeta={HISTORY_COLUMNS_META} />
+                  </div>
                 </CardHeader>
                 <CardContent className="p-0">
                   <div className="overflow-x-auto">
@@ -1229,10 +1442,21 @@ export default function ProductionPage() {
 
             <TabsContent value="rm-summary" className="mt-0">
               <Card className="shadow-sm border-border bg-white rounded-xl">
-                <CardHeader className="py-3 px-4 bg-olive-50/70 rounded-t-lg border-b border-slate-100 flex flex-row items-center justify-between">
+                <CardHeader className="py-3 px-4 bg-olive-50/70 rounded-t-lg border-b border-slate-100 flex flex-row items-center justify-between gap-4">
                   <div>
                     <CardTitle className="text-base font-semibold text-slate-800">Raw Material Consumption Summary</CardTitle>
                     <CardDescription className="text-xs text-slate-500 mt-0.5">Calculate total consumption of raw materials within a date range.</CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs bg-white border-slate-200 hover:bg-slate-50 font-semibold"
+                      onClick={handleExportCSV}
+                    >
+                      Export CSV
+                    </Button>
+                    <ColumnToggler tab="history" columnsMeta={HISTORY_COLUMNS_META} />
                   </div>
                 </CardHeader>
                 <CardContent className="p-6 space-y-6">
@@ -1261,13 +1485,13 @@ export default function ProductionPage() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Product Name</Label>
+                      <Label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Finished Good</Label>
                       <Select value={summaryProduct} onValueChange={setSummaryProduct}>
                         <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-white">
-                          <SelectValue placeholder="All Products" />
+                          <SelectValue placeholder="All Finished Goods" />
                         </SelectTrigger>
                         <SelectContent className="max-h-60">
-                          <SelectItem value="all">All Products</SelectItem>
+                          <SelectItem value="all">All Finished Goods</SelectItem>
                           {uniqueProducts.map((p) => (
                             <SelectItem key={p} value={p}>
                               {p}
@@ -1295,45 +1519,74 @@ export default function ProductionPage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col md:flex-row justify-between gap-4">
-                    <div className="w-full md:w-1/3">
-                      <div className="bg-gradient-to-r from-olive-50 to-olive-100/50 p-6 rounded-2xl border border-olive-200/60 shadow-sm flex flex-col justify-center items-center text-center h-full min-h-[160px]">
-                        <p className="text-xs font-bold text-olive-800 uppercase tracking-widest mb-1">Total Consumption</p>
-                        <p className="text-4xl font-black text-olive-900">
-                          {materialSummaryData.totalQty.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                  {/* Reset button — top aligned above cards */}
+                  <div className="flex justify-end mb-3">
+                    <Button
+                      variant="outline"
+                      type="button"
+                      onClick={() => {
+                        setSummaryStartDate("")
+                        setSummaryEndDate("")
+                        setSummaryProduct("all")
+                        setSummaryMaterial("all")
+                      }}
+                      className="h-9 px-5 rounded-xl border-slate-200 hover:bg-slate-50 font-semibold text-sm bg-white shadow-sm"
+                      disabled={!summaryStartDate && !summaryEndDate && summaryProduct === "all" && summaryMaterial === "all"}
+                    >
+                      Reset Summary Filters
+                    </Button>
+                  </div>
+
+                  {/* Two full-width side-by-side cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {/* Raw Material Card */}
+                    <div className="bg-gradient-to-br from-olive-50 to-olive-100/60 p-6 rounded-2xl border border-olive-200/60 shadow-sm flex flex-col items-center text-center">
+                      <p className="text-xs font-bold text-olive-800 uppercase tracking-widest mb-2">Raw Material Consumption</p>
+                      <p className="text-4xl font-black text-olive-900 mb-1">
+                        {materialSummaryData.totalQty.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                      </p>
+                      {summaryMaterial && summaryMaterial !== "all" ? (
+                        <p className="text-xs text-olive-700 font-medium">
+                          of <span className="font-bold">{summaryMaterial}</span>
                         </p>
-                        {summaryMaterial && summaryMaterial !== "all" ? (
-                          <p className="text-xs text-olive-700 mt-1.5 font-medium">
-                            of <span className="font-bold">{summaryMaterial}</span>
-                          </p>
-                        ) : (
-                          <p className="text-xs text-olive-700 mt-1.5 font-medium">of All Raw Materials</p>
-                        )}
-                        {(summaryStartDate || summaryEndDate) && (
-                          <p className="text-[10px] text-slate-400 mt-2">
-                            {summaryStartDate ? format(new Date(summaryStartDate), "dd/MM/yyyy") : "Start"} — {summaryEndDate ? format(new Date(summaryEndDate), "dd/MM/yyyy") : "End"}
-                          </p>
-                        )}
-                      </div>
+                      ) : (
+                        <p className="text-xs text-olive-700 font-medium">of All Raw Materials</p>
+                      )}
+                      {rmBreakdown.length > 0 && (
+                        <div className="mt-4 w-full max-h-48 overflow-y-auto rounded-xl border border-olive-200 bg-white/70 divide-y divide-olive-100 text-left">
+                          {rmBreakdown.map((item) => (
+                            <div key={item.name} className="flex justify-between items-center px-4 py-2">
+                              <span className="text-xs text-olive-800 font-medium truncate max-w-[65%]">{item.name}</span>
+                              <span className="text-xs font-bold text-olive-900 shrink-0">{item.qty.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
-                    <div className="w-full md:w-2/3 flex flex-col justify-end">
-                      <div className="flex gap-3 justify-end mb-1">
-                        <Button
-                          variant="outline"
-                          type="button"
-                          onClick={() => {
-                            setSummaryStartDate("")
-                            setSummaryEndDate("")
-                            setSummaryProduct("all")
-                            setSummaryMaterial("all")
-                          }}
-                          className="h-10 px-4 rounded-xl border-slate-200 hover:bg-slate-50 font-semibold text-sm bg-white"
-                          disabled={!summaryStartDate && !summaryEndDate && summaryProduct === "all" && summaryMaterial === "all"}
-                        >
-                          Reset Summary Filters
-                        </Button>
-                      </div>
+                    {/* Finished Good Card */}
+                    <div className="bg-gradient-to-br from-blue-50 to-blue-100/60 p-6 rounded-2xl border border-blue-200/60 shadow-sm flex flex-col items-center text-center">
+                      <p className="text-xs font-bold text-blue-800 uppercase tracking-widest mb-2">Finished Good Total Qty</p>
+                      <p className="text-4xl font-black text-blue-900 mb-1">
+                        {summaryFGQty.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                      </p>
+                      {summaryProduct && summaryProduct !== "all" ? (
+                        <p className="text-xs text-blue-700 font-medium">
+                          of <span className="font-bold">{summaryProduct}</span>
+                        </p>
+                      ) : (
+                        <p className="text-xs text-blue-700 font-medium">of All Finished Goods</p>
+                      )}
+                      {fgBreakdown.length > 0 && (
+                        <div className="mt-4 w-full max-h-48 overflow-y-auto rounded-xl border border-blue-200 bg-white/70 divide-y divide-blue-100 text-left">
+                          {fgBreakdown.map((item) => (
+                            <div key={item.name} className="flex justify-between items-center px-4 py-2">
+                              <span className="text-xs text-blue-800 font-medium truncate max-w-[65%]">{item.name}</span>
+                              <span className="text-xs font-bold text-blue-900 shrink-0">{item.qty.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
 
