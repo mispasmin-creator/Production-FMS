@@ -1095,7 +1095,7 @@ export default function CheckPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
             <CheckCircle className="h-6 w-6 text-olive-600" />
-            Production Tracking System
+            Check
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">Track production stages from Actual Production sheet.</p>
         </div>

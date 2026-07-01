@@ -371,7 +371,7 @@ export default function TallyPage() {
         <CardHeader className="bg-gradient-to-r from-olive-50 to-olive-100 rounded-t-lg">
           <CardTitle className="flex items-center gap-2 text-gray-800">
             <FileText className="h-6 w-6 text-olive-600" />
-            Tally Management
+            Tally
           </CardTitle>
           <CardDescription className="text-gray-700">
             Manage and verify production tallies for completed items.

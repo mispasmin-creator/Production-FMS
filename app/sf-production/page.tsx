@@ -387,7 +387,7 @@ export default function Step1List() {
                 <CardHeader className="bg-gradient-to-r from-olive-50 to-violet-100 rounded-t-lg">
                     <CardTitle className="flex items-center gap-2 text-gray-800">
                         <Factory className="h-6 w-6 text-olive-600" />
-                        Semi Finished Production
+                        SF Production
                     </CardTitle>
                     <CardDescription className="text-gray-600">
                         Manage semi-finished goods production orders

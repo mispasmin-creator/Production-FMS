@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select"
 import { Toaster } from "@/components/ui/toaster"
 import { Textarea } from "@/components/ui/textarea"
 
@@ -611,6 +611,14 @@ export default function ProductionPage() {
     return Array.from(mats).sort()
   }, [historyProductions])
 
+  const uniqueFirms = useMemo(() => {
+    const firms = new Set<string>()
+    historyProductions.forEach(p => {
+      if (p.status !== "cancelled" && p.firmName) firms.add(p.firmName.trim())
+    })
+    return Array.from(firms).sort()
+  }, [historyProductions])
+
   const materialSummaryData = useMemo(() => {
     if (!summaryStartDate && !summaryEndDate && !summaryMaterial && !summaryProduct) {
       return { totalQty: 0, matchingRuns: [] }
@@ -626,6 +634,8 @@ export default function ProductionPage() {
 
     data.forEach((run) => {
       if (run.status === "cancelled") return
+
+
 
       if (run.dateOfProduction) {
         const itemDate = parseDDMMYYYY(run.dateOfProduction)
@@ -1205,7 +1215,7 @@ export default function ProductionPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
             <Factory className="h-6 w-6 text-olive-600" />
-            Production Management
+            Production
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">Log production details for ready job cards.</p>
         </div>
@@ -1444,8 +1454,8 @@ export default function ProductionPage() {
               <Card className="shadow-sm border-border bg-white rounded-xl">
                 <CardHeader className="py-3 px-4 bg-olive-50/70 rounded-t-lg border-b border-slate-100 flex flex-row items-center justify-between gap-4">
                   <div>
-                    <CardTitle className="text-base font-semibold text-slate-800">Raw Material Consumption Summary</CardTitle>
-                    <CardDescription className="text-xs text-slate-500 mt-0.5">Calculate total consumption of raw materials within a date range.</CardDescription>
+                    <CardTitle className="text-base font-semibold text-slate-800">Raw Material & Finished Goods Summary</CardTitle>
+                    <CardDescription className="text-xs text-slate-500 mt-0.5">Calculate total consumption of raw materials or production of finished goods within a date range.</CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -1461,7 +1471,7 @@ export default function ProductionPage() {
                 </CardHeader>
                 <CardContent className="p-6 space-y-6">
                   {/* Filters inside tab */}
-                  <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-200 shadow-inner grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                  <div className={`bg-slate-50/50 p-4 rounded-xl border border-slate-200 shadow-inner grid grid-cols-1 ${isAdmin ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4 items-end`}>
                     <div className="space-y-1.5">
                       <Label htmlFor="sumFromDate" className="text-xs font-bold text-slate-600 uppercase tracking-wider">Start Date</Label>
                       <Input

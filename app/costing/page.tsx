@@ -498,7 +498,7 @@ export default function CostingPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
             <DollarSign className="h-6 w-6 text-olive-600" />
-            Production Costing
+            Costing
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">Add costing amounts for production items that have completed planning.</p>
         </div>

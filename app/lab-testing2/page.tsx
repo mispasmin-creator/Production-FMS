@@ -736,7 +736,7 @@ export default function LabTesting2Page() {
         <CardHeader className="bg-gradient-to-r from-olive-50 to-olive-100 rounded-t-lg">
           <CardTitle className="flex items-center gap-2 text-gray-800">
             <TestTube2 className="h-6 w-6 text-olive-600" />
-            Lab Testing: Physical Test 2
+            Lab Test 2
           </CardTitle>
           <CardDescription className="text-gray-700">
             Perform Physical Test 2 for items where Test 1 is complete.

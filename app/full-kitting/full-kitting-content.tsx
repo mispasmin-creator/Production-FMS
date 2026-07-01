@@ -492,7 +492,9 @@ export default function CheckPage() {
         );
       };
 
-      const pendingMap = new Map<string, ProductionItem>();
+      const pendingList: ProductionItem[] = [];
+      const matchedProdIds = new Set<any>();
+
       (allProdData || []).forEach((row: any) => {
         const doNo = String(row["Delivery Order No."] || "").trim();
         const productName = String(row["Product Name"] || "").trim();
@@ -510,7 +512,7 @@ export default function CheckPage() {
           }
         }
 
-        pendingMap.set(key, {
+        pendingList.push({
           id: row.id,
           productionId: row.id,
           timestamp: row["Timestamp"] || "",
@@ -535,18 +537,30 @@ export default function CheckPage() {
           uploadSo: row["Upload SO"] || meta?.uploadSo || "",
         });
       });
+
       (orderReceiptData || []).forEach((row: any) => {
         const doNo = String(row["DO-Delivery Order No."] || "").trim();
         const productName = String(row["Product Name"] || "").trim();
-        const key = makeOrderProductKey(doNo, productName);
-        if (
-          !doNo ||
-          pendingMap.has(key) ||
-          productionKeys.has(key) ||
-          isVerified(doNo, productName)
-        )
-          return;
+        const firmName = String(row["Firm Name"] || "").trim();
+        if (!doNo || isVerified(doNo, productName)) return;
 
+        const matchingProd = (allProdData || []).find((p: any) => {
+          if (matchedProdIds.has(p.id)) return false;
+          const pDO = normalize(p["Delivery Order No."]);
+          const oDO = normalize(doNo);
+          const pProduct = normalize(p["Product Name"]);
+          const oProduct = normalize(productName);
+          const pFirm = normalize(p["Firm Name"]);
+          const oFirm = normalize(firmName);
+          return pDO === oDO && pProduct === oProduct && (!oFirm || pFirm === oFirm);
+        });
+
+        if (matchingProd) {
+          matchedProdIds.add(matchingProd.id);
+          return;
+        }
+
+        const key = makeOrderProductKey(doNo, productName);
         let enriched = prodMap.get(key);
         if (!enriched) {
           const fallback = prodMap.get(doNo);
@@ -565,11 +579,11 @@ export default function CheckPage() {
           };
         }
 
-        pendingMap.set(key, {
+        pendingList.push({
           id: row.id,
           productionId: enriched.productionId || "",
           timestamp: row["Timestamp"] || "",
-          firmName: enriched.firmName || row["Firm Name"] || "",
+          firmName: row["Firm Name"] || enriched.firmName || "",
           deliveryOrderNo: doNo,
           partyName: row["Party Names"] || "",
           productName,
@@ -591,7 +605,7 @@ export default function CheckPage() {
         });
       });
 
-      const pending = Array.from(pendingMap.values());
+      const pending = pendingList;
 
       const products: KycProduct[] = (kycData || [])
         .filter((row: any) => row["Product name"])
@@ -1288,7 +1302,7 @@ export default function CheckPage() {
         <CardHeader className="bg-gradient-to-r from-olive-50 to-olive-100 rounded-t-lg">
           <CardTitle className="flex items-center gap-2 text-gray-800">
             <CheckCircle className="h-6 w-6 text-olive-600" />
-            Full Kitting Verification
+            Composition By Lab
           </CardTitle>
           <CardDescription>
             Verify items after the full kitting process.

@@ -656,7 +656,7 @@ export default function JobCardsPage() {
         <CardHeader className="bg-gradient-to-r from-olive-50 to-olive-100 rounded-t-lg">
           <CardTitle className="flex items-center gap-2 text-gray-800">
             <FileCheck className="h-6 w-6 text-olive-600" />
-            Job Card Management
+            Job Cards
           </CardTitle>
           <CardDescription className="text-gray-700">
             Create and manage job cards for production orders 

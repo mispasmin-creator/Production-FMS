@@ -811,7 +811,7 @@ export default function LabTesting1Page() {
     <div className="space-y-6 p-4 md:p-6 bg-white min-h-screen">
       <Card className="shadow-md border-none">
         <CardHeader className="bg-gradient-to-r from-olive-50 to-olive-100 rounded-t-lg">
-          <CardTitle className="flex items-center gap-2 text-gray-800"><TestTube className="h-6 w-6 text-olive-600" /> Lab Testing: Physical Test 1</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-gray-800"><TestTube className="h-6 w-6 text-olive-600" /> Lab Test 1</CardTitle>
           <CardDescription className="text-gray-700">Perform Lab Test 1 for production items.</CardDescription>
         </CardHeader>
         <CardContent className="p-4 sm:p-6 lg:p-8">

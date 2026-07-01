@@ -790,7 +790,7 @@ export default function OrdersPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
             <Package className="h-6 w-6 text-olive-600" />
-            Order Management
+            Orders
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">Manage and track production orders across different firms.</p>
         </div>
