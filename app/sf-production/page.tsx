@@ -124,22 +124,33 @@ export default function Step1List() {
                 fetchSemiJobCardRows(),
             ]);
 
-            // Build a live map of sfSrNo -> sum of actualMade from job cards
+            // Build a live map of sfSrNo + productName -> sum of actualMade from job cards
             // so "Produced" and "Pending" columns always reflect real data.
-            const actualMadeBysfSrNo = new Map<string, number>();
+            const actualMadeMap = new Map<string, number>();
             semiJobCardTable.forEach((row: any) => {
-                const sfNo = String(row.sfSrNo || "");
+                const sfNo = String(row.sfSrNo || "").trim();
+                const productName = String(row.productName || "").trim().toLowerCase();
                 const made = Number(row.actualMade || 0);
                 if (sfNo) {
-                    actualMadeBysfSrNo.set(sfNo, (actualMadeBysfSrNo.get(sfNo) || 0) + made);
+                    const key = `${sfNo}::${productName}`;
+                    actualMadeMap.set(key, (actualMadeMap.get(key) || 0) + made);
                 }
             });
 
             // Patch totalMade and pending with live-computed values
             const patchedItems = semiItems.map(p => {
-                const computedTotalMade = actualMadeBysfSrNo.has(p.sfSrNo)
-                    ? actualMadeBysfSrNo.get(p.sfSrNo)!
-                    : p.totalMade;
+                const sfNo = String(p.sfSrNo || "").trim();
+                const productName = String(p.nameOfSemiFinished || "").trim().toLowerCase();
+                const key = `${sfNo}::${productName}`;
+                
+                // Fallback to old behavior if no exact match is found (for backwards compatibility if productName is missing)
+                let computedTotalMade = p.totalMade;
+                if (actualMadeMap.has(key)) {
+                    computedTotalMade = actualMadeMap.get(key)!;
+                } else if (actualMadeMap.has(`${sfNo}::`)) {
+                     computedTotalMade = actualMadeMap.get(`${sfNo}::`)!;
+                }
+
                 const cancelledQty = Number(p.cancelOrder) || 0;
                 const computedPending = Math.max(p.qty - computedTotalMade - cancelledQty, 0);
                 return {

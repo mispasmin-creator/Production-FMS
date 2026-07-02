@@ -441,6 +441,7 @@ export default function SFJobCardPage() {
                                     <TableHeader className="bg-slate-50">
                                         <TableRow>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">Actions</TableHead>
+                                            <TableHead className="whitespace-nowrap text-xs font-semibold">Firm Name</TableHead>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">SF Sr. No.</TableHead>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">Product Name</TableHead>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">Total Qty</TableHead>
@@ -462,6 +463,9 @@ export default function SFJobCardPage() {
                                                         <ClipboardList size={12} className="mr-1" />
                                                         Plan
                                                     </Button>
+                                                </TableCell>
+                                                <TableCell className="whitespace-nowrap">
+                                                    <div className="text-sm font-semibold text-slate-800">{order.firmName}</div>
                                                 </TableCell>
                                                 <TableCell className="whitespace-nowrap">
                                                     <div className="text-sm font-semibold text-olive-600">{order.sfSrNo}</div>
@@ -512,6 +516,7 @@ export default function SFJobCardPage() {
                                     <TableHeader className="bg-slate-50">
                                         <TableRow>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">Timestamp</TableHead>
+                                            <TableHead className="whitespace-nowrap text-xs font-semibold">Firm Name</TableHead>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">SJC Sr. No.</TableHead>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">SF Sr. No.</TableHead>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">Supervisor</TableHead>
@@ -526,6 +531,9 @@ export default function SFJobCardPage() {
                                             <TableRow key={`history-${job.sjcSrNo}-${index}`} className="hover:bg-olive-50/40">
                                                 <TableCell className="whitespace-nowrap text-xs text-slate-500">
                                                     {job.timestamp || '-'}
+                                                </TableCell>
+                                                <TableCell className="whitespace-nowrap">
+                                                    <div className="text-sm font-semibold text-slate-800">{job.firmName}</div>
                                                 </TableCell>
                                                 <TableCell className="whitespace-nowrap">
                                                     <div className="text-sm font-semibold text-olive-600">{job.sjcSrNo}</div>

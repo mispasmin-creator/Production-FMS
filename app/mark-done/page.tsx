@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useAuth, FIRM_MAP } from "@/lib/auth";
 import { 
     Loader2, 
     AlertTriangle, 
@@ -34,7 +35,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/lib/supabase";
-import { fetchSemiActualRows, SEMI_ACTUAL_TABLE } from "@/lib/semi-finished-supabase";
+import { fetchSemiActualRows, fetchSemiProductionRows, SEMI_ACTUAL_TABLE } from "@/lib/semi-finished-supabase";
 
 // ==================== CONSTANTS ====================
 // ==================== TYPE DEFINITIONS ====================
@@ -74,11 +75,13 @@ interface SemiActualRecord {
     actual1: string;   // Column AD
     planned2: string;  // Column AH
     actual2: string;   // Column AI
+    firmName?: string;
 }
 
 // Column Definitions
 const PENDING_COLUMNS_META = [
     { header: "Actions", dataKey: "actions", alwaysVisible: true },
+    { header: "Firm Name", dataKey: "firmName", alwaysVisible: true },
     { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true },
     { header: "Product Name", dataKey: "productName", alwaysVisible: true },
     { header: "Quantity", dataKey: "qty" },
@@ -89,6 +92,7 @@ const PENDING_COLUMNS_META = [
 
 const PRODUCTION_COLUMNS_META = [
     { header: "Actions", dataKey: "actions", alwaysVisible: true },
+    { header: "Firm Name", dataKey: "firmName", alwaysVisible: true },
     { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true },
     { header: "Product Name", dataKey: "productName", alwaysVisible: true },
     { header: "Quantity", dataKey: "qty" },
@@ -98,6 +102,7 @@ const PRODUCTION_COLUMNS_META = [
 ];
 
 const HISTORY_COLUMNS_META = [
+    { header: "Firm Name", dataKey: "firmName", alwaysVisible: true },
     { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true },
     { header: "Product", dataKey: "productName", alwaysVisible: true },
     { header: "Qty", dataKey: "qty" },
@@ -150,6 +155,7 @@ const formatDisplayDate = (dateString: string): string => {
 type TabType = 'pending' | 'production' | 'history';
 
 export default function Step4List() {
+    const { user } = useAuth();
     const [activeTab, setActiveTab] = useState<TabType>('pending');
     const [semiActualData, setSemiActualData] = useState<SemiActualRecord[]>([]);
     const [loading, setLoading] = useState(true);
@@ -175,22 +181,46 @@ export default function Step4List() {
         setError(null);
         
         try {
-            const records: SemiActualRecord[] = (await fetchSemiActualRows())
-                .filter((row: any) => String(row.sNo || row.serialNo || "").startsWith("SA-"))
-                .map((row: any) => ({
-                    ...row,
-                    serialNo: row.serialNo || row.sNo || "",
-                    semiFinishedProductionNo: row.semiFinishedProductionNo || row.sfProductionNo || "",
-                }));
+            const [actualTable, productionTable] = await Promise.all([
+                fetchSemiActualRows(),
+                fetchSemiProductionRows()
+            ]);
 
-            setSemiActualData(records);
+            const productionFirmByNo = new Map(productionTable.map((row: any) => [row.sfSrNo, row.firmName]));
+
+            const filterByFirm = (data: any[]) => {
+                if (!user?.firm || user?.role?.toLowerCase() === 'admin') return data;
+                const userFirms = user.firm.split(',').map(f => f.trim()).filter(Boolean);
+                return data.filter(item => {
+                    const fName = String(item.firmName || "").toLowerCase();
+                    return userFirms.some(uf => {
+                        const firmSearch = uf.toLowerCase();
+                        const mappedFirmLower = (FIRM_MAP[uf] || uf).toLowerCase();
+                        return fName.includes(firmSearch) || fName.includes(mappedFirmLower);
+                    });
+                });
+            };
+
+            const records: SemiActualRecord[] = actualTable
+                .filter((row: any) => String(row.sNo || row.serialNo || "").startsWith("SA-"))
+                .map((row: any) => {
+                    const sfProductionNo = row.semiFinishedProductionNo || row.sfProductionNo || "";
+                    return {
+                        ...row,
+                        serialNo: row.serialNo || row.sNo || "",
+                        semiFinishedProductionNo: sfProductionNo,
+                        firmName: productionFirmByNo.get(sfProductionNo) || "",
+                    };
+                });
+
+            setSemiActualData(filterByFirm(records));
         } catch (err) {
             console.error("Error loading data:", err);
             setError(`Failed to load data: ${err instanceof Error ? err.message : String(err)}`);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [user]);
 
     useEffect(() => {
         loadData();
@@ -201,6 +231,7 @@ export default function Step4List() {
         if (!q) return semiActualData;
         return semiActualData.filter(item =>
             (item.semiFinishedJobCardNo || "").toLowerCase().includes(q) ||
+            (item.firmName || "").toLowerCase().includes(q) ||
             (item.productName || "").toLowerCase().includes(q) ||
             (item.supervisorName || "").toLowerCase().includes(q) ||
             (item.serialNo || "").toLowerCase().includes(q)
@@ -471,6 +502,13 @@ export default function Step4List() {
                                                     </div>
                                                 </TableCell>
                                             )}
+
+                                            {/* Firm Name */}
+                                            <TableCell className="whitespace-nowrap">
+                                                <span className="text-sm font-semibold text-slate-800">
+                                                    {record.firmName}
+                                                </span>
+                                            </TableCell>
 
                                             {/* Job Card No */}
                                             <TableCell className="whitespace-nowrap">

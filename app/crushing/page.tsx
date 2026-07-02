@@ -33,7 +33,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/lib/auth";
+import { useAuth, FIRM_MAP } from "@/lib/auth";
 import { parseGvizDate } from "@/lib/g-sheets";
 
 // ==================== CONSTANTS ====================
@@ -248,7 +248,22 @@ export default function Step5List() {
                 firmName: row['Firm Name'] || '',
             }));
             
-            setCrushingRecords(records.sort((a, b) => b._rowIndex - a._rowIndex));
+            // Filter by Firm
+            const filterByFirm = (data: any[]) => {
+                if (!user?.firm || user?.role?.toLowerCase() === 'admin') return data;
+                const userFirms = user.firm.split(',').map(f => f.trim()).filter(Boolean);
+                return data.filter(item => {
+                    const fName = String(item.firmName || "").toLowerCase();
+                    return userFirms.some(uf => {
+                        const firmSearch = uf.toLowerCase();
+                        const mappedFirmLower = (FIRM_MAP[uf] || uf).toLowerCase();
+                        return fName.includes(firmSearch) || fName.includes(mappedFirmLower);
+                    });
+                });
+            };
+
+            const sortedRecords = records.sort((a, b) => b._rowIndex - a._rowIndex);
+            setCrushingRecords(filterByFirm(sortedRecords));
 
             // Process Master data
             const crushingProductsSet = new Set<string>();

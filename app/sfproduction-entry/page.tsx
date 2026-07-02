@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useAuth, FIRM_MAP } from "@/lib/auth";
 import { format } from 'date-fns';
 import {
     Loader2, AlertTriangle, RefreshCw, ClipboardList, History,
@@ -21,6 +22,7 @@ import {
     fetchMasterRows,
     fetchSemiActualRows,
     fetchSemiJobCardRows,
+    fetchSemiProductionRows,
     getMasterValue,
     SEMI_ACTUAL_TABLE,
     SEMI_JOB_CARD_TABLE,
@@ -47,6 +49,7 @@ interface SemiJobCardRecord {
     actual: string;
     actualMade?: number;
     pending?: number;
+    firmName?: string;
 }
 
 interface SemiActualRecord {
@@ -89,6 +92,7 @@ interface SemiActualRecord {
     timeDelay2: string;
     actualQty2: number;
     finalQty: number;
+    firmName?: string;
 }
 
 interface RawMaterialRow {
@@ -138,6 +142,7 @@ const uploadImageToStorage = async (file: File, fileName: string): Promise<strin
 
 // ==================== MAIN COMPONENT ====================
 export default function SemiActualProductionPage() {
+    const { user } = useAuth();
     const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -186,19 +191,38 @@ export default function SemiActualProductionPage() {
         setIsLoading(true);
         setLoadError('');
         try {
-            const [sjcTable, actualTable, masterTable] = await Promise.all([
+            const [sjcTable, actualTable, masterTable, productionTable] = await Promise.all([
                 fetchSemiJobCardRows(),
                 fetchSemiActualRows(),
                 fetchMasterRows(),
+                fetchSemiProductionRows(),
             ]);
 
+            const productionFirmByNo = new Map(productionTable.map((row: any) => [row.sfSrNo, row.firmName]));
+            
+            // Filter by Firm
+            const filterByFirm = (data: any[]) => {
+                if (!user?.firm || user?.role?.toLowerCase() === 'admin') return data;
+                const userFirms = user.firm.split(',').map(f => f.trim()).filter(Boolean);
+                return data.filter(item => {
+                    const fName = String(item.firmName || "").toLowerCase();
+                    return userFirms.some(uf => {
+                        const firmSearch = uf.toLowerCase();
+                        const mappedFirmLower = (FIRM_MAP[uf] || uf).toLowerCase();
+                        return fName.includes(firmSearch) || fName.includes(mappedFirmLower);
+                    });
+                });
+            };
+
             const jobCards: SemiJobCardRecord[] = sjcTable
-                .filter((row: any) => row.sjcSrNo && row.sjcSrNo.startsWith('SJC-'));
-            setJobCardData(jobCards.sort((a, b) => b._rowIndex - a._rowIndex));
+                .filter((row: any) => row.sjcSrNo && row.sjcSrNo.startsWith('SJC-'))
+                .map((row: any) => ({ ...row, firmName: productionFirmByNo.get(row.sfSrNo) || "" }));
+            setJobCardData(filterByFirm(jobCards).sort((a, b) => b._rowIndex - a._rowIndex));
 
             const actuals: SemiActualRecord[] = actualTable
-                .filter((row: any) => row.sNo && row.sNo.startsWith('SA-'));
-            setSemiActualData(actuals.sort((a, b) => b._rowIndex - a._rowIndex));
+                .filter((row: any) => row.sNo && row.sNo.startsWith('SA-'))
+                .map((row: any) => ({ ...row, firmName: productionFirmByNo.get(row.sfProductionNo) || "" }));
+            setSemiActualData(filterByFirm(actuals).sort((a, b) => b._rowIndex - a._rowIndex));
 
             const rmSet = new Set<string>();
             masterTable.forEach((row: any) => {
@@ -221,7 +245,7 @@ export default function SemiActualProductionPage() {
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [user]);
 
     useEffect(() => { loadAllData(); }, [loadAllData]);
 
@@ -388,6 +412,7 @@ export default function SemiActualProductionPage() {
         return pending.filter(item =>
             (item.sjcSrNo || "").toLowerCase().includes(q) ||
             (item.sfSrNo || "").toLowerCase().includes(q) ||
+            (item.firmName || "").toLowerCase().includes(q) ||
             (item.productName || "").toLowerCase().includes(q) ||
             (item.supervisorName || "").toLowerCase().includes(q)
         );
@@ -400,6 +425,7 @@ export default function SemiActualProductionPage() {
             (item.sNo || "").toLowerCase().includes(q) ||
             (item.semiFinishedJobCardNo || "").toLowerCase().includes(q) ||
             (item.sfProductionNo || "").toLowerCase().includes(q) ||
+            (item.firmName || "").toLowerCase().includes(q) ||
             (item.productName || "").toLowerCase().includes(q) ||
             (item.supervisorName || "").toLowerCase().includes(q) ||
             (item.status || "").toLowerCase().includes(q)
@@ -518,6 +544,7 @@ export default function SemiActualProductionPage() {
                                 <thead>
                                     <tr className="border-b border-slate-100">
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Action</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Firm Name</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">SJC No.</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">SF No.</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Product Name</th>
@@ -540,6 +567,9 @@ export default function SemiActualProductionPage() {
                                                         Perform Test
                                                     </button>
                                                 </div>
+                                            </td>
+                                            <td className="px-6 py-3.5">
+                                                <span className="text-sm font-semibold text-slate-800">{job.firmName}</span>
                                             </td>
                                             <td className="px-6 py-3.5">
                                                 <span className="text-sm font-semibold text-olive-600">{job.sjcSrNo}</span>
@@ -591,6 +621,7 @@ export default function SemiActualProductionPage() {
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Action</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">S No.</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Timestamp</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Firm Name</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">SJC No.</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">SF No.</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Product</th>
@@ -617,6 +648,7 @@ export default function SemiActualProductionPage() {
                                                 <span className="text-sm font-semibold text-olive-600">{entry.sNo}</span>
                                             </td>
                                             <td className="px-6 py-3.5 text-xs text-slate-400 whitespace-nowrap">{entry.timestamp}</td>
+                                            <td className="px-6 py-3.5 text-sm font-medium text-slate-800">{entry.firmName}</td>
                                             <td className="px-6 py-3.5 text-sm font-medium text-slate-700">{entry.semiFinishedJobCardNo}</td>
                                             <td className="px-6 py-3.5 text-xs text-slate-500">{entry.sfProductionNo}</td>
                                             <td className="px-6 py-3.5">
