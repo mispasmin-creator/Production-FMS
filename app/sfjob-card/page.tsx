@@ -21,6 +21,7 @@ import {
     fetchMasterRows,
     fetchSemiJobCardRows,
     fetchSemiProductionRows,
+    fetchSemiActualRows,
     getMasterValue,
     SEMI_JOB_CARD_TABLE,
     SEMI_PRODUCTION_TABLE,
@@ -109,6 +110,7 @@ export default function SFJobCardPage() {
     const [productionData, setProductionData] = useState<SemiProductionRecord[]>([]);
     const [jobCardData, setJobCardData] = useState<SemiJobCardRecord[]>([]);
     const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
+    const [completedSjcNumbers, setCompletedSjcNumbers] = useState<Set<string>>(new Set());
 
     const [formData, setFormData] = useState({
         supervisorName: '',
@@ -127,10 +129,18 @@ export default function SFJobCardPage() {
         setIsLoading(true);
         setLoadError('');
         try {
-            const [semiJobCardTable, masterTable] = await Promise.all([
+            const [semiJobCardTable, masterTable, semiActualTable] = await Promise.all([
                 fetchSemiJobCardRows(),
                 fetchMasterRows(),
+                fetchSemiActualRows(),
             ]);
+
+            const completedSet = new Set<string>(
+                semiActualTable
+                    .map((row: any) => String(row.semiFinishedJobCardNo || "").trim())
+                    .filter(Boolean)
+            );
+            setCompletedSjcNumbers(completedSet);
 
             const productions = await fetchSemiProductionRows();
             const productionFirmByNo = new Map(productions.map((row) => [row.sfSrNo, row.firmName]));
@@ -508,6 +518,7 @@ export default function SFJobCardPage() {
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">Product</TableHead>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">Qty</TableHead>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">Date of Production</TableHead>
+                                            <TableHead className="whitespace-nowrap text-xs font-semibold">Status</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -533,6 +544,17 @@ export default function SFJobCardPage() {
                                                 </TableCell>
                                                 <TableCell className="whitespace-nowrap text-sm text-slate-500">
                                                     {job.dateOfProduction || '-'}
+                                                </TableCell>
+                                                <TableCell className="whitespace-nowrap">
+                                                    {completedSjcNumbers.has(job.sjcSrNo) ? (
+                                                        <Badge className="bg-emerald-50 text-emerald-600 border-0 text-xs">
+                                                            COMPLETE
+                                                        </Badge>
+                                                    ) : (
+                                                        <Badge className="bg-amber-50 text-amber-600 border-0 text-xs">
+                                                            PENDING
+                                                        </Badge>
+                                                    )}
                                                 </TableCell>
                                             </TableRow>
                                         ))}

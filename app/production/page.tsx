@@ -1857,7 +1857,7 @@ export default function ProductionPage() {
                   id="qtyFG_major"
                   type="number"
                   min="0"
-                  step="0.01"
+                  step="any"
                   className={`h-20 text-4xl font-black text-center rounded-2xl shadow-xl transition-all ${
                     formErrors.quantityFG 
                       ? "border-red-500 ring-2 ring-red-100 focus-visible:ring-red-500 text-red-700" 
