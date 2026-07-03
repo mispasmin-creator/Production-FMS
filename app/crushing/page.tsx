@@ -723,8 +723,8 @@ export default function Step5List() {
                             <Input
                                 id="inputQty"
                                 type="number"
-                                step="0.01"
-                                min="0.01"
+                                step="0.001"
+                                min="0.001"
                                 value={formData.inputQty}
                                 onChange={(e) => setFormData({ ...formData, inputQty: e.target.value })}
                                 placeholder="Enter input quantity"
@@ -772,7 +772,7 @@ export default function Step5List() {
                                     <Input
                                         id="fg1Qty"
                                         type="number"
-                                        step="0.01"
+                                        step="0.001"
                                         min="0"
                                         value={formData.fg1Qty}
                                         onChange={(e) => setFormData({ ...formData, fg1Qty: e.target.value })}
@@ -806,7 +806,7 @@ export default function Step5List() {
                                     <Input
                                         id="fg2Qty"
                                         type="number"
-                                        step="0.01"
+                                        step="0.001"
                                         min="0"
                                         value={formData.fg2Qty}
                                         onChange={(e) => setFormData({ ...formData, fg2Qty: e.target.value })}
@@ -840,7 +840,7 @@ export default function Step5List() {
                                     <Input
                                         id="fg3Qty"
                                         type="number"
-                                        step="0.01"
+                                        step="0.001"
                                         min="0"
                                         value={formData.fg3Qty}
                                         onChange={(e) => setFormData({ ...formData, fg3Qty: e.target.value })}
@@ -874,7 +874,7 @@ export default function Step5List() {
                                     <Input
                                         id="fg4Qty"
                                         type="number"
-                                        step="0.01"
+                                        step="0.001"
                                         min="0"
                                         value={formData.fg4Qty}
                                         onChange={(e) => setFormData({ ...formData, fg4Qty: e.target.value })}

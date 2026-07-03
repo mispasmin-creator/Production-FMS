@@ -743,8 +743,8 @@ export default function SemiActualProductionPage() {
                                 </Label>
                                 <Input
                                     type="number"
-                                    min="0.01"
-                                    step="0.01"
+                                    min="0.001"
+                                    step="0.001"
                                     required
                                     placeholder="Enter quantity produced"
                                     value={formData.qtyOfSemiFinishedGood}
@@ -791,7 +791,7 @@ export default function SemiActualProductionPage() {
                                             </Select>
                                             <Input
                                                 type="number"
-                                                step="0.01"
+                                                step="0.001"
                                                 min="0"
                                                 placeholder="Qty"
                                                 value={row.qty}
@@ -844,7 +844,7 @@ export default function SemiActualProductionPage() {
                                                 <Label className="text-[10px] text-slate-500 uppercase font-semibold">End Product Qty</Label>
                                                 <Input
                                                     type="number"
-                                                    step="0.01"
+                                                    step="0.001"
                                                     min="0"
                                                     value={formData.endProductQty}
                                                     onChange={e => setFormData({ ...formData, endProductQty: e.target.value })}
@@ -868,7 +868,7 @@ export default function SemiActualProductionPage() {
                                             <Label className="text-[10px] text-slate-500 uppercase font-semibold">Starting Reading <span className="text-red-500">*</span></Label>
                                             <Input
                                                 type="number"
-                                                step="0.01"
+                                                step="0.001"
                                                 required
                                                 placeholder="Enter starting reading"
                                                 value={formData.startingReading}
@@ -880,7 +880,7 @@ export default function SemiActualProductionPage() {
                                             <Label className="text-[10px] text-slate-500 uppercase font-semibold">Ending Reading <span className="text-red-500">*</span></Label>
                                             <Input
                                                 type="number"
-                                                step="0.01"
+                                                step="0.001"
                                                 required
                                                 placeholder="Enter ending reading"
                                                 value={formData.endingReading}
@@ -892,7 +892,7 @@ export default function SemiActualProductionPage() {
                                             <Label className="text-[10px] text-slate-500 uppercase font-semibold">Machine Running Hour</Label>
                                             <Input
                                                 type="number"
-                                                step="0.01"
+                                                step="0.001"
                                                 min="0"
                                                 placeholder="Enter running hour"
                                                 value={formData.machineRunningHour}
