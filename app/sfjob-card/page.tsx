@@ -143,26 +143,41 @@ export default function SFJobCardPage() {
             setCompletedSjcNumbers(completedSet);
 
             const productions = await fetchSemiProductionRows();
-            const productionFirmByNo = new Map(productions.map((row) => [row.sfSrNo, row.firmName]));
+            const productionFirmByNo = new Map<string, string>();
+            productions.forEach((row) => {
+                const compositeKey = `${row.sfSrNo}::${String(row.nameOfSemiFinished || "").toLowerCase().trim()}`;
+                productionFirmByNo.set(compositeKey, row.firmName);
+                productionFirmByNo.set(row.sfSrNo, row.firmName);
+            });
 
-            // Build a live map of sfSrNo -> sum of actualMade from job cards
+            // Build a live map of sfSrNo + productName -> sum of actualMade from job cards
             // This ensures "Total Made" in pending orders reflects real job card data
             // even if semi_production."Total Made" column is stale in the DB.
             const actualMadeBysfSrNo = new Map<string, number>();
             semiJobCardTable.forEach((row: any) => {
-                const sfNo = String(row.sfSrNo || "");
+                const sfNo = String(row.sfSrNo || "").trim();
+                const productName = String(row.productName || "").trim().toLowerCase();
                 const made = Number(row.actualMade || 0);
                 if (sfNo) {
-                    actualMadeBysfSrNo.set(sfNo, (actualMadeBysfSrNo.get(sfNo) || 0) + made);
+                    const key = `${sfNo}::${productName}`;
+                    actualMadeBysfSrNo.set(key, (actualMadeBysfSrNo.get(key) || 0) + made);
                 }
             });
 
             // Patch each production record's totalMade AND pending with live-computed values.
             // pending = qty - totalMade  (so it stays in sync with the actual quantity produced)
             const patchedProductions = productions.map(p => {
-                const computedTotalMade = actualMadeBysfSrNo.has(p.sfSrNo)
-                    ? actualMadeBysfSrNo.get(p.sfSrNo)!
-                    : p.totalMade;
+                const sfNo = String(p.sfSrNo || "").trim();
+                const productName = String(p.nameOfSemiFinished || "").trim().toLowerCase();
+                const key = `${sfNo}::${productName}`;
+                
+                let computedTotalMade = p.totalMade;
+                if (actualMadeBysfSrNo.has(key)) {
+                    computedTotalMade = actualMadeBysfSrNo.get(key)!;
+                } else if (actualMadeBysfSrNo.has(`${sfNo}::`)) {
+                    computedTotalMade = actualMadeBysfSrNo.get(`${sfNo}::`)!;
+                }
+
                 const cancelledQty = Number(p.cancelOrder) || 0;
                 const computedPending = Math.max(p.qty - computedTotalMade - cancelledQty, 0);
                 return {
@@ -190,7 +205,13 @@ export default function SFJobCardPage() {
 
             const jobCards: SemiJobCardRecord[] = semiJobCardTable
                 .filter((row: any) => row.sjcSrNo && /^SJC-\d+/.test(row.sjcSrNo))
-                .map((row: any) => ({ ...row, firmName: productionFirmByNo.get(row.sfSrNo) || "" }));
+                .map((row: any) => {
+                    const compositeKey = `${row.sfSrNo}::${String(row.productName || "").toLowerCase().trim()}`;
+                    return {
+                        ...row,
+                        firmName: productionFirmByNo.get(compositeKey) || productionFirmByNo.get(row.sfSrNo) || ""
+                    };
+                });
 
             setJobCardData(filterByFirm(jobCards).sort((a, b) => b._rowIndex - a._rowIndex));
 

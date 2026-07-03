@@ -198,7 +198,12 @@ export default function SemiActualProductionPage() {
                 fetchSemiProductionRows(),
             ]);
 
-            const productionFirmByNo = new Map(productionTable.map((row: any) => [row.sfSrNo, row.firmName]));
+            const productionFirmByNo = new Map<string, string>();
+            productionTable.forEach((row: any) => {
+                const compositeKey = `${row.sfSrNo}::${String(row.nameOfSemiFinished || "").toLowerCase().trim()}`;
+                productionFirmByNo.set(compositeKey, row.firmName);
+                productionFirmByNo.set(row.sfSrNo, row.firmName);
+            });
             
             // Filter by Firm
             const filterByFirm = (data: any[]) => {
@@ -216,12 +221,24 @@ export default function SemiActualProductionPage() {
 
             const jobCards: SemiJobCardRecord[] = sjcTable
                 .filter((row: any) => row.sjcSrNo && row.sjcSrNo.startsWith('SJC-'))
-                .map((row: any) => ({ ...row, firmName: productionFirmByNo.get(row.sfSrNo) || "" }));
+                .map((row: any) => {
+                    const compositeKey = `${row.sfSrNo}::${String(row.productName || "").toLowerCase().trim()}`;
+                    return {
+                        ...row,
+                        firmName: productionFirmByNo.get(compositeKey) || productionFirmByNo.get(row.sfSrNo) || ""
+                    };
+                });
             setJobCardData(filterByFirm(jobCards).sort((a, b) => b._rowIndex - a._rowIndex));
 
             const actuals: SemiActualRecord[] = actualTable
                 .filter((row: any) => row.sNo && row.sNo.startsWith('SA-'))
-                .map((row: any) => ({ ...row, firmName: productionFirmByNo.get(row.sfProductionNo) || "" }));
+                .map((row: any) => {
+                    const compositeKey = `${row.sfProductionNo}::${String(row.productName || "").toLowerCase().trim()}`;
+                    return {
+                        ...row,
+                        firmName: productionFirmByNo.get(compositeKey) || productionFirmByNo.get(row.sfProductionNo) || ""
+                    };
+                });
             setSemiActualData(filterByFirm(actuals).sort((a, b) => b._rowIndex - a._rowIndex));
 
             const rmSet = new Set<string>();

@@ -186,7 +186,12 @@ export default function Step4List() {
                 fetchSemiProductionRows()
             ]);
 
-            const productionFirmByNo = new Map(productionTable.map((row: any) => [row.sfSrNo, row.firmName]));
+            const productionFirmByNo = new Map<string, string>();
+            productionTable.forEach((row: any) => {
+                const compositeKey = `${row.sfSrNo}::${String(row.nameOfSemiFinished || "").toLowerCase().trim()}`;
+                productionFirmByNo.set(compositeKey, row.firmName);
+                productionFirmByNo.set(row.sfSrNo, row.firmName);
+            });
 
             const filterByFirm = (data: any[]) => {
                 if (!user?.firm || user?.role?.toLowerCase() === 'admin') return data;
@@ -205,11 +210,12 @@ export default function Step4List() {
                 .filter((row: any) => String(row.sNo || row.serialNo || "").startsWith("SA-"))
                 .map((row: any) => {
                     const sfProductionNo = row.semiFinishedProductionNo || row.sfProductionNo || "";
+                    const compositeKey = `${sfProductionNo}::${String(row.productName || "").toLowerCase().trim()}`;
                     return {
                         ...row,
                         serialNo: row.serialNo || row.sNo || "",
                         semiFinishedProductionNo: sfProductionNo,
-                        firmName: productionFirmByNo.get(sfProductionNo) || "",
+                        firmName: productionFirmByNo.get(compositeKey) || productionFirmByNo.get(sfProductionNo) || "",
                     };
                 });
 
