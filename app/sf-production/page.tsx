@@ -1,7 +1,8 @@
 "use client"
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Loader2, AlertTriangle, Plus, X, Factory, History, Eye, RefreshCw, Ban, Search } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Loader2, AlertTriangle, Plus, X, Factory, History, Eye, RefreshCw, Ban, Search, Check, ChevronsUpDown } from 'lucide-react';
+import { cn } from "@/lib/utils";
 
 // Shadcn UI components (assuming you have these installed)
 import { Button } from "@/components/ui/button";
@@ -91,6 +92,9 @@ export default function Step1List() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const dropdownRef = useRef<HTMLDivElement>(null);
     const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
     const [cancelRecord, setCancelRecord] = useState<SemiProductionItem | null>(null);
     const [cancelQty, setCancelQty] = useState<number | ''>('');
@@ -227,6 +231,35 @@ export default function Step1List() {
             generateNextSfNo();
         }
     }, [isDialogOpen]);
+
+    // Reset dropdown states when modal opens/closes
+    useEffect(() => {
+        if (!isDialogOpen) {
+            setIsDropdownOpen(false);
+            setSearchTerm('');
+        }
+    }, [isDialogOpen]);
+
+    // Close dropdown on click outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsDropdownOpen(false);
+            }
+        };
+        if (isDropdownOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isDropdownOpen]);
+
+    const filteredMaterials = useMemo(() => {
+        const q = searchTerm.toLowerCase().trim();
+        if (!q) return materialsList;
+        return materialsList.filter(material => material.toLowerCase().includes(q));
+    }, [materialsList, searchTerm]);
 
     const generateNextSfNo = async () => {
         try {
@@ -581,24 +614,74 @@ export default function Step1List() {
                             />
                         </div>
 
-                        {/* Product Name - Dropdown from Master sheet Column M */}
-                        <div className="space-y-2">
+                        {/* Product Name - Searchable Dropdown */}
+                        <div className="space-y-2 relative" ref={dropdownRef}>
                             <Label htmlFor="productName">Product Name *</Label>
-                            <Select
-                                value={formData.name}
-                                onValueChange={(value) => setFormData({ ...formData, name: value })}
-                            >
-                                <SelectTrigger id="productName" className={formErrors.name ? "border-red-500" : ""}>
-                                    <SelectValue placeholder="Select a product..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {materialsList.map((material) => (
-                                        <SelectItem key={material} value={material}>
-                                            {material}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <div className="relative">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => {
+                                        setIsDropdownOpen(!isDropdownOpen);
+                                        setSearchTerm('');
+                                    }}
+                                    className={cn(
+                                        "w-full justify-between font-normal text-left h-10 px-3 py-2 border border-slate-200 bg-white hover:bg-white text-slate-900",
+                                        !formData.name && "text-muted-foreground",
+                                        formErrors.name && "border-red-500"
+                                    )}
+                                >
+                                    <span className="truncate">
+                                        {formData.name || "Select a product..."}
+                                    </span>
+                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+
+                                {isDropdownOpen && (
+                                    <div className="absolute z-50 mt-1 w-full rounded-md border border-slate-200 bg-white shadow-lg focus:outline-none">
+                                        <div className="flex items-center border-b border-slate-100 px-3 py-2">
+                                            <Search className="mr-2 h-4 w-4 shrink-0 opacity-40" />
+                                            <input
+                                                type="text"
+                                                placeholder="Search product..."
+                                                value={searchTerm}
+                                                onChange={(e) => setSearchTerm(e.target.value)}
+                                                className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400 text-slate-800"
+                                                autoFocus
+                                            />
+                                        </div>
+                                        <ul className="max-h-60 overflow-y-auto p-1">
+                                            {filteredMaterials.length > 0 ? (
+                                                filteredMaterials.map((material) => (
+                                                    <li
+                                                        key={material}
+                                                        onClick={() => {
+                                                            setFormData({ ...formData, name: material });
+                                                            setIsDropdownOpen(false);
+                                                        }}
+                                                        className={cn(
+                                                            "relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-100 transition-colors text-slate-700",
+                                                            formData.name === material && "bg-slate-50 font-medium text-slate-900"
+                                                        )}
+                                                    >
+                                                        <Check
+                                                            className={cn(
+                                                                "mr-2 h-4 w-4 text-olive-600",
+                                                                formData.name === material ? "opacity-100" : "opacity-0"
+                                                            )}
+                                                        />
+                                                        <span className="truncate">{material}</span>
+                                                    </li>
+                                                ))
+                                            ) : (
+                                                <li className="py-6 text-center text-sm text-slate-400">
+                                                    No product found.
+                                                </li>
+                                            )}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
                             {formErrors.name && (
                                 <p className="text-xs text-red-500 mt-1">{formErrors.name}</p>
                             )}
