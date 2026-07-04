@@ -179,6 +179,7 @@ export default function SemiActualProductionPage() {
         startingReading: '',
         endingReading: '',
         machineRunningHour: '',
+        dateOfProduction: '',
     });
 
     useEffect(() => {
@@ -275,6 +276,7 @@ export default function SemiActualProductionPage() {
             startingReading: '',
             endingReading: '',
             machineRunningHour: '',
+            dateOfProduction: '',
         });
         setRawMaterialRows([{ name: '', qty: '' }]);
         setStartPhotoFile(null); setEndPhotoFile(null);
@@ -285,7 +287,11 @@ export default function SemiActualProductionPage() {
     const handleEntryClick = (record: SemiJobCardRecord) => {
         setSelectedSjc(record);
         resetForm();
-        setFormData(prev => ({ ...prev, qtyOfSemiFinishedGood: String(record.qty) }));
+        setFormData(prev => ({
+            ...prev,
+            qtyOfSemiFinishedGood: String(record.qty),
+            dateOfProduction: toSupabaseDate(record.dateOfProduction),
+        }));
         setIsModalOpen(true);
     };
 
@@ -348,7 +354,7 @@ export default function SemiActualProductionPage() {
                 "Timestamp": new Date().toISOString(),
                 "Semi Finished Job Card No.": selectedSjc.sjcSrNo,
                 "Supervisor Name": selectedSjc.supervisorName,
-                "Date Of Production": toSupabaseDate(selectedSjc.dateOfProduction),
+                "Date Of Production": toSupabaseDate(formData.dateOfProduction),
                 "Product Name": selectedSjc.productName,
                 "Qty Of Semi Finished Good": madeQty,
                 "Raw Material Name 1": paddedRM[0].name || '',
@@ -727,13 +733,22 @@ export default function SemiActualProductionPage() {
                                     { label: 'S No.', value: nextSerialNo, accent: true },
                                     { label: 'Product', value: selectedSjc.productName },
                                     { label: 'Supervisor', value: selectedSjc.supervisorName },
-                                    { label: 'Date of Prod.', value: selectedSjc.dateOfProduction || '-' },
                                 ].map(({ label, value, accent }) => (
                                     <div key={label}>
                                         <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wide mb-0.5">{label}</div>
                                         <div className={`text-xs font-semibold ${accent ? 'text-olive-600' : 'text-slate-700'}`}>{value}</div>
                                     </div>
                                 ))}
+                                <div>
+                                    <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wide mb-0.5">Date of Prod.</div>
+                                    <Input
+                                        type="date"
+                                        required
+                                        value={formData.dateOfProduction}
+                                        onChange={e => setFormData({ ...formData, dateOfProduction: e.target.value })}
+                                        className="h-8 text-xs font-semibold focus-visible:ring-olive-500 bg-white border border-slate-200 rounded-lg px-2 py-1 w-full"
+                                    />
+                                </div>
                             </div>
 
                             {/* Qty of Semi Finished Good */}
