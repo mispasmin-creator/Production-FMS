@@ -85,7 +85,15 @@ interface SemiProductionRecord {
 export default function Step1List() {
     const { user } = useAuth();
     const [searchQuery, setSearchQuery] = useState("");
+    const [firmFilter, setFirmFilter] = useState("all");
     const [semiProductions, setSemiProductions] = useState<SemiProductionItem[]>([]);
+    const uniqueFirmsForFilter = useMemo(() => {
+        const firms = new Set<string>();
+        semiProductions.forEach((item) => {
+            if (item.firmName) firms.add(item.firmName);
+        });
+        return Array.from(firms).sort();
+    }, [semiProductions]);
     const [materialsList, setMaterialsList] = useState<string[]>([]);
     const [firmsList, setFirmsList] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
@@ -213,7 +221,11 @@ export default function Step1List() {
     }, [loadAllData]);
 
     const filteredData = useMemo(() => {
-        return semiProductions.filter((item) => {
+        let data = semiProductions;
+        if (firmFilter !== "all") {
+            data = data.filter((item) => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase());
+        }
+        return data.filter((item) => {
             return searchQuery.trim() === "" || [
                 item.sfSrNo,
                 item.nameOfSemiFinished,
@@ -223,7 +235,7 @@ export default function Step1List() {
                 item.status
             ].some(val => String(val || "").toLowerCase().includes(searchQuery.toLowerCase().trim()))
         })
-    }, [semiProductions, searchQuery]);
+    }, [semiProductions, searchQuery, firmFilter]);
 
     // Generate SF number when modal opens
     useEffect(() => {
@@ -455,6 +467,22 @@ export default function Step1List() {
                                     className="pl-10 h-9 rounded-xl border-slate-200 bg-white text-xs focus:ring-olive-500/20 focus:border-olive-500"
                                 />
                             </div>
+                            <Select
+                                value={firmFilter}
+                                onValueChange={setFirmFilter}
+                            >
+                                <SelectTrigger className="w-full sm:w-[150px] h-9 border-slate-200 focus:ring-olive-500/20 focus:border-olive-500 bg-white text-xs rounded-xl">
+                                    <SelectValue placeholder="All Firms" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all" className="text-xs">All Firms</SelectItem>
+                                    {uniqueFirmsForFilter.map((firm) => (
+                                        <SelectItem key={firm} value={firm} className="text-xs">
+                                            {firm}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                             <div className="flex items-center gap-2">
                                 <Button
                                     onClick={loadAllData}

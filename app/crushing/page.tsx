@@ -180,6 +180,15 @@ export default function Step5List() {
     const [selectedRecord, setSelectedRecord] = useState<CrushingRecord | null>(null);
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
+    const [firmFilter, setFirmFilter] = useState("all");
+
+    const uniqueFirmsForFilter = useMemo(() => {
+        const firms = new Set<string>();
+        crushingRecords.forEach((item) => {
+            if (item.firmName) firms.add(item.firmName);
+        });
+        return Array.from(firms).sort();
+    }, [crushingRecords]);
 
     // Form state
     const [formData, setFormData] = useState({
@@ -298,8 +307,12 @@ export default function Step5List() {
 
     const filteredRecords = useMemo(() => {
         const q = searchQuery.toLowerCase().trim();
-        if (!q) return crushingRecords;
-        return crushingRecords.filter(record => 
+        let data = crushingRecords;
+        if (firmFilter !== "all") {
+            data = data.filter((item) => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase());
+        }
+        if (!q) return data;
+        return data.filter(record => 
             (record.crushingProductName || "").toLowerCase().includes(q) ||
             (record.remarks || "").toLowerCase().includes(q) ||
             (record.firmName || "").toLowerCase().includes(q) ||
@@ -309,7 +322,7 @@ export default function Step5List() {
             (record.fg4Name || "").toLowerCase().includes(q) ||
             (record.dateOfProduction || "").toLowerCase().includes(q)
         );
-    }, [crushingRecords, searchQuery]);
+    }, [crushingRecords, searchQuery, firmFilter]);
 
     const validateForm = () => {
         const errors: Record<string, string> = {};
@@ -477,6 +490,22 @@ export default function Step5List() {
                                     className="pl-9 focus-visible:ring-olive-500"
                                 />
                             </div>
+                            <Select
+                                value={firmFilter}
+                                onValueChange={setFirmFilter}
+                            >
+                                <SelectTrigger className="w-full sm:w-[150px] h-9 border-slate-200 focus:ring-olive-500/20 focus:border-olive-500 bg-white text-xs rounded-xl">
+                                    <SelectValue placeholder="All Firms" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all" className="text-xs">All Firms</SelectItem>
+                                    {uniqueFirmsForFilter.map((firm) => (
+                                        <SelectItem key={firm} value={firm} className="text-xs">
+                                            {firm}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                             <div className="flex items-center gap-2">
                                 <Button
                                     onClick={loadData}

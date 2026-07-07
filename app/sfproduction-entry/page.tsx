@@ -155,9 +155,21 @@ export default function SemiActualProductionPage() {
     const [loadError, setLoadError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
+    const [firmFilter, setFirmFilter] = useState('all');
 
     const [jobCardData, setJobCardData] = useState<SemiJobCardRecord[]>([]);
     const [semiActualData, setSemiActualData] = useState<SemiActualRecord[]>([]);
+
+    const uniqueFirmsForFilter = useMemo(() => {
+        const firms = new Set<string>();
+        jobCardData.forEach((item) => {
+            if (item.firmName) firms.add(item.firmName);
+        });
+        semiActualData.forEach((item) => {
+            if (item.firmName) firms.add(item.firmName);
+        });
+        return Array.from(firms).sort();
+    }, [jobCardData, semiActualData]);
     const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([]);
     const [nextSerialNo, setNextSerialNo] = useState('SA-1001');
 
@@ -430,7 +442,10 @@ export default function SemiActualProductionPage() {
 
     const filteredPending = useMemo(() => {
         const q = searchQuery.toLowerCase().trim();
-        const pending = jobCardData.filter(isSJCPending);
+        let pending = jobCardData.filter(isSJCPending);
+        if (firmFilter !== "all") {
+            pending = pending.filter(item => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase());
+        }
         if (!q) return pending;
         return pending.filter(item =>
             (item.sjcSrNo || "").toLowerCase().includes(q) ||
@@ -439,12 +454,16 @@ export default function SemiActualProductionPage() {
             (item.productName || "").toLowerCase().includes(q) ||
             (item.supervisorName || "").toLowerCase().includes(q)
         );
-    }, [jobCardData, searchQuery]);
+    }, [jobCardData, searchQuery, firmFilter]);
 
     const filteredHistory = useMemo(() => {
         const q = searchQuery.toLowerCase().trim();
-        if (!q) return semiActualData;
-        return semiActualData.filter(item =>
+        let history = semiActualData;
+        if (firmFilter !== "all") {
+            history = history.filter(item => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase());
+        }
+        if (!q) return history;
+        return history.filter(item =>
             (item.sNo || "").toLowerCase().includes(q) ||
             (item.semiFinishedJobCardNo || "").toLowerCase().includes(q) ||
             (item.sfProductionNo || "").toLowerCase().includes(q) ||
@@ -453,7 +472,7 @@ export default function SemiActualProductionPage() {
             (item.supervisorName || "").toLowerCase().includes(q) ||
             (item.status || "").toLowerCase().includes(q)
         );
-    }, [semiActualData, searchQuery]);
+    }, [semiActualData, searchQuery, firmFilter]);
 
     const pendingJobCards = filteredPending;
     const historyEntries = filteredHistory;
@@ -536,14 +555,32 @@ export default function SemiActualProductionPage() {
                         </span>
                     </button>
                 </div>
-                <div className="relative w-full sm:w-[300px]">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        placeholder="Search entries..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-9 focus-visible:ring-olive-500 bg-white"
-                    />
+                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                    <Select
+                        value={firmFilter}
+                        onValueChange={setFirmFilter}
+                    >
+                        <SelectTrigger className="w-full sm:w-[150px] bg-white border-slate-200 text-xs">
+                            <SelectValue placeholder="All Firms" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all" className="text-xs">All Firms</SelectItem>
+                            {uniqueFirmsForFilter.map((firm) => (
+                                <SelectItem key={firm} value={firm} className="text-xs">
+                                    {firm}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <div className="relative w-full sm:w-[250px]">
+                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            placeholder="Search entries..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-9 focus-visible:ring-olive-500 bg-white"
+                        />
+                    </div>
                 </div>
             </div>
 

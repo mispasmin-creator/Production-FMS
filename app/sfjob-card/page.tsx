@@ -98,6 +98,7 @@ const isOrderPending = (record: SemiProductionRecord): boolean => {
 export default function SFJobCardPage() {
     const { user } = useAuth();
     const [searchQuery, setSearchQuery] = useState("");
+    const [firmFilter, setFirmFilter] = useState("all");
     const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedProd, setSelectedProd] = useState<SemiProductionRecord | null>(null);
@@ -109,6 +110,17 @@ export default function SFJobCardPage() {
 
     const [productionData, setProductionData] = useState<SemiProductionRecord[]>([]);
     const [jobCardData, setJobCardData] = useState<SemiJobCardRecord[]>([]);
+
+    const uniqueFirmsForFilter = useMemo(() => {
+        const firms = new Set<string>();
+        productionData.forEach((item) => {
+            if (item.firmName) firms.add(item.firmName);
+        });
+        jobCardData.forEach((item) => {
+            if (item.firmName) firms.add(item.firmName);
+        });
+        return Array.from(firms).sort();
+    }, [productionData, jobCardData]);
     const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
     const [completedSjcNumbers, setCompletedSjcNumbers] = useState<Set<string>>(new Set());
 
@@ -320,7 +332,11 @@ export default function SFJobCardPage() {
     const historyOrders = jobCardData;
 
     const filteredPending = useMemo(() => {
-        return pendingOrders.filter((item) => {
+        let data = pendingOrders;
+        if (firmFilter !== "all") {
+            data = data.filter((item) => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase());
+        }
+        return data.filter((item) => {
             return searchQuery.trim() === "" || [
                 item.sfSrNo,
                 item.nameOfSemiFinished,
@@ -329,10 +345,14 @@ export default function SFJobCardPage() {
                 item.firmName
             ].some(val => String(val || "").toLowerCase().includes(searchQuery.toLowerCase().trim()))
         })
-    }, [pendingOrders, searchQuery])
+    }, [pendingOrders, searchQuery, firmFilter])
 
     const filteredHistory = useMemo(() => {
-        return historyOrders.filter((item) => {
+        let data = historyOrders;
+        if (firmFilter !== "all") {
+            data = data.filter((item) => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase());
+        }
+        return data.filter((item) => {
             return searchQuery.trim() === "" || [
                 item.sjcSrNo,
                 item.sfSrNo,
@@ -341,7 +361,7 @@ export default function SFJobCardPage() {
                 item.firmName
             ].some(val => String(val || "").toLowerCase().includes(searchQuery.toLowerCase().trim()))
         })
-    }, [historyOrders, searchQuery])
+    }, [historyOrders, searchQuery, firmFilter])
 
     // ==================== RENDER ====================
     if (isLoading) {
@@ -408,6 +428,22 @@ export default function SFJobCardPage() {
                                     className="pl-10 h-9 rounded-xl border-slate-200 bg-white text-xs focus:ring-olive-500/20 focus:border-olive-500"
                                 />
                             </div>
+                            <Select
+                                value={firmFilter}
+                                onValueChange={setFirmFilter}
+                            >
+                                <SelectTrigger className="w-full sm:w-[150px] h-9 border-slate-200 focus:ring-olive-500/20 focus:border-olive-500 bg-white text-xs rounded-xl">
+                                    <SelectValue placeholder="All Firms" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all" className="text-xs">All Firms</SelectItem>
+                                    {uniqueFirmsForFilter.map((firm) => (
+                                        <SelectItem key={firm} value={firm} className="text-xs">
+                                            {firm}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                             <Button onClick={loadAllData} variant="outline" size="sm" className="h-9">
                                 <RefreshCw className="h-4 w-4 mr-2" />
                                 Refresh

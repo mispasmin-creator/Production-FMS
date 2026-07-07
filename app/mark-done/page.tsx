@@ -34,6 +34,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/lib/supabase";
 import { fetchSemiActualRows, fetchSemiProductionRows, SEMI_ACTUAL_TABLE } from "@/lib/semi-finished-supabase";
 
@@ -168,6 +169,15 @@ export default function Step4List() {
     const [markDoneRemarks, setMarkDoneRemarks] = useState('');
     const [markDoneErrors, setMarkDoneErrors] = useState<Record<string, string>>({});
     const [searchQuery, setSearchQuery] = useState("");
+    const [firmFilter, setFirmFilter] = useState("all");
+
+    const uniqueFirmsForFilter = useMemo(() => {
+        const firms = new Set<string>();
+        semiActualData.forEach((item) => {
+            if (item.firmName) firms.add(item.firmName);
+        });
+        return Array.from(firms).sort();
+    }, [semiActualData]);
 
     // Auto-dismiss success message
     useEffect(() => {
@@ -234,15 +244,19 @@ export default function Step4List() {
 
     const filteredSemiActual = useMemo(() => {
         const q = searchQuery.toLowerCase().trim();
-        if (!q) return semiActualData;
-        return semiActualData.filter(item =>
+        let data = semiActualData;
+        if (firmFilter !== "all") {
+            data = data.filter((item) => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase());
+        }
+        if (!q) return data;
+        return data.filter(item =>
             (item.semiFinishedJobCardNo || "").toLowerCase().includes(q) ||
             (item.firmName || "").toLowerCase().includes(q) ||
             (item.productName || "").toLowerCase().includes(q) ||
             (item.supervisorName || "").toLowerCase().includes(q) ||
             (item.serialNo || "").toLowerCase().includes(q)
         );
-    }, [semiActualData, searchQuery]);
+    }, [semiActualData, searchQuery, firmFilter]);
 
     // Filter data based on tabs
     // Pending Tab: production entries where stage 1 is not done yet
@@ -443,14 +457,32 @@ export default function Step4List() {
                                 History ({getTabCount('history')})
                             </button>
                         </div>
-                        <div className="relative w-full sm:w-[300px]">
-                            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                placeholder="Search approval cards..."
-                                value={searchQuery}
-                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
-                                className="pl-9 focus-visible:ring-olive-500"
-                            />
+                        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                            <Select
+                                value={firmFilter}
+                                onValueChange={setFirmFilter}
+                            >
+                                <SelectTrigger className="w-full sm:w-[150px] bg-white border-slate-200 text-xs h-9 rounded-lg">
+                                    <SelectValue placeholder="All Firms" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all" className="text-xs">All Firms</SelectItem>
+                                    {uniqueFirmsForFilter.map((firm) => (
+                                        <SelectItem key={firm} value={firm} className="text-xs">
+                                            {firm}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <div className="relative w-full sm:w-[250px]">
+                                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    placeholder="Search approval cards..."
+                                    value={searchQuery}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+                                    className="pl-9 focus-visible:ring-olive-500 h-9"
+                                />
+                            </div>
                         </div>
                     </div>
 
