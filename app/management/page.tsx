@@ -259,14 +259,14 @@ export default function ManagementApprovalPage() {
       }
 
       const pendingData: PendingApprovalItem[] = (actualProductionRows || [])
-        .filter((row: any) => hasValue(row["Job Card No."]) && hasValue(row["Planned4"]) && !hasValue(row["Actual4"]))
+        .filter((row: any) => hasValue(row["Job Card No."]) && hasValue(row["Planned7"]) && !hasValue(row["Actual7"]))
         .map(buildItem)
-
+ 
       const historyData: HistoryApprovalItem[] = (actualProductionRows || [])
-        .filter((row: any) => hasValue(row["Job Card No."]) && hasValue(row["Planned4"]) && hasValue(row["Actual4"]))
+        .filter((row: any) => hasValue(row["Job Card No."]) && hasValue(row["Planned7"]) && hasValue(row["Actual7"]))
         .map((row: any) => ({
           ...buildItem(row),
-          approvalDate: formatDateValue(row["Actual4"], "dd/MM/yy HH:mm"),
+          approvalDate: formatDateValue(row["Actual7"], "dd/MM/yy HH:mm"),
           remarks: String(row["Remarks2"] || "-"),
         }))
         .sort((a, b) => new Date(b.approvalDate).getTime() - new Date(a.approvalDate).getTime())
@@ -316,9 +316,8 @@ export default function ManagementApprovalPage() {
       const { error: updateErr } = await supabase
         .from(ACTUAL_PRODUCTION_TABLE)
         .update({
-          "Actual4": format(new Date(), "yyyy-MM-dd"),
+          "Actual7": format(new Date(), "yyyy-MM-dd"),
           "Remarks2": formData.remarks,
-          "Planned5": format(new Date(), "yyyy-MM-dd"),
         })
         .eq("id", selectedApproval.id)
 

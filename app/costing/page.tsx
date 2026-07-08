@@ -302,21 +302,21 @@ export default function CostingPage() {
           firmName: String(row["FIRM Name"] || jobCard?.["Firm Name"] || ""),
           partyName: String(row["Party Name"] || jobCard?.["Party Name"] || ""),
           quantityOfFG: Number(row["Quantity Of FG"] || jobCard?.["Quantity"] || 0),
-          planned3: formatDateValue(row["Planned3"]),
+          planned3: formatDateValue(row["Planned8"]),
           completeDetails: processCompleteDetails(row),
         }
       }
 
       const pendingData: PendingCostingItem[] = (actualProductionRows || [])
-        .filter((row: any) => hasValue(row["Job Card No."]) && hasValue(row["Planned3"]) && !hasValue(row["Actual3"]))
+        .filter((row: any) => hasValue(row["Job Card No."]) && hasValue(row["Planned8"]) && !hasValue(row["Actual8"]))
         .map(buildItem)
 
       const historyData: HistoryCostingItem[] = (actualProductionRows || [])
-        .filter((row: any) => hasValue(row["Job Card No."]) && hasValue(row["Planned3"]) && hasValue(row["Actual3"]))
+        .filter((row: any) => hasValue(row["Job Card No."]) && hasValue(row["Planned8"]) && hasValue(row["Actual8"]))
         .map((row: any) => ({
           ...buildItem(row),
           costingAmount: Number(row["Costing Amount"] || 0),
-          costingDate: formatDateTimeValue(row["Actual3"]),
+          costingDate: formatDateTimeValue(row["Actual8"]),
         }))
         .sort((a, b) => new Date(b.costingDate).getTime() - new Date(a.costingDate).getTime())
 
@@ -373,9 +373,8 @@ export default function CostingPage() {
       const { error: updateErr } = await supabase
         .from(ACTUAL_PRODUCTION_TABLE)
         .update({
-          "Actual3": format(new Date(), "yyyy-MM-dd"),
+          "Actual8": format(new Date(), "yyyy-MM-dd"),
           "Costing Amount": Number(formData.costingAmount),
-          "Planned4": format(new Date(), "yyyy-MM-dd"),
         })
         .eq("id", selectedCosting.id)
 

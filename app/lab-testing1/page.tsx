@@ -484,7 +484,8 @@ export default function LabTesting1Page() {
           dateOfProduction: row["Date Of Production"] ? format(new Date(row["Date Of Production"]), "dd/MM/yyyy") : "",
           supervisorName: String(row["Name Of Supervisor"] || "").trim(),
           machineHours: String(row["Machine Running hour"] || "-").trim(),
-          rawMaterials: materials,
+          planned1: row["Planned1"] || row["Planned 1"],
+          actual1: row["Actual1"] || row["Actual 1"],
           actual2: row["Actual2"] || row["Actual 2"],
           planned3: row["Planned3"] || row["Planned 3"],
           status2: row["Status2"] || row["Status 2"],
@@ -524,7 +525,7 @@ export default function LabTesting1Page() {
 
       const pendingData = (actualProductionData || [])
         .map((row: any) => buildActualProductionInfo(row))
-        .filter((productionDataInfo: any) => productionDataInfo.jobCardNo && !hasValue(productionDataInfo.actual2))
+        .filter((productionDataInfo: any) => productionDataInfo.jobCardNo && productionDataInfo.planned1 && !hasValue(productionDataInfo.actual1))
         .map((row: any) => {
           const jobCardNo = String(row.jobCardNo || "")
           const deliveryOrderNo = String(row.orderNo || "")
@@ -585,7 +586,7 @@ export default function LabTesting1Page() {
 
       const historyFiltered = (actualProductionData || [])
         .map((row: any) => buildActualProductionInfo(row))
-        .filter((row: any) => row.jobCardNo && hasValue(row.actual2))
+        .filter((row: any) => row.jobCardNo && hasValue(row.actual1))
         .map((row: any) => {
           const jobCardNo = String(row.jobCardNo || "").trim()
           const deliveryOrderNo = String(row.orderNo || "").trim()
@@ -698,13 +699,10 @@ export default function LabTesting1Page() {
       const jobCardNo = selectedProduction.jobCardNo.trim()
       const now = new Date().toISOString()
       const isNonTested = formData.testStatus === "Non Tested"
-      
       const payload: any = {
-        "Actual2": now,
-        "Planned3": format(new Date(), "yyyy-MM-dd"),
+        "Actual1": now,
         "Status2": String(formData.testStatus),
       }
-
       if (!isNonTested) {
         payload["DateOfTest1"] = format(formData.dateOfTest, "yyyy-MM-dd")
         payload["WCPercentage"] = Number(formData.wcPercentage) || null
@@ -725,6 +723,13 @@ export default function LabTesting1Page() {
         payload["WhatToBeMixed"] = null
         payload["SieveAnalysis"] = null
         payload["LabTest1Remarks"] = String(formData.labTest1Remarks)
+        
+        // Skip Lab Test 2 and Chemical Test. Go straight to Check Devshree (Planned4).
+        const todayStr = format(new Date(), "yyyy-MM-dd")
+        payload["Actual2"] = todayStr
+        payload["Planned3"] = todayStr
+        payload["Actual3"] = todayStr
+        payload["Planned4"] = todayStr
       }
 
       const { error: updateErr } = await supabase

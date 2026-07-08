@@ -55,6 +55,8 @@ interface ActualProductionItem {
   actual2: string
   actual3: string
   actual4: string
+  planned9?: string
+  actual9?: string
   timeDelay2: string
   remarks: string
   
@@ -159,6 +161,8 @@ export default function TallyPage() {
           actual2: formatDateForDisplay(row.Actual2, "dd/MM/yy"),
           actual3: formatDateForDisplay(row.Actual3, "dd/MM/yy"),
           actual4: formatDateForDisplay(row.Actual4, "dd/MM/yy"),
+          planned9: formatDateForDisplay(row.Planned9, "dd/MM/yy"),
+          actual9: formatDateForDisplay(row.Actual9, "dd/MM/yy"),
           timeDelay2: String(row.TimeDelay2 || ""),
           remarks: String(row.Remarks || ""),
           checkStatus: String(row.Status || "N/A"),
@@ -179,12 +183,9 @@ export default function TallyPage() {
         });
       };
 
-      // Pending: production rows whose tally process is not completed yet.
       const pendingData = allItems.filter(item =>
         hasValue(item.jobCardNo) &&
-        hasValue(item.actual3) &&
-        hasValue(item.actual4) &&
-        Number(item.costingAmount || 0) > 0 &&
+        hasValue(item.planned9) &&
         !hasValue(item.tallyTimestamp)
       )
       setPendingTallies(filterByFirm(pendingData))
@@ -249,7 +250,8 @@ export default function TallyPage() {
         .from('actual_production')
         .update({
           "TallyActual": new Date().toISOString(),
-          "TallyRemarks": remarks
+          "TallyRemarks": remarks,
+          "Actual9": format(new Date(), "yyyy-MM-dd"),
         })
         .eq("id", selectedTally.id)
 

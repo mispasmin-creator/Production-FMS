@@ -829,7 +829,7 @@ export default function CheckPage() {
 
       // Hemlal Pending
       const hemlalPendingData: HemlalPendingItem[] = allItems
-        .filter(item => item.jobCardNo && item.planned5 && item.planned5 !== "-" && (item.actual5 === null || item.actual5 === "-"))
+        .filter(item => item.jobCardNo && item.planned4 && item.planned4 !== "-" && (item.actual4 === null || item.actual4 === "-"))
         .map(item => ({
           id: item.id,
           jobCardNo: item.jobCardNo,
@@ -841,7 +841,7 @@ export default function CheckPage() {
           serialNumber: item.serialNumber,
           rawMaterials: item.rawMaterials,
           partyName: item.partyName,
-          planned5: item.planned5,
+          planned5: item.planned4,
           machineRunningHour: item.machineRunningHour,
           remarks1: item.remarks1,
           ppBagUsed: item.ppBagUsed,
@@ -855,7 +855,7 @@ export default function CheckPage() {
 
       // Jitendra Pending
       const jitendraPendingData: JitendraPendingItem[] = allItems
-        .filter(item => item.jobCardNo && item.planned6 && item.planned6 !== "-" && (item.actual6 === null || item.actual6 === "-"))
+        .filter(item => item.jobCardNo && item.planned5 && item.planned5 !== "-" && (item.actual5 === null || item.actual5 === "-"))
         .map(item => ({
           id: item.id,
           jobCardNo: item.jobCardNo,
@@ -867,7 +867,7 @@ export default function CheckPage() {
           serialNumber: item.serialNumber,
           rawMaterials: item.rawMaterials,
           partyName: item.partyName,
-          planned6: item.planned6,
+          planned6: item.planned5,
           machineRunningHour: item.machineRunningHour,
           remarks1: item.remarks1,
           ppBagUsed: item.ppBagUsed,
@@ -881,7 +881,7 @@ export default function CheckPage() {
 
       // Devshree Pending
       const devshreePendingData: DevshreePendingItem[] = allItems
-        .filter(item => item.jobCardNo && item.planned1 && item.planned1 !== "-" && (item.actual1 === null || item.actual1 === "-"))
+        .filter(item => item.jobCardNo && item.planned6 && item.planned6 !== "-" && (item.actual6 === null || item.actual6 === "-"))
         .map(item => {
           const jobCard = (jobCardsData || []).find((jc: any) => String(jc["JC-Job Card Number"] || '').trim() === String(item.jobCardNo).trim())
           return {
@@ -895,7 +895,7 @@ export default function CheckPage() {
             serialNumber: item.serialNumber,
             rawMaterials: item.rawMaterials,
             partyName: item.partyName,
-            plannedTest: item.planned1,
+            plannedTest: item.planned6,
             actualQty1: item.actualQty1,
             labTest1: item.status2 || String(jobCard?.["Status 2"] || "N/A"),
             labTest2: item.status3 || String(jobCard?.["Status 3"] || "N/A"),
@@ -918,16 +918,20 @@ export default function CheckPage() {
         })
       setDevshreePending(devshreePendingData)
 
-      // Combined History
+      // Combined History - show exactly one row per completed check page entry (using Devshree completion)
       const historyData: CombinedHistoryItem[] = []
-      allItems.filter(item => item.actual1 && item.actual1 !== "-").forEach(item => {
-        historyData.push({ id: `devshree-${item.jobCardNo}-${item.actual1}`, type: 'devshree', jobCardNo: item.jobCardNo, firmName: item.firmName, productName: item.productName, partyName: item.partyName, completedAt: item.actual1, status: item.remarks || "Completed", actualQty: item.actualQty1 })
-      })
-      allItems.filter(item => item.actual5 && item.actual5 !== "-").forEach(item => {
-        historyData.push({ id: `hemlal-${item.jobCardNo}-${item.actual5}`, type: 'hemlal', jobCardNo: item.jobCardNo, firmName: item.firmName, productName: item.productName, partyName: item.partyName, completedAt: item.actual5, remarks: item.remarks2_5 })
-      })
       allItems.filter(item => item.actual6 && item.actual6 !== "-").forEach(item => {
-        historyData.push({ id: `jitendra-${item.jobCardNo}-${item.actual6}`, type: 'jitendra', jobCardNo: item.jobCardNo, firmName: item.firmName, productName: item.productName, partyName: item.partyName, completedAt: item.actual6, remarks: item.remarks3_6 })
+        historyData.push({ 
+          id: `check-done-${item.jobCardNo}-${item.actual6}`, 
+          type: 'devshree', 
+          jobCardNo: item.jobCardNo, 
+          firmName: item.firmName, 
+          productName: item.productName, 
+          partyName: item.partyName, 
+          completedAt: item.actual6, 
+          status: item.remarks || "Completed", 
+          actualQty: item.actualQty1 
+        })
       })
       historyData.sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime())
       setCombinedHistory(historyData)
@@ -935,6 +939,7 @@ export default function CheckPage() {
       const statuses: string[] = [...new Set((masterData || []).map((row: any) => String(row["Test Status"] || "")).filter(Boolean))]
       if (!statuses.includes("Tested")) statuses.push("Tested")
       if (!statuses.includes("Non Tested")) statuses.push("Non Tested")
+      if (!statuses.includes("N/A")) statuses.push("N/A")
       setStatusOptions(statuses)
 
     } catch (err: any) {
@@ -976,7 +981,7 @@ export default function CheckPage() {
       const { error: updateErr } = await supabase
         .from(ACTUAL_PRODUCTION_TABLE)
         .update({
-          "Actual5": now,
+          "Actual4": now,
           "Remarks3": hemlalFormData.remarks
         })
         .eq("id", selectedHemlal.id)
@@ -1001,7 +1006,7 @@ export default function CheckPage() {
       const { error: updateErr } = await supabase
         .from(ACTUAL_PRODUCTION_TABLE)
         .update({
-          "Actual6": now,
+          "Actual5": now,
           "Remarks4": jitendraFormData.remarks
         })
         .eq("id", selectedJitendra.id)
@@ -1026,7 +1031,7 @@ export default function CheckPage() {
       const { error: updateErr } = await supabase
         .from(ACTUAL_PRODUCTION_TABLE)
         .update({
-          "Actual1": now,
+          "Actual6": now,
           "Status": devshreeFormData.status,
           "Qty": Number(devshreeFormData.actualQty)
         })

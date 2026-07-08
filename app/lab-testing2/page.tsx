@@ -413,6 +413,7 @@ export default function LabTesting2Page() {
           supervisorName: String(row["Name Of Supervisor"] || "").trim(),
           machineHours: String(row["Machine Running hour"] || "-").trim(),
           rawMaterials: materials,
+          planned2: row["Planned2"] || row["Planned 2"],
           actual2: row["Actual2"] || row["Actual 2"],
           actual3: row["Actual3"] || row["Actual 3"],
           planned3: row["Planned3"] || row["Planned 3"],
@@ -428,10 +429,9 @@ export default function LabTesting2Page() {
         }
       }
 
-      // Filter pending tests: Actual 2 filled and Actual 3 empty
       const pendingData = (actualProductionData || [])
         .map((row: any) => buildActualProductionInfo(row))
-        .filter((row: any) => row.jobCardNo && hasValue(row.actual2) && !hasValue(row.actual3))
+        .filter((row: any) => row.jobCardNo && row.planned2 && !hasValue(row.actual2))
         .map((row: any) => {
           const jobCardNo = String(row.jobCardNo || "").trim()
           const deliveryOrderNo = String(row.deliveryOrderNo || "").trim()
@@ -490,10 +490,10 @@ export default function LabTesting2Page() {
 
       setPendingTests(filterByFirm(pendingData))
 
-      // Filter history: Actual 3 filled
+      // Filter history: Actual 2 filled
       const historyData = (actualProductionData || [])
         .map((row: any) => buildActualProductionInfo(row))
-        .filter((row: any) => row.jobCardNo && hasValue(row.actual3))
+        .filter((row: any) => row.jobCardNo && hasValue(row.actual2))
         .map((row: any) => {
           const jobCardNo = String(row.jobCardNo || "").trim()
           const deliveryOrderNo = String(row.deliveryOrderNo || "").trim()
@@ -591,8 +591,7 @@ export default function LabTesting2Page() {
       const { error: updateErr } = await supabase
         .from(ACTUAL_PRODUCTION_TABLE)
         .update({
-          "Actual3": now,
-          "Planned4": format(new Date(), "yyyy-MM-dd"),
+          "Actual2": now,
           "Status3": formData.testStatus,
           "TestedBy2": formData.testedBy,
           "DateOfTest2": format(formData.dateOfTest, "yyyy-MM-dd"),

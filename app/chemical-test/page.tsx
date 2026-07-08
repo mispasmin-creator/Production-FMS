@@ -295,14 +295,14 @@ export default function ChemicalTestPage() {
         }
       })
 
-      // Filter pending tests: Actual 3 filled and Actual 4 empty
-      const pendingData = (jobCardsData || [])
+      // Filter pending tests: actual_production rows where Planned3 is set and Actual3 is null
+      const pendingData = (actualProductionData || [])
         .filter(
-          (row: any) => hasValue(row["Actual 3"]) && !hasValue(row["Actual 4"]) && !isCancelledStatus(row["Status"]),
+          (row: any) => hasValue(row["Planned3"]) && !hasValue(row["Actual3"]),
         )
         .map((row: any) => {
-          const jobCardNo = String(row["JC-Job Card Number"] || "").trim()
-          const deliveryOrderNo = String(row["Delivery Order No."] || "").trim()
+          const jobCardNo = String(row["Job Card No."] || "").trim()
+          const deliveryOrderNo = String(row["Order No."] || "").trim()
           const productName = String(row["Product Name"] || "").trim()
 
           const productionRow = (productionData || []).find(
@@ -313,32 +313,42 @@ export default function ChemicalTestPage() {
             (prodRow: any) => normalizeKey(prodRow["Delivery Order No."]) === normalizeKey(deliveryOrderNo),
           )
 
-          const productionInfo = productionDataMap.get(jobCardNo)
-          const costingData = costingDataMap.get(makeOrderProductKey(deliveryOrderNo, productName)) ||
-                              costingDataMap.get(normalizeKey(deliveryOrderNo)) ||
-                              Array.from(costingDataMap.values()).find(c => c.productName.toLowerCase() === String(row["Product Name"] || "").trim().toLowerCase()) || 
-                              {}
+          const jobCard = (jobCardsData || []).find(
+            (jc: any) => normalizeKey(jc["JC-Job Card Number"]) === normalizeKey(jobCardNo)
+          )
+
+          if (isCancelledStatus(jobCard?.["Status"])) return null
+
+          const materials = []
+          for (let i = 1; i <= 20; i++) {
+            const name = row[`Raw Material Name ${i}`]
+            const quantity = row[`Quantity Of Raw Material ${i}`]
+            if (name && String(name).trim()) {
+              materials.push({ name: String(name).trim(), quantity: quantity || 0 })
+            }
+          }
 
           return {
             id: row.id,
             productionId: productionRow?.id ?? "",
             jobCardNo: jobCardNo,
-            firmName: String(row["Firm Name"] || ""),
+            firmName: String(row["FIRM Name"] || ""),
             deliveryOrderNo: deliveryOrderNo,
             partyName: String(row["Party Name"] || ""),
-            productName: costingData.productName || String(row["Product Name"] || ""),
-            quantity: Number(row["Quantity"] || 0),
+            productName: productName,
+            quantity: Number(row["Quantity Of FG"] || 0),
             expectedDeliveryDate: productionRow?.["Expected Delivery Date"] ? format(new Date(productionRow["Expected Delivery Date"]), "dd/MM/yyyy") : "",
             priority: String(productionRow?.["Priority"] || ""),
             dateOfProduction: row["Date Of Production"] ? format(new Date(row["Date Of Production"]), "dd/MM/yyyy") : "",
-            plannedDate: row["Planned 4"] ? format(new Date(row["Planned 4"]), "dd/MM/yyyy") : (costingData.plannedDate || ""),
-            shift: String(row["Shift"] || ""),
-            rawMaterials: productionInfo ? productionInfo.rawMaterials : [],
-            machineHours: productionInfo ? productionInfo.machineHours : "-",
-            labTest1Status: String(row["Status 2"] || "N/A"),
-            labTest2Status: String(row["Status 3"] || "N/A"),
+            plannedDate: row["Planned3"] ? format(new Date(row["Planned3"]), "dd/MM/yyyy") : "",
+            shift: jobCard ? String(jobCard["Shift"] || "") : "",
+            rawMaterials: materials,
+            machineHours: String(row["Machine Running hour"] || "-").trim(),
+            labTest1Status: String(row["Status2"] || "N/A"),
+            labTest2Status: String(row["Status3"] || "N/A"),
           }
         })
+        .filter(Boolean)
 
       const firmSearchValues = getFirmMatchValues(user?.firm)
       const isAdmin = user?.role?.toLowerCase() === "admin"
@@ -352,14 +362,14 @@ export default function ChemicalTestPage() {
 
       setPendingTests(filterByFirm(pendingData))
 
-      // Filter history: Actual 4 filled
-      const historyData = (jobCardsData || [])
+      // Filter history: actual_production rows where Actual3 is set
+      const historyData = (actualProductionData || [])
         .filter(
-          (row: any) => hasValue(row["Actual 4"]),
+          (row: any) => hasValue(row["Actual3"]),
         )
         .map((row: any) => {
-          const jobCardNo = String(row["JC-Job Card Number"] || "").trim()
-          const deliveryOrderNo = String(row["Delivery Order No."] || "").trim()
+          const jobCardNo = String(row["Job Card No."] || "").trim()
+          const deliveryOrderNo = String(row["Order No."] || "").trim()
           const productName = String(row["Product Name"] || "").trim()
           const productionRow = (productionData || []).find(
             (prodRow: any) =>
@@ -368,28 +378,24 @@ export default function ChemicalTestPage() {
           ) || (productionData || []).find(
             (prodRow: any) => normalizeKey(prodRow["Delivery Order No."]) === normalizeKey(deliveryOrderNo),
           )
-          const costingData = costingDataMap.get(makeOrderProductKey(deliveryOrderNo, productName)) ||
-                              costingDataMap.get(normalizeKey(deliveryOrderNo)) ||
-                              Array.from(costingDataMap.values()).find(c => c.productName.toLowerCase() === String(row["Product Name"] || "").trim().toLowerCase()) || 
-                              {}
 
           return {
             id: row.id,
             productionId: productionRow?.id ?? "",
             jobCardNo: jobCardNo,
-            firmName: String(row["Firm Name"] || ""),
+            firmName: String(row["FIRM Name"] || ""),
             deliveryOrderNo: deliveryOrderNo,
             partyName: String(row["Party Name"] || ""),
-            productName: costingData.productName || String(row["Product Name"] || ""),
-            quantity: Number(row["Quantity"] || 0),
-            labTest2Status: String(row["Status 3"] || "N/A"),
-            dateOfChemicalTest: row["Date Of Test 2"] ? format(new Date(row["Date Of Test 2"]), "dd/MM/yyyy") : "",
-            testedBy: String(row["Tested By 3"] || ""),
-            aluminaPercentage: String(row["Alumina %"] || ""),
-            ironPercentage: String(row["Iron %"] || ""),
-            silicaPercentage: String(row["Silica %"] || ""),
-            calciumPercentage: String(row["Calcium %"] || ""),
-            chemicalTestCompletedAt: row["Actual 4"] ? format(new Date(row["Actual 4"]), "dd/MM/yy HH:mm") : "",
+            productName: productName,
+            quantity: Number(row["Quantity Of FG"] || 0),
+            labTest2Status: String(row["Status3"] || "N/A"),
+            dateOfChemicalTest: row["Actual3"] ? format(new Date(row["Actual3"]), "dd/MM/yyyy") : "",
+            testedBy: String(row["TestedBy3"] || ""),
+            aluminaPercentage: String(row["AluminaPct"] || ""),
+            ironPercentage: String(row["IronPct"] || ""),
+            silicaPercentage: String(row["SilicaPct"] || ""),
+            calciumPercentage: String(row["CalciumPct"] || ""),
+            chemicalTestCompletedAt: row["Actual3"] ? format(new Date(row["Actual3"]), "dd/MM/yy HH:mm") : "",
           }
         })
         .sort((a, b) => new Date(b.chemicalTestCompletedAt).getTime() - new Date(a.chemicalTestCompletedAt).getTime())
@@ -442,26 +448,19 @@ export default function ChemicalTestPage() {
     try {
       const now = new Date().toISOString()
       const { error: updateErr } = await supabase
-        .from(JOBCARDS_TABLE)
+        .from(ACTUAL_PRODUCTION_TABLE)
         .update({
-          "Actual 4": now,
-          "Status 4": formData.status,
-          "Alumina %": formData.aluminaPercentage,
-          "Iron %": formData.ironPercentage,
-          "Silica %": formData.silicaPercentage,
-          "Calcium %": formData.calciumPercentage,
-          "Tested By 3": formData.testedBy,
+          "Actual3": now,
+          "ChemicalStatus": formData.status,
+          "AluminaPct": formData.aluminaPercentage ? Number(formData.aluminaPercentage) : null,
+          "IronPct": formData.ironPercentage ? Number(formData.ironPercentage) : null,
+          "SilicaPct": formData.silicaPercentage ? Number(formData.silicaPercentage) : null,
+          "CalciumPct": formData.calciumPercentage ? Number(formData.calciumPercentage) : null,
+          "TestedBy3": formData.testedBy,
         })
         .eq("id", selectedTest.id)
 
       if (updateErr) throw updateErr
-
-      const { error: planSupervisorErr } = await supabase
-        .from(ACTUAL_PRODUCTION_TABLE)
-        .update({ "Planned5": format(new Date(), "yyyy-MM-dd") })
-        .eq("Job Card No.", selectedTest.jobCardNo)
-
-      if (planSupervisorErr) throw planSupervisorErr
 
       alert("Chemical Test data saved successfully!")
       setIsDialogOpen(false)
