@@ -676,10 +676,8 @@ export default function LabTesting1Page() {
     if (formData.testStatus !== "Non Tested") {
       if (!formData.dateOfTest) errors.dateOfTest = "Date of Test is required."
       if (!formData.flowOfMaterial) errors.flowOfMaterial = "Flow of Material is required."
-      if (!formData.wcPercentage || Number(formData.wcPercentage) <= 0) {
-        errors.wcPercentage = "Valid WC % is required."
-      } else if (Number(formData.wcPercentage) > 100) {
-        errors.wcPercentage = "Percentage cannot be over 100."
+      if (!formData.wcPercentage || String(formData.wcPercentage).trim() === "") {
+        errors.wcPercentage = "WC % is required."
       }
       if (!formData.testedBy) errors.testedBy = "Tested By is required."
     } else {
@@ -705,7 +703,7 @@ export default function LabTesting1Page() {
       }
       if (!isNonTested) {
         payload["DateOfTest1"] = format(formData.dateOfTest, "yyyy-MM-dd")
-        payload["WCPercentage"] = Number(formData.wcPercentage) || null
+        payload["WCPercentage"] = formData.wcPercentage ? String(formData.wcPercentage).trim() : null
         payload["TestedBy1"] = String(formData.testedBy)
         payload["InitialSettingTime"] = String(formData.initialSettingTime)
         payload["FlowOfMaterial"] = String(formData.flowOfMaterial)
@@ -1088,7 +1086,7 @@ export default function LabTesting1Page() {
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="wcPercentage">WC Percentage % *</Label>
-                    <Input id="wcPercentage" type="number" step="0.1" value={formData.wcPercentage} onChange={(e) => handleFormChange("wcPercentage", e.target.value)} className={formErrors.wcPercentage ? "border-red-500" : ""} />
+                    <Input id="wcPercentage" type="text" value={formData.wcPercentage} onChange={(e) => handleFormChange("wcPercentage", e.target.value)} className={formErrors.wcPercentage ? "border-red-500" : ""} />
                     {formErrors.wcPercentage && <p className="text-xs text-red-500">{formErrors.wcPercentage}</p>}
                   </div>
                 </>
