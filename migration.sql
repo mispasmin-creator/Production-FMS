@@ -12,15 +12,22 @@ ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "FlowOfMaterial" t
 ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "FinalSettingTime" text;
 ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "WhatToBeMixed" text;
 ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "SieveAnalysis" text;
-ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "BDAt110C" numeric;
-ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "CCSAt100C" numeric;
+ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "BDAt110C" text;
+ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "CCSAt100C" text;
 ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "Status3" text;
 ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "TestedBy2" text;
 ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "DateOfTest2" date;
-ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "BDAt1100C" numeric;
-ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "CCSAt1100C" numeric;
-ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "PLCAt1100C" numeric;
+ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "BDAt1100C" text;
+ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "CCSAt1100C" text;
+ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "PLCAt1100C" text;
 
 -- Dedicated tally fields so tally does not overwrite lab/check stage dates.
 ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "TallyActual" timestamp with time zone;
 ALTER TABLE public.actual_production ADD COLUMN IF NOT EXISTS "TallyRemarks" text;
+
+-- Alter existing columns to text to support string values like 'NA'
+ALTER TABLE public.actual_production ALTER COLUMN "BDAt110C" TYPE text;
+ALTER TABLE public.actual_production ALTER COLUMN "CCSAt100C" TYPE text;
+ALTER TABLE public.actual_production ALTER COLUMN "BDAt1100C" TYPE text;
+ALTER TABLE public.actual_production ALTER COLUMN "CCSAt1100C" TYPE text;
+ALTER TABLE public.actual_production ALTER COLUMN "PLCAt1100C" TYPE text;
