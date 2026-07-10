@@ -56,7 +56,10 @@ const parsePagePermissions = (pagesValue: unknown): { permissions: string[]; pag
     .map((p) => p.trim())
     .filter(Boolean)
     .map((entry) => {
-      const [pageid, access] = entry.split(":").map((part) => part.trim())
+      let [pageid, access] = entry.split(":").map((part) => part.trim())
+      if (pageid === "mark-done") {
+        pageid = "tally_entry"
+      }
       pageAccess[pageid] = access === "view" ? "view" : "full"
       return pageid
     })
@@ -89,7 +92,7 @@ const PAGES_AVAILABLE = [
   { pageid: "sf-production", pagename: "SF Production" },
   { pageid: "sfjob-card", pagename: "Job Card Planning" },
   { pageid: "production-entry", pagename: "Production Entry" },
-  { pageid: "mark-done", pagename: "Mark Done" },
+  { pageid: "tally_entry", pagename: "Tally Entry" },
   { pageid: "crushing", pagename: "Crushing" },
   { pageid: "kyc", pagename: "KYC" },
   { pageid: "settings", pagename: "Settings" },

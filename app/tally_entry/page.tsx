@@ -153,7 +153,7 @@ const formatDisplayDate = (dateString: string): string => {
 };
 
 // ==================== MAIN COMPONENT ====================
-type TabType = 'pending' | 'production' | 'history';
+type TabType = 'pending' | 'history';
 
 export default function Step4List() {
     const { user } = useAuth();
@@ -217,15 +217,26 @@ export default function Step4List() {
             };
 
             const records: SemiActualRecord[] = actualTable
-                .filter((row: any) => String(row.sNo || row.serialNo || "").startsWith("SA-"))
+                .filter((row: any) => {
+                    const serial = String(row.sNo || row.serialNo || "");
+                    return serial.startsWith("SA-") || serial.startsWith("CR-");
+                })
                 .map((row: any) => {
                     const sfProductionNo = row.semiFinishedProductionNo || row.sfProductionNo || "";
                     const compositeKey = `${sfProductionNo}::${String(row.productName || "").toLowerCase().trim()}`;
+                    
+                    let firmName = "";
+                    if (String(row.serialNo || row.sNo || "").startsWith("CR-")) {
+                        firmName = sfProductionNo;
+                    } else {
+                        firmName = productionFirmByNo.get(compositeKey) || productionFirmByNo.get(sfProductionNo) || "";
+                    }
+
                     return {
                         ...row,
                         serialNo: row.serialNo || row.sNo || "",
                         semiFinishedProductionNo: sfProductionNo,
-                        firmName: productionFirmByNo.get(compositeKey) || productionFirmByNo.get(sfProductionNo) || "",
+                        firmName: firmName,
                     };
                 });
 
@@ -259,34 +270,21 @@ export default function Step4List() {
     }, [semiActualData, searchQuery, firmFilter]);
 
     // Filter data based on tabs
-    // Pending Tab: production entries where stage 1 is not done yet
+    // Pending Tab: entries where Stage 2 is not verified yet
     const pendingOrders = useMemo(() => filteredSemiActual.filter(item => {
-        const actual1 = String(item.actual1 || '').trim();
-        return actual1 === '' || actual1 === '-' || actual1 === 'null' || actual1 === 'undefined';
-    }), [filteredSemiActual]);
-
-    // Production Tab: stage 1 done and stage 2 not done yet
-    const productionOrders = useMemo(() => filteredSemiActual.filter(item => {
-        const actual1 = String(item.actual1 || '').trim();
         const actual2 = String(item.actual2 || '').trim();
-        const hasActual1 = actual1 !== '' && actual1 !== '-' && actual1 !== 'null' && actual1 !== 'undefined';
-        return hasActual1 &&
-               (actual2 === '' || actual2 === '-' || actual2 === 'null' || actual2 === 'undefined');
+        return actual2 === '' || actual2 === '-' || actual2 === 'null' || actual2 === 'undefined';
     }), [filteredSemiActual]);
 
-    // History Tab: Either Actual1 OR Actual2 has a value (marked done at some stage)
+    // History Tab: entries where Stage 2 has been verified
     const historyOrders = useMemo(() => filteredSemiActual.filter(item => {
-        const actual1 = String(item.actual1 || '').trim();
         const actual2 = String(item.actual2 || '').trim();
-        const hasActual1 = actual1 !== '' && actual1 !== '-' && actual1 !== 'null' && actual1 !== 'undefined';
-        const hasActual2 = actual2 !== '' && actual2 !== '-' && actual2 !== 'null' && actual2 !== 'undefined';
-        return hasActual1 || hasActual2;
+        return actual2 !== '' && actual2 !== '-' && actual2 !== 'null' && actual2 !== 'undefined';
     }), [filteredSemiActual]);
 
     const getCurrentData = () => {
         switch (activeTab) {
             case 'pending': return pendingOrders;
-            case 'production': return productionOrders;
             case 'history': return historyOrders;
             default: return [];
         }
@@ -295,7 +293,6 @@ export default function Step4List() {
     const getTabCount = (tab: TabType) => {
         switch (tab) {
             case 'pending': return pendingOrders.length;
-            case 'production': return productionOrders.length;
             case 'history': return historyOrders.length;
             default: return 0;
         }
@@ -303,15 +300,13 @@ export default function Step4List() {
 
     const getStatusBadge = (record: SemiActualRecord) => {
         if (activeTab === 'pending') {
-            return <Badge className="bg-amber-50 text-amber-600 hover:bg-amber-100">Supervisor Pending</Badge>;
-        } else if (activeTab === 'production') {
-            return <Badge className="bg-blue-50 text-blue-600 hover:bg-blue-100">Production Pending</Badge>;
+            return <Badge className="bg-amber-50 text-amber-600 hover:bg-amber-100">Tally Pending</Badge>;
         } else {
             const actual1 = String(record.actual1 || '').trim();
             const actual2 = String(record.actual2 || '').trim();
             
             if (actual1 && actual1 !== '-' && actual2 && actual2 !== '-') {
-                return <Badge className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100">Fully Completed</Badge>;
+                return <Badge className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100">Fully Verified</Badge>;
             } else if (actual1 && actual1 !== '-') {
                 return <Badge className="bg-olive-50 text-olive-600 hover:bg-olive-100">Stage 1 Completed</Badge>;
             } else if (actual2 && actual2 !== '-') {
@@ -348,13 +343,14 @@ export default function Step4List() {
         setError(null);
 
         try {
-            const updatePayload = activeTab === 'pending'
-                ? {
-                    "Actual1": new Date().toISOString().slice(0, 10),
-                    "Status": markDoneRemarks.trim(),
-                    "Planned2": new Date().toISOString().slice(0, 10),
-                }
-                : { "Actual2": new Date().toISOString().slice(0, 10), "Status1": markDoneRemarks.trim() };
+            const today = new Date().toISOString().slice(0, 10);
+            const updatePayload = {
+                "Actual1": today,
+                "Status": markDoneRemarks.trim(),
+                "Planned2": today,
+                "Actual2": today,
+                "Status1": markDoneRemarks.trim()
+            };
 
             const { error: updateError } = await supabase
                 .from(SEMI_ACTUAL_TABLE)
@@ -363,7 +359,7 @@ export default function Step4List() {
 
             if (updateError) throw updateError;
 
-            setSuccessMessage(`Record marked as done successfully!`);
+            setSuccessMessage(`Record verified successfully!`);
             setIsMarkDoneOpen(false);
             await loadData();
         } catch (err) {
@@ -413,10 +409,10 @@ export default function Step4List() {
                 <CardHeader className="bg-gradient-to-r from-olive-50 to-violet-100 rounded-t-lg">
                     <CardTitle className="flex items-center gap-2 text-gray-800">
                         <BadgeCheck className="h-6 w-6 text-olive-600" />
-                        Production Approval System
+                        Tally Entry
                     </CardTitle>
                     <CardDescription className="text-gray-600">
-                        Track and approve production stages from Semi Actual sheet
+                        Track and verify production stages from Semi Actual sheet
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="p-4 sm:p-6">
@@ -432,18 +428,7 @@ export default function Step4List() {
                                 }`}
                             >
                                 <Clock className="h-4 w-4 mr-2" />
-                                Supervisor ({getTabCount('pending')})
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('production')}
-                                className={`flex items-center px-4 py-2 rounded-lg font-medium text-xs transition-all ${
-                                    activeTab === 'production'
-                                        ? 'bg-white text-olive-600 shadow-sm'
-                                        : 'text-slate-500 hover:text-slate-700'
-                                }`}
-                            >
-                                <Factory className="h-4 w-4 mr-2" />
-                                Production ({getTabCount('production')})
+                                Tally Verify ({getTabCount('pending')})
                             </button>
                             <button
                                 onClick={() => setActiveTab('history')}
@@ -504,9 +489,7 @@ export default function Step4List() {
                         <Table>
                             <TableHeader className="bg-slate-50">
                                 <TableRow>
-                                    {(activeTab === 'pending' ? PENDING_COLUMNS_META :
-                                      activeTab === 'production' ? PRODUCTION_COLUMNS_META :
-                                      HISTORY_COLUMNS_META).map((col) => (
+                                    {(activeTab === 'pending' ? PENDING_COLUMNS_META : HISTORY_COLUMNS_META).map((col) => (
                                         <TableHead key={col.dataKey} className="whitespace-nowrap text-xs font-semibold">
                                             {col.header}
                                         </TableHead>
@@ -517,8 +500,8 @@ export default function Step4List() {
                                 {currentData.length > 0 ? (
                                     currentData.map((record, index) => (
                                         <TableRow key={`${record.serialNo}-${index}`} className="hover:bg-olive-50/40">
-                                            {/* Actions Column - only for pending and production tabs */}
-                                            {(activeTab === 'pending' || activeTab === 'production') && (
+                                            {/* Actions Column - only for pending tab */}
+                                            {activeTab === 'pending' && (
                                                 <TableCell className="whitespace-nowrap">
                                                     <div className="flex items-center gap-2">
                                                         <Button
@@ -535,7 +518,7 @@ export default function Step4List() {
                                                             className="h-8 bg-olive-600 text-white hover:bg-olive-700"
                                                         >
                                                             <CheckCircle2 className="h-3 w-3 mr-1" />
-                                                            Done
+                                                            Verify
                                                         </Button>
                                                     </div>
                                                 </TableCell>
@@ -550,9 +533,16 @@ export default function Step4List() {
 
                                             {/* Job Card No */}
                                             <TableCell className="whitespace-nowrap">
-                                                <span className="text-sm font-semibold text-olive-600">
-                                                    {record.semiFinishedJobCardNo}
-                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm font-semibold text-olive-600">
+                                                        {record.semiFinishedJobCardNo}
+                                                    </span>
+                                                    {String(record.serialNo || "").startsWith("CR-") && (
+                                                        <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-200 border-none text-[10px] px-1.5 py-0">
+                                                            Crushing
+                                                        </Badge>
+                                                    )}
+                                                </div>
                                             </TableCell>
 
                                             {/* Product Name */}
@@ -569,20 +559,11 @@ export default function Step4List() {
                                                 </Badge>
                                             </TableCell>
 
-                                            {/* Planned Date - different for each tab */}
                                             {activeTab === 'pending' && (
                                                 <TableCell className="whitespace-nowrap">
                                                     <div className="flex items-center text-sm text-slate-600">
                                                         <Calendar className="h-3 w-3 mr-1 text-slate-400" />
                                                         {formatDisplayDate(record.planned1)}
-                                                    </div>
-                                                </TableCell>
-                                            )}
-                                            {activeTab === 'production' && (
-                                                <TableCell className="whitespace-nowrap">
-                                                    <div className="flex items-center text-sm text-slate-600">
-                                                        <Calendar className="h-3 w-3 mr-1 text-slate-400" />
-                                                        {formatDisplayDate(record.planned2)}
                                                     </div>
                                                 </TableCell>
                                             )}
@@ -624,7 +605,6 @@ export default function Step4List() {
                                         <TableCell 
                                             colSpan={
                                                 (activeTab === 'pending' ? PENDING_COLUMNS_META.length :
-                                                 activeTab === 'production' ? PRODUCTION_COLUMNS_META.length :
                                                  HISTORY_COLUMNS_META.length) + 1
                                             } 
                                             className="h-32 text-center text-slate-400"
@@ -684,29 +664,39 @@ export default function Step4List() {
 
                             {/* Raw Materials */}
                             <div className="space-y-3">
-                                <h4 className="text-sm font-semibold text-slate-700 bg-slate-50 px-3 py-2 rounded-md">Raw Materials Consumed</h4>
+                                <h4 className="text-sm font-semibold text-slate-700 bg-slate-50 px-3 py-2 rounded-md">
+                                    {String(selectedRecord.serialNo || "").startsWith("CR-") ? "Finished Goods Output" : "Raw Materials Consumed"}
+                                </h4>
                                 <div className="grid grid-cols-2 gap-4">
                                     {selectedRecord.rawMaterial1Name && (
                                         <div>
-                                            <p className="text-xs text-slate-400 font-medium">Raw Material 1</p>
+                                            <p className="text-xs text-slate-400 font-medium">
+                                                {String(selectedRecord.serialNo || "").startsWith("CR-") ? "Finished Good 1" : "Raw Material 1"}
+                                            </p>
                                             <p className="text-sm text-slate-700">{selectedRecord.rawMaterial1Name} ({selectedRecord.rawMaterial1Qty})</p>
                                         </div>
                                     )}
                                     {selectedRecord.rawMaterial2Name && (
                                         <div>
-                                            <p className="text-xs text-slate-400 font-medium">Raw Material 2</p>
+                                            <p className="text-xs text-slate-400 font-medium">
+                                                {String(selectedRecord.serialNo || "").startsWith("CR-") ? "Finished Good 2" : "Raw Material 2"}
+                                            </p>
                                             <p className="text-sm text-slate-700">{selectedRecord.rawMaterial2Name} ({selectedRecord.rawMaterial2Qty})</p>
                                         </div>
                                     )}
                                     {selectedRecord.rawMaterial3Name && (
                                         <div>
-                                            <p className="text-xs text-slate-400 font-medium">Raw Material 3</p>
+                                            <p className="text-xs text-slate-400 font-medium">
+                                                {String(selectedRecord.serialNo || "").startsWith("CR-") ? "Finished Good 3" : "Raw Material 3"}
+                                            </p>
                                             <p className="text-sm text-slate-700">{selectedRecord.rawMaterial3Name} ({selectedRecord.rawMaterial3Qty})</p>
                                         </div>
                                     )}
                                     {selectedRecord.rawMaterial4Name && (
                                         <div>
-                                            <p className="text-xs text-slate-400 font-medium">Raw Material 4</p>
+                                            <p className="text-xs text-slate-400 font-medium">
+                                                {String(selectedRecord.serialNo || "").startsWith("CR-") ? "Finished Good 4" : "Raw Material 4"}
+                                            </p>
                                             <p className="text-sm text-slate-700">{selectedRecord.rawMaterial4Name} ({selectedRecord.rawMaterial4Qty})</p>
                                         </div>
                                     )}
@@ -801,11 +791,11 @@ export default function Step4List() {
                 </DialogContent>
             </Dialog>
 
-            {/* Mark Done Dialog */}
+            {/*Tally Dialog */}
             <Dialog open={isMarkDoneOpen} onOpenChange={setIsMarkDoneOpen}>
                 <DialogContent className="max-w-md">
                     <DialogHeader>
-                        <DialogTitle>Mark as Done</DialogTitle>
+                        <DialogTitle>Verify Tally</DialogTitle>
                         <DialogDescription>
                             {selectedRecord?.semiFinishedJobCardNo} — {selectedRecord?.productName}
                         </DialogDescription>
@@ -830,7 +820,7 @@ export default function Step4List() {
                                 <div className="flex justify-between text-sm">
                                     <span className="text-slate-500">Planned Date:</span>
                                     <span className="text-slate-600">
-                                        {formatDisplayDate(activeTab === 'pending' ? selectedRecord.planned1 : selectedRecord.planned2)}
+                                        {formatDisplayDate(selectedRecord.planned1)}
                                     </span>
                                 </div>
                             </div>

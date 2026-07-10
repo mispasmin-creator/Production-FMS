@@ -121,13 +121,13 @@ const sfNavItems = [
     label: "Production Entry",
     icon: FileCheck,
   },
+  { id: "crushing", href: "/crushing", label: "Crushing", icon: Hammer },
   {
-    id: "mark-done",
-    href: "/mark-done",
-    label: "Mark Done",
+    id: "tally_entry",
+    href: "/tally_entry",
+    label: "Tally Entry",
     icon: CircleCheckBig,
   },
-  { id: "crushing", href: "/crushing", label: "Crushing", icon: Hammer },
 ];
 
 const sfHrefs = sfNavItems.map((i) => i.href);

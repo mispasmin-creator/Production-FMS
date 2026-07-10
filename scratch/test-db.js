@@ -2,7 +2,6 @@ const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const path = require('path');
 
-// Load environment variables manually
 const envPath = path.join(__dirname, '..', '.env');
 const envContent = fs.readFileSync(envPath, 'utf8');
 const env = {};
@@ -17,24 +16,16 @@ const supabaseUrl = env['NEXT_PUBLIC_SUPABASE_URL'] || '';
 const supabaseAnonKey = env['NEXT_PUBLIC_SUPABASE_ANON_KEY'] || '';
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-async function testInsert(val) {
-  console.log(`\n--- Testing insert of "${val}" into numeric column ---`);
-  const { data, error } = await supabase
-    .from('actual_production')
-    .update({ "BDAt110C": val })
-    .eq('id', 299) // update some existing test row
-    .select();
-
-  if (error) {
-    console.error('Failed:', error);
-  } else {
-    console.log('Success:', data[0]["BDAt110C"]);
-  }
-}
-
 async function main() {
-  await testInsert("NaN");
-  await testInsert("-999.99");
+  const { data, error } = await supabase
+    .from('semi_actual')
+    .delete()
+    .in('id', [90, 91, 92]);
+  if (error) {
+    console.error(error);
+  } else {
+    console.log('Successfully deleted duplicate entries with IDs 90, 91, 92:', data);
+  }
 }
 
 main();

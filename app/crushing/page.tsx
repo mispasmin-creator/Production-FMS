@@ -19,7 +19,8 @@ import {
     CheckCircle2,
     Clock,
     FileText,
-    Search
+    Search,
+    BadgeCheck
 } from 'lucide-react';
 
 // Shadcn UI components
@@ -179,8 +180,12 @@ export default function Step5List() {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [selectedRecord, setSelectedRecord] = useState<CrushingRecord | null>(null);
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+    const [isSubmittedToTally, setIsSubmittedToTally] = useState(false);
+    const [checkingSubmitted, setCheckingSubmitted] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [firmFilter, setFirmFilter] = useState("all");
+    const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
+    const [submittedIds, setSubmittedIds] = useState<Set<number>>(new Set());
 
     const uniqueFirmsForFilter = useMemo(() => {
         const firms = new Set<string>();
@@ -224,16 +229,30 @@ export default function Step5List() {
         setError(null);
         
         try {
-            const [crushingResult, masterResult] = await Promise.all([
+            const [crushingResult, masterResult, semiActualResult] = await Promise.all([
                 supabase.from('crushing_actual').select('*').order('id', { ascending: false }),
-                supabase.from('master').select('*')
+                supabase.from('master').select('*'),
+                supabase.from('semi_actual').select('"S No."').like('"S No."', 'CR-%')
             ]);
 
             if (crushingResult.error) throw crushingResult.error;
             if (masterResult.error) throw masterResult.error;
+            if (semiActualResult.error) throw semiActualResult.error;
 
             const crushingRows = crushingResult.data || [];
             const masterRows = masterResult.data || [];
+
+            const submittedSet = new Set<number>();
+            if (semiActualResult.data) {
+                semiActualResult.data.forEach((row: any) => {
+                    const sNoVal = String(row['S No.'] || '');
+                    const match = sNoVal.match(/^CR-(\d+)$/);
+                    if (match) {
+                        submittedSet.add(parseInt(match[1], 10));
+                    }
+                });
+            }
+            setSubmittedIds(submittedSet);
 
             // Process Crushing Actual records
             const records: CrushingRecord[] = crushingRows.map((row: any) => ({
@@ -323,6 +342,18 @@ export default function Step5List() {
             (record.dateOfProduction || "").toLowerCase().includes(q)
         );
     }, [crushingRecords, searchQuery, firmFilter]);
+
+    const pendingRecords = useMemo(() => {
+        return filteredRecords.filter(item => !submittedIds.has(item._rowIndex));
+    }, [filteredRecords, submittedIds]);
+
+    const historyRecords = useMemo(() => {
+        return filteredRecords.filter(item => submittedIds.has(item._rowIndex));
+    }, [filteredRecords, submittedIds]);
+
+    const displayRecords = useMemo(() => {
+        return activeTab === 'pending' ? pendingRecords : historyRecords;
+    }, [activeTab, pendingRecords, historyRecords]);
 
     const validateForm = () => {
         const errors: Record<string, string> = {};
@@ -423,9 +454,72 @@ export default function Step5List() {
         }
     };
 
-    const handleViewDetails = (record: CrushingRecord) => {
+    const handleViewDetails = async (record: CrushingRecord) => {
         setSelectedRecord(record);
         setIsDetailsOpen(true);
+        setCheckingSubmitted(true);
+        setIsSubmittedToTally(false);
+        try {
+            const { data, error } = await supabase
+                .from('semi_actual')
+                .select('id')
+                .eq('"S No."', `CR-${record._rowIndex}`)
+                .limit(1);
+            if (!error && data && data.length > 0) {
+                setIsSubmittedToTally(true);
+            }
+        } catch (err) {
+            console.error("Error checking tally submission:", err);
+        } finally {
+            setCheckingSubmitted(false);
+        }
+    };
+
+    const handleSubmitToTally = async (record: CrushingRecord) => {
+        setIsSubmitting(true);
+        setError(null);
+        try {
+            const { error: insertError } = await supabase
+                .from('semi_actual')
+                .insert({
+                    "Timestamp": new Date().toISOString(),
+                    "Semi Finished Job Card No.": `CR-${record._rowIndex}`,
+                    "Supervisor Name": user?.username || "Crushing Operator",
+                    "Date Of Production": record.dateOfProduction,
+                    "Product Name": record.crushingProductName,
+                    "Qty Of Semi Finished Good": record.inputQty,
+                    "Raw Material Name 1": record.fg1Name || null,
+                    "Quantity Of Raw Material 1": record.fg1Qty || null,
+                    "Raw Material Name 2": record.fg2Name || null,
+                    "Quantity Of Raw Material 2": record.fg2Qty || null,
+                    "Raw Material Name 3": record.fg3Name || null,
+                    "Quantity Of Raw Material 3": record.fg3Qty || null,
+                    "Raw Material Name 4": record.fg4Name || null,
+                    "Quantity Of Raw Material 4": record.fg4Qty || null,
+                    "S No.": `CR-${record._rowIndex}`,
+                    "Starting Reading Photo": record.startingPhoto || null,
+                    "Ending Reading Photo": record.endingPhoto || null,
+                    "Machine Running hour": record.machineHours || null,
+                    "Narration": record.remarks || null,
+                    "Planned1": record.dateOfProduction,
+                    "Semi Finished Production No.": record.firmName || null,
+                });
+
+            if (insertError) throw insertError;
+
+            setIsSubmittedToTally(true);
+            setSubmittedIds(prev => {
+                const next = new Set(prev);
+                next.add(record._rowIndex);
+                return next;
+            });
+            setSuccessMessage("Crushing entry successfully submitted to Tally Entry!");
+        } catch (err: any) {
+            console.error("Error submitting to Tally:", err);
+            setError(err.message || String(err));
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     if (loading) {
@@ -477,7 +571,7 @@ export default function Step5List() {
                         <div>
                             <h3 className="text-lg font-semibold text-slate-800">Crushing Records</h3>
                             <p className="text-xs text-slate-400 font-medium">
-                                {filteredRecords.length} records found ({crushingRecords.length} total)
+                                {displayRecords.length} records found ({crushingRecords.length} total)
                             </p>
                         </div>
                         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto">
@@ -527,6 +621,34 @@ export default function Step5List() {
                             </div>
                         </div>
                     </div>
+ 
+                    {/* Tabs */}
+                    <div className="flex gap-2 mb-6">
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('pending')}
+                            className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center transition-all ${
+                                activeTab === 'pending'
+                                    ? 'bg-olive-600 text-white shadow-md'
+                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                        >
+                            <Clock className="h-3.5 w-3.5 mr-1.5" />
+                            Pending ({pendingRecords.length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('history')}
+                            className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center transition-all ${
+                                activeTab === 'history'
+                                    ? 'bg-olive-600 text-white shadow-md'
+                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                        >
+                            <History className="h-3.5 w-3.5 mr-1.5" />
+                            History ({historyRecords.length})
+                        </button>
+                    </div>
 
                     {/* Table */}
                     <div className="overflow-x-auto rounded-lg border">
@@ -541,8 +663,8 @@ export default function Step5List() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {filteredRecords.length > 0 ? (
-                                    filteredRecords.map((record) => (
+                                {displayRecords.length > 0 ? (
+                                    displayRecords.map((record) => (
                                         <TableRow key={record._rowIndex} className="hover:bg-olive-50/40">
                                             {/* Date */}
                                             <TableCell className="whitespace-nowrap">
@@ -651,11 +773,12 @@ export default function Step5List() {
                                             <TableCell className="whitespace-nowrap">
                                                 <Button
                                                     onClick={() => handleViewDetails(record)}
-                                                    variant="ghost"
+                                                    variant="outline"
                                                     size="sm"
-                                                    className="h-8 w-8 p-0 text-slate-500 hover:text-olive-600"
+                                                    className="h-8 border-slate-200 hover:bg-olive-50 hover:text-olive-700"
                                                 >
-                                                    <Eye className="h-4 w-4" />
+                                                    <Eye className="h-4 w-4 mr-1.5" />
+                                                    View
                                                 </Button>
                                             </TableCell>
                                         </TableRow>
@@ -1155,6 +1278,45 @@ export default function Step5List() {
                                     </p>
                                 </div>
                             )}
+                            {/* Submit to Tally Entry Action */}
+                            <div className="flex justify-end gap-3 pt-6 border-t mt-6">
+                                <Button 
+                                    type="button" 
+                                    variant="outline" 
+                                    onClick={() => setIsDetailsOpen(false)}
+                                >
+                                    Close
+                                </Button>
+                                {isSubmittedToTally ? (
+                                    <Button 
+                                        type="button" 
+                                        disabled 
+                                        className="bg-emerald-600 text-white cursor-not-allowed"
+                                    >
+                                        <BadgeCheck className="h-4 w-4 mr-1.5" />
+                                        Submitted to Tally
+                                    </Button>
+                                ) : (
+                                    <Button 
+                                        type="button" 
+                                        onClick={() => handleSubmitToTally(selectedRecord)}
+                                        disabled={isSubmitting || checkingSubmitted}
+                                        className="bg-olive-600 text-white hover:bg-olive-700"
+                                    >
+                                        {isSubmitting ? (
+                                            <>
+                                                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                                                Submitting...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                                                Submit to Tally Entry
+                                            </>
+                                        )}
+                                    </Button>
+                                )}
+                            </div>
                         </div>
                     )}
                 </DialogContent>
