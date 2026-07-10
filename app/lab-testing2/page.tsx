@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react"
 import { Loader2, AlertTriangle, CalendarIcon, TestTube2, History, Settings, Eye, Search, FileDown } from "lucide-react"
 import { format } from "date-fns"
 import { supabase } from "@/lib/supabase"
-import { useAuth } from "@/lib/auth"
+import { useAuth, FIRM_MAP } from "@/lib/auth"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -481,11 +481,18 @@ export default function LabTesting2Page() {
         })
         .filter(Boolean)
 
-      const firmSearch = user?.firm?.toLowerCase() || ""
+      const userFirms = user?.firm ? user.firm.split(',').map(f => f.trim()).filter(Boolean) : []
       const isAdmin = user?.role?.toLowerCase() === "admin"
       const filterByFirm = (list: any[]) => {
-        if (isAdmin || !firmSearch) return list
-        return list.filter((item) => (item.firmName || "").toLowerCase().includes(firmSearch))
+        if (isAdmin || userFirms.length === 0) return list
+        return list.filter((item) => {
+          const fName = String(item.firmName || "").toLowerCase()
+          return userFirms.some(uf => {
+            const firmSearch = uf.toLowerCase()
+            const mappedFirmLower = (FIRM_MAP[uf] || uf).toLowerCase()
+            return fName.includes(firmSearch) || fName.includes(mappedFirmLower)
+          })
+        })
       }
 
       setPendingTests(filterByFirm(pendingData))

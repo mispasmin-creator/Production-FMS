@@ -3,7 +3,7 @@
 import React from "react";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useAuth } from "@/lib/auth";
+import { useAuth, FIRM_MAP } from "@/lib/auth";
 import {
   Loader2,
   AlertTriangle,
@@ -310,12 +310,17 @@ export default function PIApprovalPage() {
         };
       });
 
-      const firmSearch = user?.firm?.toLowerCase() || "";
+      const userFirms = user?.firm ? user.firm.split(',').map(f => f.trim()).filter(Boolean) : [];
       const isAdmin = user?.role?.toLowerCase() === "admin";
       const filtered = mapped.filter((r) => {
         if (isAdmin) return true;
-        if (!firmSearch) return true;
-        return r.firmName.toLowerCase().includes(firmSearch);
+        if (userFirms.length === 0) return true;
+        const fName = r.firmName.toLowerCase();
+        return userFirms.some(uf => {
+          const firmSearch = uf.toLowerCase();
+          const mappedFirmLower = (FIRM_MAP[uf] || uf).toLowerCase();
+          return fName.includes(firmSearch) || fName.includes(mappedFirmLower);
+        });
       });
 
       // Pending = no PI decision yet; History = has a PI decision

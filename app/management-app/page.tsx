@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/lib/auth";
+import { useAuth, FIRM_MAP } from "@/lib/auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import {
@@ -333,12 +333,17 @@ export default function ManagementApp() {
         };
       });
 
-      const firmSearch = user?.firm?.toLowerCase() || "";
+      const userFirms = user?.firm ? user.firm.split(',').map(f => f.trim()).filter(Boolean) : [];
       const isAdmin = user?.role?.toLowerCase() === "admin";
       const filtered = mapped.filter((r) => {
         if (isAdmin) return true;
-        if (!firmSearch) return true;
-        return r.firmName.toLowerCase().includes(firmSearch);
+        if (userFirms.length === 0) return true;
+        const fName = r.firmName.toLowerCase();
+        return userFirms.some(uf => {
+          const firmSearch = uf.toLowerCase();
+          const mappedFirmLower = (FIRM_MAP[uf] || uf).toLowerCase();
+          return fName.includes(firmSearch) || fName.includes(mappedFirmLower);
+        });
       });
 
       setPendingItems(filtered.filter((i) => !i.managementApprovalStatus));

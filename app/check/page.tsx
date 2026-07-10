@@ -252,13 +252,15 @@ function formatDate(date: any): string {
 const normalizeKey = (value: any) => String(value || "").trim().toLowerCase()
 
 const getFirmMatchValues = (firm?: string) => {
-  const rawFirm = String(firm || "").trim()
-  const mappedFirm = Object.entries(FIRM_MAP).find(
-    ([key, value]) => normalizeKey(key) === normalizeKey(rawFirm) || normalizeKey(value) === normalizeKey(rawFirm)
-  )?.[1]
-  return [rawFirm, mappedFirm]
-    .filter(Boolean)
-    .map((value) => normalizeKey(value))
+  const firms = String(firm || "").split(',').map(f => f.trim()).filter(Boolean);
+  return firms.flatMap(rawFirm => {
+    const mappedFirm = Object.entries(FIRM_MAP).find(
+      ([key, value]) => normalizeKey(key) === normalizeKey(rawFirm) || normalizeKey(value) === normalizeKey(rawFirm)
+    )?.[1]
+    return [rawFirm, mappedFirm]
+      .filter(Boolean)
+      .map((value) => normalizeKey(value))
+  });
 }
 
 function parseActualProductionRow(row: any): ActualProductionItem {

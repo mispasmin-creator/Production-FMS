@@ -163,13 +163,15 @@ const normalizeKey = (value: any) => String(value || "").trim().toLowerCase()
 const makeOrderProductKey = (orderNo: any, productName: any) =>
   `${normalizeKey(orderNo)}::${normalizeKey(productName)}`
 const getFirmMatchValues = (firm?: string) => {
-  const rawFirm = String(firm || "").trim()
-  const mappedFirm = Object.entries(FIRM_MAP).find(
-    ([key, value]) => normalizeKey(key) === normalizeKey(rawFirm) || normalizeKey(value) === normalizeKey(rawFirm)
-  )?.[1] || ""
-  return [rawFirm, mappedFirm]
-    .map((value) => normalizeKey(value))
-    .filter(Boolean)
+  const firms = String(firm || "").split(',').map(f => f.trim()).filter(Boolean);
+  return firms.flatMap(rawFirm => {
+    const mappedFirm = Object.entries(FIRM_MAP).find(
+      ([key, value]) => normalizeKey(key) === normalizeKey(rawFirm) || normalizeKey(value) === normalizeKey(rawFirm)
+    )?.[1] || ""
+    return [rawFirm, mappedFirm]
+      .map((value) => normalizeKey(value))
+      .filter(Boolean)
+  });
 }
 
 export default function ChemicalTestPage() {
