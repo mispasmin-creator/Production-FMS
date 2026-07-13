@@ -12,19 +12,33 @@ envContent.split('\n').forEach(line => {
   }
 });
 
-const supabaseUrl = env['NEXT_PUBLIC_SUPABASE_URL'] || '';
-const supabaseAnonKey = env['NEXT_PUBLIC_SUPABASE_ANON_KEY'] || '';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const productionSupabaseUrl = env['NEXT_PUBLIC_SUPABASE_URL'] || '';
+const productionSupabaseAnonKey = env['NEXT_PUBLIC_SUPABASE_ANON_KEY'] || '';
+const productionSupabase = createClient(productionSupabaseUrl, productionSupabaseAnonKey);
 
 async function main() {
-  const { data, error } = await supabase
-    .from('semi_actual')
-    .delete()
-    .in('id', [90, 91, 92]);
-  if (error) {
-    console.error(error);
+  // Query production table for id 106
+  const { data: prodData, error: prodErr } = await productionSupabase
+    .from('production')
+    .select('*')
+    .eq('id', 106);
+  
+  if (prodErr) {
+    console.error('prodErr:', prodErr);
   } else {
-    console.log('Successfully deleted duplicate entries with IDs 90, 91, 92:', data);
+    console.log('Production row with ID 106:', prodData[0]);
+  }
+
+  // Query actual_production table for Job Card JC-129
+  const { data: actualData, error: actualErr } = await productionSupabase
+    .from('actual_production')
+    .select('*')
+    .eq('"Job Card No."', 'JC-129');
+  
+  if (actualErr) {
+    console.error('actualErr:', actualErr);
+  } else {
+    console.log('actual_production rows with Job Card JC-129:', actualData);
   }
 }
 

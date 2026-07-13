@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -17,6 +17,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Separator } from "@/components/ui/separator"
 import { Toaster } from "@/components/ui/toaster"
 import { supabase } from "@/lib/supabase"
+import { createClient } from "@supabase/supabase-js"
+
+const purchaseSupabase = createClient(
+  "https://jcgmyvxcamstnhuwmemc.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpjZ215dnhjYW1zdG5odXdtZW1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMDgyODAsImV4cCI6MjA4NTU4NDI4MH0.wMKYEcXGOgrRwy7DKBlBz-a_mWhAuZaknG_iXYvKLLo"
+)
 
 // --- Configuration ---
 const ACTUAL_PRODUCTION_TABLE = "actual_production"
@@ -170,6 +176,8 @@ export default function CostingPage() {
   const [visiblePendingColumns, setVisiblePendingColumns] = useState<Record<string, boolean>>({})
   const [visibleHistoryColumns, setVisibleHistoryColumns] = useState<Record<string, boolean>>({})
   const [searchQuery, setSearchQuery] = useState("")
+  const [loadingRates, setLoadingRates] = useState(false)
+  const [liftRates, setLiftRates] = useState<Record<string, { rate: number; type: string; transportRate: number }>>({})
 
   const filteredPending = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
@@ -359,11 +367,94 @@ export default function CostingPage() {
     return Object.keys(errors).length === 0
   }
 
+  const fetchMaterialRates = async (item: PendingCostingItem) => {
+    if (!item?.completeDetails?.rawMaterials) return
+    setLoadingRates(true)
+    const ratesMap: Record<string, { rate: number; type: string; transportRate: number }> = {}
+    
+    // Clean firm name (e.g. "RKL ORDER" -> "Rkl") to match LIFT-ACCOUNTS table
+    const rawFirmName = item.completeDetails.firmName || item.firmName || ""
+    const cleanFirmName = (firm: string): string => {
+      const f = String(firm || "").trim().toLowerCase();
+      if (f.includes("purab")) return "Purab";
+      if (f.includes("pmmpl")) return "Pmmpl";
+      if (f.includes("rkl")) return "Rkl";
+      return firm;
+    };
+    const firmName = cleanFirmName(rawFirmName)
+
+    try {
+      await Promise.all(
+        item.completeDetails.rawMaterials.map(async (rm) => {
+          const rmName = rm.name ? rm.name.trim() : ""
+          if (!rmName) return
+
+          const { data, error } = await purchaseSupabase
+            .from("LIFT-ACCOUNTS")
+            .select('"Rate", "Type Of Transporting Rate", "Transporter Rate", "Lifting Qty"')
+            .ilike("Firm Name", firmName)
+            .ilike("Raw Material Name", rmName)
+            .order("Timestamp", { ascending: false })
+            .limit(1)
+
+          if (!error && data && data.length > 0) {
+            const row = data[0]
+            const rawRate = Number(row["Transporter Rate"] || 0)
+            const liftQty = Number(row["Lifting Qty"] || 0)
+            const rateType = String(row["Type Of Transporting Rate"] || "").trim().toLowerCase()
+            
+            // Calculate Per MT Transportation Rate dynamically
+            let calculatedTransportRate = 0
+            if ((rateType === "per mt" || rateType === "fixed") && liftQty > 0) {
+              calculatedTransportRate = rawRate / liftQty
+            }
+
+            ratesMap[rmName] = {
+              rate: Number(row["Rate"] || 0),
+              type: String(row["Type Of Transporting Rate"] || "").trim(),
+              transportRate: calculatedTransportRate,
+            }
+          } else {
+            ratesMap[rmName] = { rate: 0, type: "", transportRate: 0 }
+          }
+        })
+      )
+      setLiftRates(ratesMap)
+
+      // Calculate total material cost (including raw material cost + transport cost)
+      let totalMaterialCost = 0
+      item.completeDetails.rawMaterials.forEach((rm) => {
+        const rmName = rm.name ? rm.name.trim() : ""
+        const rateInfo = ratesMap[rmName]
+        if (rateInfo) {
+          const qty = Number(rm.quantity || 0)
+          const matCost = qty * rateInfo.rate
+          const transCost = qty * rateInfo.transportRate
+          totalMaterialCost += (matCost + transCost)
+        }
+      })
+
+      // Calculate Per MT FG Cost based on FG Quantity
+      const fgQty = Number(item.completeDetails.quantityOfFG || item.quantityOfFG || 0)
+      const perMtCost = fgQty > 0 ? totalMaterialCost / fgQty : 0
+
+      // Pre-fill the costingAmount input box with Per MT Cost (including transportation)
+      setFormData({
+        costingAmount: perMtCost > 0 ? perMtCost.toFixed(2) : "",
+      })
+    } catch (err) {
+      console.error("Error fetching material rates:", err)
+    } finally {
+      setLoadingRates(false)
+    }
+  }
+
   const handleCosting = (item: PendingCostingItem) => {
     setSelectedCosting(item)
     setFormData(initialFormState)
     setFormErrors({})
     setIsDialogOpen(true)
+    fetchMaterialRates(item)
   }
 
   const handleSaveCosting = async () => {
@@ -742,7 +833,7 @@ export default function CostingPage() {
               {selectedCosting.completeDetails.rawMaterials.length > 0 && (
                 <div className="space-y-3">
                   <h3 className="text-md font-semibold flex items-center gap-2 text-blue-700 bg-blue-50 p-2 rounded">
-                    <Package className="h-4 w-4" /> Raw Materials Used
+                    <Package className="h-4 w-4" /> Raw Materials & Live Rates (LIFT-ACCOUNTS)
                   </h3>
                   <div className="border rounded-lg overflow-hidden">
                     <Table>
@@ -751,17 +842,100 @@ export default function CostingPage() {
                           <TableHead className="w-12">#</TableHead>
                           <TableHead>Raw Material Name</TableHead>
                           <TableHead className="text-right">Quantity</TableHead>
+                          <TableHead className="text-right">Live Rate (₹/MT)</TableHead>
+                          <TableHead className="text-right">Trans. Rate (₹/MT)</TableHead>
+                          <TableHead className="text-right">Total Cost (₹)</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {selectedCosting.completeDetails.rawMaterials.map((material, idx) => (
-                          <TableRow key={idx}>
-                            <TableCell className="font-medium">{idx + 1}</TableCell>
-                            <TableCell>{material.name}</TableCell>
-                            <TableCell className="text-right">{material.quantity}</TableCell>
-                          </TableRow>
-                        ))}
+                        {selectedCosting.completeDetails.rawMaterials.map((material, idx) => {
+                          const rateInfo = liftRates[material.name ? material.name.trim() : ""]
+                          const rate = rateInfo?.rate || 0
+                          const transRate = rateInfo?.transportRate || 0
+                          const qty = Number(material.quantity || 0)
+                          const totalCost = qty * (rate + transRate)
+
+                          return (
+                            <TableRow key={idx}>
+                              <TableCell className="font-medium">{idx + 1}</TableCell>
+                              <TableCell>{material.name}</TableCell>
+                              <TableCell className="text-right">{material.quantity}</TableCell>
+                              <TableCell className="text-right text-olive-700 font-semibold">
+                                {loadingRates ? (
+                                  <span className="text-slate-400">Loading...</span>
+                                ) : rate > 0 ? (
+                                  `₹${rate.toFixed(2)}`
+                                ) : (
+                                  "₹0.00"
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right text-blue-700 font-semibold">
+                                {loadingRates ? (
+                                  <span className="text-slate-400">Loading...</span>
+                                ) : transRate > 0 ? (
+                                  `₹${transRate.toFixed(2)}`
+                                ) : (
+                                  "₹0.00"
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right text-emerald-700 font-bold">
+                                {loadingRates ? (
+                                  <span className="text-slate-400">Calculating...</span>
+                                ) : totalCost > 0 ? (
+                                  `₹${totalCost.toFixed(2)}`
+                                ) : (
+                                  "₹0.00"
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
                       </TableBody>
+                      <TableFooter className="bg-slate-50 font-bold">
+                        {(() => {
+                          let totalMaterialCost = 0
+                          selectedCosting.completeDetails.rawMaterials.forEach((rm) => {
+                            const rmName = rm.name ? rm.name.trim() : ""
+                            const rateInfo = liftRates[rmName]
+                            if (rateInfo) {
+                              const qty = Number(rm.quantity || 0)
+                              totalMaterialCost += qty * (rateInfo.rate + rateInfo.transportRate)
+                            }
+                          })
+
+                          const fgQty = Number(selectedCosting.completeDetails.quantityOfFG || 0)
+                          const perMtCost = fgQty > 0 ? totalMaterialCost / fgQty : 0
+
+                          return (
+                            <>
+                              <TableRow>
+                                <TableCell colSpan={5} className="text-right text-slate-600">
+                                  Total Material Cost:
+                                </TableCell>
+                                <TableCell className="text-right text-emerald-700 text-sm">
+                                  ₹{totalMaterialCost.toFixed(2)}
+                                </TableCell>
+                              </TableRow>
+                              <TableRow>
+                                <TableCell colSpan={5} className="text-right text-slate-600">
+                                  FG Quantity:
+                                </TableCell>
+                                <TableCell className="text-right text-slate-700 text-sm">
+                                  {fgQty} MT
+                                </TableCell>
+                              </TableRow>
+                              <TableRow>
+                                <TableCell colSpan={5} className="text-right text-slate-600">
+                                  Calculated Per MT Cost:
+                                </TableCell>
+                                <TableCell className="text-right text-olive-700 text-sm">
+                                  ₹{perMtCost.toFixed(2)} / MT
+                                </TableCell>
+                              </TableRow>
+                            </>
+                          )
+                        })()}
+                      </TableFooter>
                     </Table>
                   </div>
                 </div>

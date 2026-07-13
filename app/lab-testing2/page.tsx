@@ -149,6 +149,7 @@ const initialFormState = {
   ccsAt1100: "",
   plcAt1100: "",
   testedBy: "",
+  remarks: "",
 }
 
 const hasValue = (value: any) => {
@@ -576,8 +577,16 @@ export default function LabTesting2Page() {
   const validateForm = () => {
     const errors: Record<string, string | null> = {}
     if (!formData.testStatus) errors.testStatus = "Status is required."
-    if (!formData.dateOfTest) errors.dateOfTest = "Date of Test is required."
-    if (!formData.testedBy) errors.testedBy = "Tested By is required."
+    
+    if (formData.testStatus !== "Non Tested") {
+      if (!formData.dateOfTest) errors.dateOfTest = "Date of Test is required."
+      if (!formData.testedBy) errors.testedBy = "Tested By is required."
+    } else {
+      if (!formData.remarks || !formData.remarks.trim()) {
+        errors.remarks = "Remark is required for Non Tested."
+      }
+    }
+    
     setFormErrors(errors)
     return Object.keys(errors).length === 0
   }
@@ -595,19 +604,35 @@ export default function LabTesting2Page() {
     setIsSubmitting(true)
     try {
       const now = new Date().toISOString()
+      const isNonTested = formData.testStatus === "Non Tested"
+      const payload: any = {
+        "Actual2": now,
+        "Status3": formData.testStatus,
+      }
+
+      if (!isNonTested) {
+        payload["TestedBy2"] = formData.testedBy
+        payload["DateOfTest2"] = format(formData.dateOfTest, "yyyy-MM-dd")
+        payload["BDAt110C"] = formData.bdAt110
+        payload["CCSAt100C"] = formData.ccsAt100
+        payload["BDAt1100C"] = formData.bdAt1100
+        payload["CCSAt1100C"] = formData.ccsAt1100
+        payload["PLCAt1100C"] = formData.plcAt1100
+        payload["Remarks2"] = null
+      } else {
+        payload["TestedBy2"] = null
+        payload["DateOfTest2"] = null
+        payload["BDAt110C"] = null
+        payload["CCSAt100C"] = null
+        payload["BDAt1100C"] = null
+        payload["CCSAt1100C"] = null
+        payload["PLCAt1100C"] = null
+        payload["Remarks2"] = formData.remarks
+      }
+
       const { error: updateErr } = await supabase
         .from(ACTUAL_PRODUCTION_TABLE)
-        .update({
-          "Actual2": now,
-          "Status3": formData.testStatus,
-          "TestedBy2": formData.testedBy,
-          "DateOfTest2": format(formData.dateOfTest, "yyyy-MM-dd"),
-          "BDAt110C": formData.bdAt110,
-          "CCSAt100C": formData.ccsAt100,
-          "BDAt1100C": formData.bdAt1100,
-          "CCSAt1100C": formData.ccsAt1100,
-          "PLCAt1100C": formData.plcAt1100,
-        })
+        .update(payload)
         .eq("id", selectedTest.id)
 
       if (updateErr) throw updateErr
@@ -1039,34 +1064,6 @@ export default function LabTesting2Page() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label>Date of Test *</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant={"outline"}
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !formData.dateOfTest && "text-muted-foreground",
-                        formErrors.dateOfTest && "border-red-500",
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {formData.dateOfTest ? format(formData.dateOfTest, "PPP") : <span>Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={formData.dateOfTest}
-                      onSelect={(date) => date && handleFormChange("dateOfTest", date)}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-                {formErrors.dateOfTest && <p className="text-xs text-red-500">{formErrors.dateOfTest}</p>}
-              </div>
-
-              <div className="space-y-2">
                 <Label>Test Status *</Label>
                 <Select value={formData.testStatus} onValueChange={(v) => handleFormChange("testStatus", v)}>
                   <SelectTrigger className={formErrors.testStatus ? "border-red-500" : ""}>
@@ -1083,71 +1080,119 @@ export default function LabTesting2Page() {
                 {formErrors.testStatus && <p className="text-xs text-red-500">{formErrors.testStatus}</p>}
               </div>
 
-              <div className="space-y-2">
-                <Label>Tested By *</Label>
-                <Select value={formData.testedBy} onValueChange={(v) => handleFormChange("testedBy", v)}>
-                  <SelectTrigger className={formErrors.testedBy ? "border-red-500" : ""}>
-                    <SelectValue placeholder="Select technician" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {testedByOptions.map((opt) => (
-                      <SelectItem key={opt} value={opt}>
-                        {opt}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {formErrors.testedBy && <p className="text-xs text-red-500">{formErrors.testedBy}</p>}
-              </div>
+              {formData.testStatus === "Non Tested" && (
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="remarks">Remarks *</Label>
+                  <Input
+                    id="remarks"
+                    placeholder="Enter reason for not testing..."
+                    value={formData.remarks || ""}
+                    onChange={(e) => handleFormChange("remarks", e.target.value)}
+                    className={formErrors.remarks ? "border-red-500" : ""}
+                  />
+                  {formErrors.remarks && <p className="text-xs text-red-500">{formErrors.remarks}</p>}
+                </div>
+              )}
+
+              {formData.testStatus !== "Non Tested" && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Date of Test *</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={"outline"}
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !formData.dateOfTest && "text-muted-foreground",
+                            formErrors.dateOfTest && "border-red-500",
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {formData.dateOfTest ? format(formData.dateOfTest, "PPP") : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={formData.dateOfTest}
+                          onSelect={(date) => date && handleFormChange("dateOfTest", date)}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    {formErrors.dateOfTest && <p className="text-xs text-red-500">{formErrors.dateOfTest}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Tested By *</Label>
+                    <Select value={formData.testedBy} onValueChange={(v) => handleFormChange("testedBy", v)}>
+                      <SelectTrigger className={formErrors.testedBy ? "border-red-500" : ""}>
+                        <SelectValue placeholder="Select technician" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {testedByOptions.map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {opt}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {formErrors.testedBy && <p className="text-xs text-red-500">{formErrors.testedBy}</p>}
+                  </div>
+                </>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 border-t pt-4">
-              <div className="space-y-2">
-                <Label htmlFor="bdAt110">BD at 110°C</Label>
-                <Input
-                  id="bdAt110"
-                  placeholder="Enter value"
-                  value={formData.bdAt110}
-                  onChange={(e) => handleFormChange("bdAt110", e.target.value)}
-                />
+            {formData.testStatus !== "Non Tested" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 border-t pt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="bdAt110">BD at 110°C</Label>
+                  <Input
+                    id="bdAt110"
+                    placeholder="Enter value"
+                    value={formData.bdAt110}
+                    onChange={(e) => handleFormChange("bdAt110", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ccsAt100">CCS at 100°C</Label>
+                  <Input
+                    id="ccsAt100"
+                    placeholder="Enter value"
+                    value={formData.ccsAt100}
+                    onChange={(e) => handleFormChange("ccsAt100", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="bdAt1100">BD at 1100°C</Label>
+                  <Input
+                    id="bdAt1100"
+                    placeholder="Enter value"
+                    value={formData.bdAt1100}
+                    onChange={(e) => handleFormChange("bdAt1100", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ccsAt1100">CCS at 1100°C</Label>
+                  <Input
+                    id="ccsAt1100"
+                    placeholder="Enter value"
+                    value={formData.ccsAt1100}
+                    onChange={(e) => handleFormChange("ccsAt1100", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="plcAt1100">PLC at 1100°C</Label>
+                  <Input
+                    id="plcAt1100"
+                    placeholder="Enter value"
+                    value={formData.plcAt1100}
+                    onChange={(e) => handleFormChange("plcAt1100", e.target.value)}
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="ccsAt100">CCS at 100°C</Label>
-                <Input
-                  id="ccsAt100"
-                  placeholder="Enter value"
-                  value={formData.ccsAt100}
-                  onChange={(e) => handleFormChange("ccsAt100", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="bdAt1100">BD at 1100°C</Label>
-                <Input
-                  id="bdAt1100"
-                  placeholder="Enter value"
-                  value={formData.bdAt1100}
-                  onChange={(e) => handleFormChange("bdAt1100", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ccsAt1100">CCS at 1100°C</Label>
-                <Input
-                  id="ccsAt1100"
-                  placeholder="Enter value"
-                  value={formData.ccsAt1100}
-                  onChange={(e) => handleFormChange("ccsAt1100", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="plcAt1100">PLC at 1100°C</Label>
-                <Input
-                  id="plcAt1100"
-                  placeholder="Enter value"
-                  value={formData.plcAt1100}
-                  onChange={(e) => handleFormChange("plcAt1100", e.target.value)}
-                />
-              </div>
-            </div>
+            )}
 
             <div className="flex justify-end gap-3 pt-6">
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>

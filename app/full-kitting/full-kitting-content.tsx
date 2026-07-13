@@ -13,10 +13,12 @@ import {
   Eye,
   Edit,
   Zap,
+  ChevronsUpDown,
 } from "lucide-react";
 import { format } from "date-fns";
 import { supabase, dispatchSupabase } from "@/lib/supabase";
 import { useAuth, FIRM_MAP } from "@/lib/auth";
+import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/components/ui/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -233,6 +235,8 @@ export default function CheckPage() {
   const [selectedHistoryItem, setSelectedHistoryItem] =
     useState<CostingHistoryItem | null>(null);
   const [kittingFormRows, setKittingFormRows] = useState<KittingFormRow[]>([]);
+  const [openPopoverId, setOpenPopoverId] = useState<number | null>(null);
+  const [materialSearchQuery, setMaterialSearchQuery] = useState("");
 
   // Expected Values state
   const [expectedValues, setExpectedValues] = useState<ExpectedValueRow[]>(
@@ -1860,33 +1864,80 @@ export default function CheckPage() {
                       <TableRow key={row.id}>
                         <TableCell className="p-2 text-sm">{idx + 1}</TableCell>
                         <TableCell className="p-2">
-                          <Select
-                            value={row.productName}
-                            onValueChange={(v) =>
-                              handleKittingRowChange(row.id, "productName", v)
-                            }
+                          <Popover
+                            open={openPopoverId === row.id}
+                            onOpenChange={(open) => {
+                              if (open) {
+                                setOpenPopoverId(row.id);
+                                setMaterialSearchQuery("");
+                              } else {
+                                setOpenPopoverId(null);
+                              }
+                            }}
                           >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue placeholder="Select material" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {filteredKycProducts
-                                .filter(
-                                  (p) =>
-                                    adminFirmFilter ||
-                                    !selectedCheck?.firmName ||
-                                    p.firmName === selectedCheck.firmName,
-                                )
-                                .map((p) => (
-                                  <SelectItem
-                                    key={`${p.id}-${p.productName}`}
-                                    value={p.productName}
-                                  >
-                                    {p.productName}
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                className="w-full justify-between h-8 text-xs font-normal px-2 bg-white border border-input hover:bg-accent hover:text-accent-foreground"
+                              >
+                                <span className="truncate">
+                                  {row.productName || "Select material"}
+                                </span>
+                                <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[300px] p-2" align="start">
+                              <div className="space-y-2">
+                                <Input
+                                  placeholder="Search material..."
+                                  value={materialSearchQuery}
+                                  onChange={(e) => setMaterialSearchQuery(e.target.value)}
+                                  className="h-8 text-xs"
+                                  autoFocus
+                                />
+                                <div className="max-h-[200px] overflow-y-auto space-y-0.5">
+                                  {(() => {
+                                    const filtered = filteredKycProducts
+                                      .filter(
+                                        (p) =>
+                                          (adminFirmFilter ||
+                                            !selectedCheck?.firmName ||
+                                            p.firmName === selectedCheck.firmName) &&
+                                          String(p.productName || "")
+                                            .toLowerCase()
+                                            .includes(materialSearchQuery.toLowerCase())
+                                      );
+
+                                    if (filtered.length === 0) {
+                                      return (
+                                        <p className="text-xs text-muted-foreground text-center py-2">
+                                          No materials found.
+                                        </p>
+                                      );
+                                    }
+
+                                    return filtered.map((p) => (
+                                      <button
+                                        key={`${p.id}-${p.productName}`}
+                                        type="button"
+                                        className={cn(
+                                          "w-full text-left px-2 py-1.5 text-xs rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors truncate block",
+                                          row.productName === p.productName && "bg-slate-100 dark:bg-slate-800 font-medium"
+                                        )}
+                                        onClick={() => {
+                                          handleKittingRowChange(row.id, "productName", p.productName);
+                                          setOpenPopoverId(null);
+                                        }}
+                                      >
+                                        {p.productName}
+                                      </button>
+                                    ));
+                                  })()}
+                                </div>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
                         </TableCell>
                         <TableCell className="p-2 text-xs">
                           {row.baseAlumina.toFixed(2)}
