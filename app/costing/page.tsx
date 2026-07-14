@@ -177,7 +177,7 @@ export default function CostingPage() {
   const [visibleHistoryColumns, setVisibleHistoryColumns] = useState<Record<string, boolean>>({})
   const [searchQuery, setSearchQuery] = useState("")
   const [loadingRates, setLoadingRates] = useState(false)
-  const [liftRates, setLiftRates] = useState<Record<string, { rate: number; type: string; transportRate: number }>>({})
+  const [liftRates, setLiftRates] = useState<Record<string, { rate: number; type: string; transportRate: number; totalBagsQty: number; billingQty: number }>>({})
 
   const filteredPending = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
@@ -370,7 +370,7 @@ export default function CostingPage() {
   const fetchMaterialRates = async (item: PendingCostingItem) => {
     if (!item?.completeDetails?.rawMaterials) return
     setLoadingRates(true)
-    const ratesMap: Record<string, { rate: number; type: string; transportRate: number }> = {}
+    const ratesMap: Record<string, { rate: number; type: string; transportRate: number; totalBagsQty: number; billingQty: number }> = {}
     
     // Clean firm name (e.g. "RKL ORDER" -> "Rkl") to match LIFT-ACCOUNTS table
     const rawFirmName = item.completeDetails.firmName || item.firmName || ""
@@ -391,7 +391,7 @@ export default function CostingPage() {
 
           const { data, error } = await purchaseSupabase
             .from("LIFT-ACCOUNTS")
-            .select('"Rate", "Type Of Transporting Rate", "Transporter Rate", "Lifting Qty"')
+            .select('"Rate", "Type Of Transporting Rate", "Transporter Rate", "Lifting Qty", "Total Bags Qty"')
             .ilike("Firm Name", firmName)
             .ilike("Raw Material Name", rmName)
             .order("Timestamp", { ascending: false })
@@ -409,13 +409,54 @@ export default function CostingPage() {
               calculatedTransportRate = rawRate / liftQty
             }
 
+            let totalBagsQty = row["Total Bags Qty"] !== null && row["Total Bags Qty"] !== undefined ? Number(row["Total Bags Qty"]) : 0
+
+            // If the latest row doesn't have Total Bags Qty, fetch the latest one that does
+            if (totalBagsQty === 0) {
+              const { data: bagsData, error: bagsErr } = await purchaseSupabase
+                .from("LIFT-ACCOUNTS")
+                .select('"Total Bags Qty"')
+                .ilike("Firm Name", firmName)
+                .ilike("Raw Material Name", rmName)
+                .not("Total Bags Qty", "is", null)
+                .order("Timestamp", { ascending: false })
+                .limit(1)
+
+              if (!bagsErr && bagsData && bagsData.length > 0) {
+                totalBagsQty = Number(bagsData[0]["Total Bags Qty"] || 0)
+              }
+            }
+
+            let finalRate = Number(row["Rate"] || 0)
+            const isSpecialPPBag = (name: string) => {
+              const n = name.trim().replace(/\s+/g, ' ').toLowerCase();
+              return (
+                n === "pp bag (25 kgs)" ||
+                n === "pp bag (50 kgs)" ||
+                n === "pp bags 25 kg" ||
+                n === "pp bag r - 25" ||
+                n === "pp bag b - 25"
+              );
+            }
+
+            if (isSpecialPPBag(rmName) && totalBagsQty > 0) {
+              const oldRate = finalRate
+              finalRate = (liftQty * finalRate) / totalBagsQty
+              console.log(`[PP BAG CALC MATCH] ${rmName}: (${liftQty} * ${oldRate}) / ${totalBagsQty} = ${finalRate}`)
+            } else {
+              console.log(`[PP BAG CALC SKIP] ${rmName}: isSpecial=${isSpecialPPBag(rmName)}, totalBagsQty=${totalBagsQty}, rate=${finalRate}`)
+            }
+
             ratesMap[rmName] = {
-              rate: Number(row["Rate"] || 0),
+              rate: finalRate,
               type: String(row["Type Of Transporting Rate"] || "").trim(),
               transportRate: calculatedTransportRate,
+              totalBagsQty,
+              billingQty: liftQty,
             }
           } else {
-            ratesMap[rmName] = { rate: 0, type: "", transportRate: 0 }
+            console.log(`[PP BAG CALC NO ROW] ${rmName} in LIFT-ACCOUNTS`)
+            ratesMap[rmName] = { rate: 0, type: "", transportRate: 0, totalBagsQty: 0, billingQty: 0 }
           }
         })
       )
@@ -438,9 +479,14 @@ export default function CostingPage() {
       const fgQty = Number(item.completeDetails.quantityOfFG || item.quantityOfFG || 0)
       const perMtCost = fgQty > 0 ? totalMaterialCost / fgQty : 0
 
-      // Pre-fill the costingAmount input box with Per MT Cost (including transportation)
+      // Get Manufacturing Cost from costingResponses
+      const response = costingResponses.find(r => r.orderNo === item.deliveryOrderNo)
+      const manufacturingCost = response ? parseFloat(response.manufacturingCost) || 0 : 0
+      const totalProductionCost = perMtCost + manufacturingCost
+
+      // Pre-fill the costingAmount input box with Total Production Cost
       setFormData({
-        costingAmount: perMtCost > 0 ? perMtCost.toFixed(2) : "",
+        costingAmount: totalProductionCost > 0 ? totalProductionCost.toFixed(2) : "",
       })
     } catch (err) {
       console.error("Error fetching material rates:", err)
@@ -906,6 +952,10 @@ export default function CostingPage() {
                           const fgQty = Number(selectedCosting.completeDetails.quantityOfFG || 0)
                           const perMtCost = fgQty > 0 ? totalMaterialCost / fgQty : 0
 
+                          const response = costingResponses.find(r => r.orderNo === selectedCosting?.deliveryOrderNo)
+                          const manufacturingCost = response ? parseFloat(response.manufacturingCost) || 0 : 0
+                          const totalProductionCost = perMtCost + manufacturingCost
+
                           return (
                             <>
                               <TableRow>
@@ -930,6 +980,22 @@ export default function CostingPage() {
                                 </TableCell>
                                 <TableCell className="text-right text-olive-700 text-sm">
                                   ₹{perMtCost.toFixed(2)} / MT
+                                </TableCell>
+                              </TableRow>
+                              <TableRow>
+                                <TableCell colSpan={5} className="text-right text-slate-600">
+                                  Manufacturing Cost:
+                                </TableCell>
+                                <TableCell className="text-right text-slate-700 text-sm">
+                                  ₹{manufacturingCost.toFixed(2)} / MT
+                                </TableCell>
+                              </TableRow>
+                              <TableRow className="bg-olive-50">
+                                <TableCell colSpan={5} className="text-right text-olive-800 font-extrabold text-sm">
+                                  Total Production Cost:
+                                </TableCell>
+                                <TableCell className="text-right text-olive-800 font-extrabold text-md">
+                                  ₹{totalProductionCost.toFixed(2)} / MT
                                 </TableCell>
                               </TableRow>
                             </>

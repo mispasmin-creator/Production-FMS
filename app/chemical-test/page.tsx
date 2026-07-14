@@ -150,6 +150,7 @@ const initialFormState = {
   silicaPercentage: "",
   calciumPercentage: "",
   testedBy: "",
+  remarks: "",
 }
 
 const hasValue = (value: any) => {
@@ -429,9 +430,17 @@ export default function ChemicalTestPage() {
   }
 
   const validateForm = () => {
-    const errors: Record<string, string> = {}
+    const errors: Record<string, string | null> = {}
     if (!formData.status) errors.status = "Status is required."
-    if (!formData.testedBy) errors.testedBy = "Tested By is required."
+    
+    if (formData.status !== "Non Tested") {
+      if (!formData.testedBy) errors.testedBy = "Tested By is required."
+    } else {
+      if (!formData.remarks || !formData.remarks.trim()) {
+        errors.remarks = "Remark is required for Non Tested."
+      }
+    }
+    
     setFormErrors(errors)
     return Object.keys(errors).length === 0
   }
@@ -449,17 +458,31 @@ export default function ChemicalTestPage() {
     setIsSubmitting(true)
     try {
       const now = new Date().toISOString()
+      const isNonTested = formData.status === "Non Tested"
+      const payload: any = {
+        "Actual3": now,
+        "ChemicalStatus": formData.status,
+      }
+
+      if (!isNonTested) {
+        payload["TestedBy3"] = formData.testedBy
+        payload["AluminaPct"] = formData.aluminaPercentage ? Number(formData.aluminaPercentage) : null
+        payload["IronPct"] = formData.ironPercentage ? Number(formData.ironPercentage) : null
+        payload["SilicaPct"] = formData.silicaPercentage ? Number(formData.silicaPercentage) : null
+        payload["CalciumPct"] = formData.calciumPercentage ? Number(formData.calciumPercentage) : null
+        payload["Remarks3"] = null
+      } else {
+        payload["TestedBy3"] = null
+        payload["AluminaPct"] = null
+        payload["IronPct"] = null
+        payload["SilicaPct"] = null
+        payload["CalciumPct"] = null
+        payload["Remarks3"] = formData.remarks
+      }
+
       const { error: updateErr } = await supabase
         .from(ACTUAL_PRODUCTION_TABLE)
-        .update({
-          "Actual3": now,
-          "ChemicalStatus": formData.status,
-          "AluminaPct": formData.aluminaPercentage ? Number(formData.aluminaPercentage) : null,
-          "IronPct": formData.ironPercentage ? Number(formData.ironPercentage) : null,
-          "SilicaPct": formData.silicaPercentage ? Number(formData.silicaPercentage) : null,
-          "CalciumPct": formData.calciumPercentage ? Number(formData.calciumPercentage) : null,
-          "TestedBy3": formData.testedBy,
-        })
+        .update(payload)
         .eq("id", selectedTest.id)
 
       if (updateErr) throw updateErr
@@ -839,69 +862,87 @@ export default function ChemicalTestPage() {
                 {formErrors.status && <p className="text-xs text-red-600 mt-1">{formErrors.status}</p>}
               </div>
 
-              <div className="space-y-2">
-                <Label>Tested By *</Label>
-                <Select value={formData.testedBy} onValueChange={(v) => handleFormChange("testedBy", v)}>
-                  <SelectTrigger className={formErrors.testedBy ? "border-red-500" : ""}>
-                    <SelectValue placeholder="Select tester" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {testedByOptions.map((opt) => (
-                      <SelectItem key={opt} value={opt}>
-                        {opt}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {formErrors.testedBy && <p className="text-xs text-red-600 mt-1">{formErrors.testedBy}</p>}
-              </div>
+              {formData.status === "Non Tested" && (
+                <div className="space-y-2">
+                  <Label htmlFor="remarks">Remarks *</Label>
+                  <Input
+                    id="remarks"
+                    placeholder="Enter reason for not testing..."
+                    value={formData.remarks || ""}
+                    onChange={(e) => handleFormChange("remarks", e.target.value)}
+                    className={formErrors.remarks ? "border-red-500" : ""}
+                  />
+                  {formErrors.remarks && <p className="text-xs text-red-600 mt-1">{formErrors.remarks}</p>}
+                </div>
+              )}
+
+              {formData.status !== "Non Tested" && (
+                <div className="space-y-2">
+                  <Label>Tested By *</Label>
+                  <Select value={formData.testedBy} onValueChange={(v) => handleFormChange("testedBy", v)}>
+                    <SelectTrigger className={formErrors.testedBy ? "border-red-500" : ""}>
+                      <SelectValue placeholder="Select tester" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {testedByOptions.map((opt) => (
+                        <SelectItem key={opt} value={opt}>
+                          {opt}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {formErrors.testedBy && <p className="text-xs text-red-600 mt-1">{formErrors.testedBy}</p>}
+                </div>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="ironPercentage">Iron %</Label>
-                <Input
-                  id="ironPercentage"
-                  type="number"
-                  step="0.1"
-                  value={formData.ironPercentage}
-                  onChange={(e) => handleFormChange("ironPercentage", e.target.value)}
-                />
-              </div>
+            {formData.status !== "Non Tested" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="ironPercentage">Iron %</Label>
+                  <Input
+                    id="ironPercentage"
+                    type="number"
+                    step="0.1"
+                    value={formData.ironPercentage}
+                    onChange={(e) => handleFormChange("ironPercentage", e.target.value)}
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="aluminaPercentage">Alumina %</Label>
-                <Input
-                  id="aluminaPercentage"
-                  type="number"
-                  step="0.1"
-                  value={formData.aluminaPercentage}
-                  onChange={(e) => handleFormChange("aluminaPercentage", e.target.value)}
-                />
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="aluminaPercentage">Alumina %</Label>
+                  <Input
+                    id="aluminaPercentage"
+                    type="number"
+                    step="0.1"
+                    value={formData.aluminaPercentage}
+                    onChange={(e) => handleFormChange("aluminaPercentage", e.target.value)}
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="silicaPercentage">Silica %</Label>
-                <Input
-                  id="silicaPercentage"
-                  type="number"
-                  step="0.1"
-                  value={formData.silicaPercentage}
-                  onChange={(e) => handleFormChange("silicaPercentage", e.target.value)}
-                />
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="silicaPercentage">Silica %</Label>
+                  <Input
+                    id="silicaPercentage"
+                    type="number"
+                    step="0.1"
+                    value={formData.silicaPercentage}
+                    onChange={(e) => handleFormChange("silicaPercentage", e.target.value)}
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="calciumPercentage">Calcium %</Label>
-                <Input
-                  id="calciumPercentage"
-                  type="number"
-                  step="0.1"
-                  value={formData.calciumPercentage}
-                  onChange={(e) => handleFormChange("calciumPercentage", e.target.value)}
-                />
+                <div className="space-y-2">
+                  <Label htmlFor="calciumPercentage">Calcium %</Label>
+                  <Input
+                    id="calciumPercentage"
+                    type="number"
+                    step="0.1"
+                    value={formData.calciumPercentage}
+                    onChange={(e) => handleFormChange("calciumPercentage", e.target.value)}
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="flex justify-end gap-2 pt-4 border-t">
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>

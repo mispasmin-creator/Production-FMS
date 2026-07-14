@@ -415,6 +415,7 @@ export default function LabTesting2Page() {
           machineHours: String(row["Machine Running hour"] || "-").trim(),
           rawMaterials: materials,
           planned2: row["Planned2"] || row["Planned 2"],
+          actual1: row["Actual1"] || row["Actual 1"],
           actual2: row["Actual2"] || row["Actual 2"],
           actual3: row["Actual3"] || row["Actual 3"],
           planned3: row["Planned3"] || row["Planned 3"],
@@ -432,7 +433,7 @@ export default function LabTesting2Page() {
 
       const pendingData = (actualProductionData || [])
         .map((row: any) => buildActualProductionInfo(row))
-        .filter((row: any) => row.jobCardNo && row.planned2 && !hasValue(row.actual2))
+        .filter((row: any) => row.jobCardNo && hasValue(row.actual1) && !hasValue(row.status3))
         .map((row: any) => {
           const jobCardNo = String(row.jobCardNo || "").trim()
           const deliveryOrderNo = String(row.deliveryOrderNo || "").trim()
@@ -498,10 +499,10 @@ export default function LabTesting2Page() {
 
       setPendingTests(filterByFirm(pendingData))
 
-      // Filter history: Actual 2 filled
+      // Filter history: Status 3 filled (Lab Test 2 performed)
       const historyData = (actualProductionData || [])
         .map((row: any) => buildActualProductionInfo(row))
-        .filter((row: any) => row.jobCardNo && hasValue(row.actual2))
+        .filter((row: any) => row.jobCardNo && hasValue(row.status3))
         .map((row: any) => {
           const jobCardNo = String(row.jobCardNo || "").trim()
           const deliveryOrderNo = String(row.deliveryOrderNo || "").trim()
@@ -542,7 +543,7 @@ export default function LabTesting2Page() {
             ccsAt1100: String(row.ccsAt1100 || ""),
             plcAt1100: String(row.plcAt1100 || ""),
             bdAt1100: String(row.bdAt1100 || ""),
-            test2CompletedAt: row.actual3 ? format(new Date(row.actual3), "dd/MM/yy HH:mm") : "",
+            test2CompletedAt: row.actual2 ? format(new Date(row.actual2), "dd/MM/yy HH:mm") : (row.actual3 ? format(new Date(row.actual3), "dd/MM/yy HH:mm") : ""),
             firmName: String(row.firmName || jobCard?.["Firm Name"] || ""),
           }
         })

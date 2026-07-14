@@ -645,6 +645,7 @@ export default function LabTesting1Page() {
       const statuses = [...new Set((masterData || []).map((row: any) => String(row["Test Status"] || "")).filter(Boolean))]
       if (!statuses.includes("Tested")) statuses.push("Tested")
       if (!statuses.includes("Non Tested")) statuses.push("Non Tested")
+      if (!statuses.includes("Direct supply")) statuses.push("Direct supply")
       setStatusOptions(statuses)
       setTestedByOptions([...new Set((masterData || []).map((row: any) => String(row["Tested by"] || "")).filter(Boolean))])
 
@@ -675,7 +676,7 @@ export default function LabTesting1Page() {
     const errors: Record<string, string | null> = {}
     if (!formData.testStatus) errors.testStatus = "Status is required."
     
-    if (formData.testStatus !== "Non Tested") {
+    if (formData.testStatus !== "Non Tested" && formData.testStatus !== "Direct supply") {
       if (!formData.dateOfTest) errors.dateOfTest = "Date of Test is required."
       if (!formData.flowOfMaterial) errors.flowOfMaterial = "Flow of Material is required."
       if (!formData.wcPercentage || String(formData.wcPercentage).trim() === "") {
@@ -684,7 +685,7 @@ export default function LabTesting1Page() {
       if (!formData.testedBy) errors.testedBy = "Tested By is required."
     } else {
       if (!formData.labTest1Remarks || !formData.labTest1Remarks.trim()) {
-        errors.labTest1Remarks = "Remark is required for Non Tested."
+        errors.labTest1Remarks = "Remark is required."
       }
     }
     
@@ -699,11 +700,13 @@ export default function LabTesting1Page() {
       const jobCardNo = selectedProduction.jobCardNo.trim()
       const now = new Date().toISOString()
       const isNonTested = formData.testStatus === "Non Tested"
+      const isDirectSupply = formData.testStatus === "Direct supply"
+      const isSkipped = isNonTested || isDirectSupply
       const payload: any = {
         "Actual1": now,
         "Status2": String(formData.testStatus),
       }
-      if (!isNonTested) {
+      if (!isSkipped) {
         payload["DateOfTest1"] = format(formData.dateOfTest, "yyyy-MM-dd")
         payload["WCPercentage"] = formData.wcPercentage ? String(formData.wcPercentage).trim() : null
         payload["TestedBy1"] = String(formData.testedBy)
@@ -722,7 +725,7 @@ export default function LabTesting1Page() {
         payload["FinalSettingTime"] = null
         payload["WhatToBeMixed"] = null
         payload["SieveAnalysis"] = null
-        payload["LabTest1Remarks"] = String(formData.labTest1Remarks)
+        payload["LabTest1Remarks"] = formData.labTest1Remarks ? String(formData.labTest1Remarks).trim() : null
         
         // Skip Lab Test 2 and Chemical Test. Go straight to Check Devshree (Planned4).
         const todayStr = format(new Date(), "yyyy-MM-dd")
@@ -1069,15 +1072,15 @@ export default function LabTesting1Page() {
                 </Select>
                 {formErrors.testStatus && <p className="text-xs text-red-500">{formErrors.testStatus}</p>}
               </div>
-              {formData.testStatus === "Non Tested" && (
+              {(formData.testStatus === "Non Tested" || formData.testStatus === "Direct supply") && (
                 <div className="space-y-1 col-span-2">
                   <Label htmlFor="labTest1Remarks">Remarks *</Label>
-                  <Input id="labTest1Remarks" placeholder="Enter reason for not testing..." value={formData.labTest1Remarks} onChange={(e) => handleFormChange("labTest1Remarks", e.target.value)} className={formErrors.labTest1Remarks ? "border-red-500" : ""} />
+                  <Input id="labTest1Remarks" placeholder={formData.testStatus === "Direct supply" ? "Enter remarks for direct supply..." : "Enter reason for not testing..."} value={formData.labTest1Remarks} onChange={(e) => handleFormChange("labTest1Remarks", e.target.value)} className={formErrors.labTest1Remarks ? "border-red-500" : ""} />
                   {formErrors.labTest1Remarks && <p className="text-xs text-red-500">{formErrors.labTest1Remarks}</p>}
                 </div>
               )}
               
-              {formData.testStatus !== "Non Tested" && (
+              {formData.testStatus !== "Non Tested" && formData.testStatus !== "Direct supply" && (
                 <>
                   <div className="space-y-1">
                     <Label>Date of Test *</Label>
@@ -1095,7 +1098,7 @@ export default function LabTesting1Page() {
               )}
             </div>
 
-            {formData.testStatus !== "Non Tested" && (
+            {formData.testStatus !== "Non Tested" && formData.testStatus !== "Direct supply" && (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-1">
