@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
 import { Toaster } from "@/components/ui/toaster"
-import { supabase } from "@/lib/supabase"
+import { supabase, dispatchSupabase } from "@/lib/supabase"
 import { createClient } from "@supabase/supabase-js"
 
 const purchaseSupabase = createClient(
@@ -178,6 +178,8 @@ export default function CostingPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [loadingRates, setLoadingRates] = useState(false)
   const [liftRates, setLiftRates] = useState<Record<string, { rate: number; type: string; transportRate: number; totalBagsQty: number; billingQty: number }>>({})
+  const [editedRates, setEditedRates] = useState<Record<string, { rate: string; transportRate: string }>>({})
+  const [orderRates, setOrderRates] = useState<Record<string, number>>({})
 
   const filteredPending = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
@@ -284,17 +286,21 @@ export default function CostingPage() {
         { data: actualProductionRows, error: actualErr },
         { data: jobCardsRows, error: jobCardsErr },
         { data: costingResponseRows, error: costingErr },
+        orderReceiptRes,
       ] = await Promise.all([
         supabase.from(ACTUAL_PRODUCTION_TABLE).select("*"),
         supabase.from(JOBCARDS_TABLE).select("*"),
         supabase.from(COSTING_RESPONSE_TABLE).select("*"),
+        Promise.resolve(
+          dispatchSupabase.from("ORDER RECEIPT").select('"DO-Delivery Order No.", "Rate Of Material"')
+        ).catch((err: any) => ({ data: null, error: err })),
       ])
 
       if (actualErr) throw actualErr
       if (jobCardsErr) throw jobCardsErr
       if (costingErr) throw costingErr
 
-      const jobCardsByNo = new Map(
+      const jobCardsByNo = new Map<string, any>(
         (jobCardsRows || []).map((jc: any) => [String(jc["JC-Job Card Number"] || "").trim(), jc])
       )
 
@@ -326,7 +332,7 @@ export default function CostingPage() {
           costingAmount: Number(row["Costing Amount"] || 0),
           costingDate: formatDateTimeValue(row["Actual8"]),
         }))
-        .sort((a, b) => new Date(b.costingDate).getTime() - new Date(a.costingDate).getTime())
+        .sort((a: any, b: any) => new Date(b.costingDate).getTime() - new Date(a.costingDate).getTime())
 
       const responses: CostingResponseRecord[] = (costingResponseRows || [])
         .map((row: any) => ({
@@ -339,6 +345,18 @@ export default function CostingPage() {
           sellingPrice: String(row["SELLING PRICE"] || ""),
         }))
         .filter((r: any) => r.orderNo)
+
+      const rates: Record<string, number> = {}
+      if (orderReceiptRes && orderReceiptRes.data) {
+        orderReceiptRes.data.forEach((row: any) => {
+          const doNo = String(row["DO-Delivery Order No."] || "").trim()
+          const rate = Number(row["Rate Of Material"] || 0)
+          if (doNo) {
+            rates[doNo] = rate
+          }
+        })
+      }
+      setOrderRates(rates)
 
       setPendingCosting(pendingData)
       setHistoryCosting(historyData)
@@ -462,6 +480,22 @@ export default function CostingPage() {
       )
       setLiftRates(ratesMap)
 
+      // Initialize editedRates
+      const initialEditedRates: Record<string, { rate: string; transportRate: string }> = {}
+      item.completeDetails.rawMaterials.forEach((rm) => {
+        const rmName = rm.name ? rm.name.trim() : ""
+        const rateInfo = ratesMap[rmName]
+        if (rateInfo) {
+          initialEditedRates[rmName] = {
+            rate: rateInfo.rate > 0 ? String(rateInfo.rate) : "",
+            transportRate: rateInfo.transportRate > 0 ? String(rateInfo.transportRate) : "",
+          }
+        } else {
+          initialEditedRates[rmName] = { rate: "", transportRate: "" }
+        }
+      })
+      setEditedRates(initialEditedRates)
+
       // Calculate total material cost (including raw material cost + transport cost)
       let totalMaterialCost = 0
       item.completeDetails.rawMaterials.forEach((rm) => {
@@ -493,6 +527,57 @@ export default function CostingPage() {
     } finally {
       setLoadingRates(false)
     }
+  }
+
+  const handleRateChange = (rmName: string, field: 'rate' | 'transportRate', value: string) => {
+    setEditedRates((prev) => {
+      const updatedEdited = {
+        ...prev,
+        [rmName]: {
+          ...prev[rmName],
+          [field]: value,
+        },
+      }
+
+      const numValue = parseFloat(value) || 0
+      setLiftRates((prevLift) => {
+        const prevInfo = prevLift[rmName] || { rate: 0, type: "", transportRate: 0, totalBagsQty: 0, billingQty: 0 }
+        const updatedLift = {
+          ...prevLift,
+          [rmName]: {
+            ...prevInfo,
+            [field]: numValue,
+          },
+        }
+
+        // Recalculate costingAmount in formData
+        if (selectedCosting?.completeDetails?.rawMaterials) {
+          let totalMaterialCost = 0
+          selectedCosting.completeDetails.rawMaterials.forEach((rm) => {
+            const name = rm.name ? rm.name.trim() : ""
+            const rateInfo = updatedLift[name]
+            if (rateInfo) {
+              const qty = Number(rm.quantity || 0)
+              totalMaterialCost += qty * (rateInfo.rate + rateInfo.transportRate)
+            }
+          })
+          const fgQty = Number(selectedCosting.completeDetails.quantityOfFG || selectedCosting.quantityOfFG || 0)
+          const perMtCost = fgQty > 0 ? totalMaterialCost / fgQty : 0
+          const response = costingResponses.find(r => r.orderNo === selectedCosting.deliveryOrderNo)
+          const manufacturingCost = response ? parseFloat(response.manufacturingCost) || 0 : 0
+          const totalProductionCost = perMtCost + manufacturingCost
+
+          setFormData((prevForm) => ({
+            ...prevForm,
+            costingAmount: totalProductionCost > 0 ? totalProductionCost.toFixed(2) : "",
+          }))
+        }
+
+        return updatedLift
+      })
+
+      return updatedEdited
+    })
   }
 
   const handleCosting = (item: PendingCostingItem) => {
@@ -909,19 +994,35 @@ export default function CostingPage() {
                               <TableCell className="text-right text-olive-700 font-semibold">
                                 {loadingRates ? (
                                   <span className="text-slate-400">Loading...</span>
-                                ) : rate > 0 ? (
-                                  `₹${rate.toFixed(2)}`
                                 ) : (
-                                  "₹0.00"
+                                  <div className="flex items-center justify-end gap-1">
+                                    <span className="text-gray-400">₹</span>
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      className="w-24 text-right h-8 text-xs font-semibold text-olive-700 bg-white"
+                                      value={editedRates[material.name ? material.name.trim() : ""]?.rate ?? ""}
+                                      onChange={(e) => handleRateChange(material.name ? material.name.trim() : "", 'rate', e.target.value)}
+                                    />
+                                  </div>
                                 )}
                               </TableCell>
                               <TableCell className="text-right text-blue-700 font-semibold">
                                 {loadingRates ? (
                                   <span className="text-slate-400">Loading...</span>
-                                ) : transRate > 0 ? (
-                                  `₹${transRate.toFixed(2)}`
                                 ) : (
-                                  "₹0.00"
+                                  <div className="flex items-center justify-end gap-1">
+                                    <span className="text-gray-400">₹</span>
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      className="w-24 text-right h-8 text-xs font-semibold text-blue-700 bg-white"
+                                      value={editedRates[material.name ? material.name.trim() : ""]?.transportRate ?? ""}
+                                      onChange={(e) => handleRateChange(material.name ? material.name.trim() : "", 'transportRate', e.target.value)}
+                                    />
+                                  </div>
                                 )}
                               </TableCell>
                               <TableCell className="text-right text-emerald-700 font-bold">
@@ -1039,8 +1140,16 @@ export default function CostingPage() {
                           <p className="text-sm font-bold text-violet-700">₹{response.transporting || "-"}</p>
                         </div>
                         <div className="space-y-1 text-olive-700">
-                          <Label className="text-xs text-olive-700 font-bold">SELLING PRICE</Label>
+                          <Label className="text-xs text-olive-700 font-bold">SELLING PRICE (ANALYSIS)</Label>
                           <p className="text-lg font-black">₹{response.sellingPrice || "-"}</p>
+                        </div>
+                        <div className="space-y-1 text-blue-700">
+                          <Label className="text-xs text-blue-700 font-bold">ACTUAL ORDER RATE</Label>
+                          <p className="text-lg font-black">
+                            ₹{orderRates[selectedCosting?.deliveryOrderNo || ""] 
+                              ? orderRates[selectedCosting.deliveryOrderNo].toLocaleString('en-IN', { minimumFractionDigits: 2 }) 
+                              : "-"}
+                          </p>
                         </div>
                       </div>
                     </div>
