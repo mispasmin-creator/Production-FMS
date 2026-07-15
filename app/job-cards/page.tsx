@@ -36,6 +36,7 @@ interface Order {
   productName: string
   orderQuantity: number
   expectedDeliveryDate: string
+  productRate?: number
   priority: string
   note: string
   totalMade?: number
@@ -94,8 +95,8 @@ const PENDING_ORDERS_COLUMNS_META = [
   { header: "Total Made", dataKey: "totalMade", toggleable: true },
   { header: "Pending", dataKey: "pending", toggleable: true },
   { header: "Planned Date", dataKey: "plannedDate", toggleable: true },
-
   { header: "Expected Delivery Date", dataKey: "expectedDeliveryDate", toggleable: true },
+  { header: "Selling Price", dataKey: "productRate", toggleable: true },
   { header: "Priority", dataKey: "priority", toggleable: true },
 ]
 
@@ -242,6 +243,7 @@ export default function JobCardsPage() {
           productName,
           orderQuantity: orderQty,
           expectedDeliveryDate: prodRow && prodRow["Expected Delivery Date"] ? format(new Date(prodRow["Expected Delivery Date"]), "dd/MM/yyyy") : "",
+          productRate: prodRow && prodRow["product_rate"] ? Number(prodRow["product_rate"]) : Number(row["SELLING PRICE"] || 0),
           plannedDate: row["Planned 2"] ? format(new Date(row["Planned 2"]), "dd/MM/yy") : "",
           priority: prodRow ? String(prodRow["Priority"] || "") : "",
           totalMade: totalMadeSum,
@@ -344,6 +346,7 @@ export default function JobCardsPage() {
     }
     return data.filter((item) => {
       return searchQuery.trim() === "" || [
+        item.productionId,
         item.deliveryOrderNo,
         item.firmName,
         item.partyName,
@@ -360,6 +363,7 @@ export default function JobCardsPage() {
     }
     return data.filter((item) => {
       return searchQuery.trim() === "" || [
+        item.productionId,
         item.jobCardNo,
         item.firmName,
         item.supervisorName,
@@ -819,6 +823,8 @@ export default function JobCardsPage() {
                                     >
                                       Create Job Card
                                     </Button>
+                                  ) : column.dataKey === "productRate" ? (
+                                    order.productRate ? `₹${Number(order.productRate).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "-"
                                   ) : (
                                     order[column.dataKey as keyof Order]?.toString() || "-"
                                   )}

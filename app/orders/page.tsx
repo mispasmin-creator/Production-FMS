@@ -621,6 +621,7 @@ export default function OrdersPage() {
       const q = searchQuery.toLowerCase().trim();
       baseData = baseData.filter((item) => {
         return [
+          item.productionId,
           item.deliveryOrderNo,
           item.firmName,
           item.partyName,
