@@ -1,4 +1,6 @@
 "use client"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
+
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Loader2, AlertTriangle, Plus, X, Factory, History, Eye, RefreshCw, Ban, Search, Check, ChevronsUpDown } from 'lucide-react';
@@ -85,7 +87,7 @@ interface SemiProductionRecord {
 export default function Step1List() {
     const { user } = useAuth();
     const [searchQuery, setSearchQuery] = useState("");
-    const [firmFilter, setFirmFilter] = useState("all");
+    const [firmFilter, setFirmFilter] = useState<string[]>([]);
     const [semiProductions, setSemiProductions] = useState<SemiProductionItem[]>([]);
     const uniqueFirmsForFilter = useMemo(() => {
         const firms = new Set<string>();
@@ -222,8 +224,8 @@ export default function Step1List() {
 
     const filteredData = useMemo(() => {
         let data = semiProductions;
-        if (firmFilter !== "all") {
-            data = data.filter((item) => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase());
+        if (firmFilter.length > 0) {
+            data = data.filter((item) => firmFilter.includes(String(item.firmName || "")));
         }
         return data.filter((item) => {
             return searchQuery.trim() === "" || [
@@ -467,22 +469,35 @@ export default function Step1List() {
                                     className="pl-10 h-9 rounded-xl border-slate-200 bg-white text-xs focus:ring-olive-500/20 focus:border-olive-500"
                                 />
                             </div>
-                            <Select
-                                value={firmFilter}
-                                onValueChange={setFirmFilter}
-                            >
-                                <SelectTrigger className="w-full sm:w-[150px] h-9 border-slate-200 focus:ring-olive-500/20 focus:border-olive-500 bg-white text-xs rounded-xl">
-                                    <SelectValue placeholder="All Firms" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all" className="text-xs">All Firms</SelectItem>
-                                    {uniqueFirmsForFilter.map((firm) => (
-                                        <SelectItem key={firm} value={firm} className="text-xs">
-                                            {firm}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="w-full sm:w-[150px] bg-white border-slate-200 text-xs h-9 rounded-lg justify-between font-normal hover:bg-transparent">
+                      {firmFilter.length === 0 ? "All Firms" : `${firmFilter.length} Firm${firmFilter.length > 1 ? 's' : ''} Selected`}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-[150px] rounded-lg">
+                    <DropdownMenuLabel className="text-xs">Filter by Firm</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {uniqueFirmsForFilter.map((firm) => (
+                      <DropdownMenuCheckboxItem
+                        key={firm}
+                        checked={firmFilter.includes(firm)}
+                        className="text-xs"
+                        onCheckedChange={(checked: boolean) => {
+                          if (checked) {
+                            setFirmFilter([...firmFilter, firm])
+                          } else {
+                            setFirmFilter(firmFilter.filter((f) => f !== firm))
+                          }
+                        }}
+                      >
+                        {firm}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
                             <div className="flex items-center gap-2">
                                 <Button
                                     onClick={loadAllData}

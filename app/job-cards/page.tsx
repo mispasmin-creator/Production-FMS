@@ -1,4 +1,6 @@
 "use client"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
+
 
 import type React from "react"
 import { useState, useEffect, useCallback, useMemo } from "react"
@@ -133,7 +135,7 @@ export default function JobCardsPage() {
   const [cancelOrderRemarks, setCancelOrderRemarks] = useState("")
   const [cancelOrderQty, setCancelOrderQty] = useState("")
   const [activeTab, setActiveTab] = useState("pending")
-  const [firmFilter, setFirmFilter] = useState("all")
+  const [firmFilter, setFirmFilter] = useState<string[]>([]);
   const [visiblePendingColumns, setVisiblePendingColumns] = useState<Record<string, boolean>>({})
   const [visibleHistoryColumns, setVisibleHistoryColumns] = useState<Record<string, boolean>>({})
 
@@ -341,8 +343,8 @@ export default function JobCardsPage() {
 
   const filteredPending = useMemo(() => {
     let data = pendingOrders
-    if (firmFilter !== "all") {
-      data = data.filter((item) => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase())
+    if (firmFilter.length > 0) {
+      data = data.filter((item) => firmFilter.includes(String(item.firmName || "")))
     }
     return data.filter((item) => {
       return searchQuery.trim() === "" || [
@@ -358,8 +360,8 @@ export default function JobCardsPage() {
 
   const filteredHistory = useMemo(() => {
     let data = historyJobCards
-    if (firmFilter !== "all") {
-      data = data.filter((item) => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase())
+    if (firmFilter.length > 0) {
+      data = data.filter((item) => firmFilter.includes(String(item.firmName || "")))
     }
     return data.filter((item) => {
       return searchQuery.trim() === "" || [
@@ -670,22 +672,34 @@ export default function JobCardsPage() {
           {/* Search & Filter Bar */}
           <div className="flex flex-col sm:flex-row gap-3 mb-6 items-start sm:items-center w-full max-w-2xl">
             <div className="w-48">
-              <Select
-                value={firmFilter}
-                onValueChange={setFirmFilter}
-              >
-                <SelectTrigger className="h-10 rounded-xl border-gray-200 focus:ring-olive-500/20 focus:border-olive-500 bg-white">
-                  <SelectValue placeholder="All Firms" />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl">
-                  <SelectItem value="all">All Firms</SelectItem>
-                  {uniqueFirmsForFilter.map((firm) => (
-                    <SelectItem key={firm} value={firm}>
-                      {firm}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="h-10 rounded-xl border-gray-200 justify-between font-normal text-muted-foreground hover:bg-transparent min-w-[140px]">
+                      {firmFilter.length === 0 ? "All Firms" : `${firmFilter.length} Firm${firmFilter.length > 1 ? 's' : ''} Selected`}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-56 rounded-xl">
+                    <DropdownMenuLabel>Filter by Firm</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {uniqueFirmsForFilter.map((firm) => (
+                      <DropdownMenuCheckboxItem
+                        key={firm}
+                        checked={firmFilter.includes(firm)}
+                        onCheckedChange={(checked: boolean) => {
+                          if (checked) {
+                            setFirmFilter([...firmFilter, firm])
+                          } else {
+                            setFirmFilter(firmFilter.filter((f) => f !== firm))
+                          }
+                        }}
+                      >
+                        {firm}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
             </div>
             <div className="relative flex-1 w-full sm:max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -703,13 +717,13 @@ export default function JobCardsPage() {
               <TabsTrigger value="pending" className="flex items-center gap-2">
                 <FileCheck className="h-4 w-4" /> Pending Orders{" "}
                 <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                  {(searchQuery || firmFilter !== "all") ? `${filteredPending.length} / ${pendingOrders.length}` : pendingOrders.length}
+                  {(searchQuery || firmFilter.length > 0) ? `${filteredPending.length} / ${pendingOrders.length}` : pendingOrders.length}
                 </Badge>
               </TabsTrigger>
               <TabsTrigger value="history" className="flex items-center gap-2">
                 <History className="h-4 w-4" /> Job Card History{" "}
                 <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                  {(searchQuery || firmFilter !== "all") ? `${filteredHistory.length} / ${historyJobCards.length}` : historyJobCards.length}
+                  {(searchQuery || firmFilter.length > 0) ? `${filteredHistory.length} / ${historyJobCards.length}` : historyJobCards.length}
                 </Badge>
               </TabsTrigger>
             </TabsList>
@@ -720,7 +734,7 @@ export default function JobCardsPage() {
                   <div className="flex flex-wrap justify-between items-center bg-olive-50 rounded-md p-2 gap-4">
                     <CardTitle className="flex items-center text-md font-semibold text-foreground">
                       <FileCheck className="h-5 w-5 text-primary mr-2" />
-                      Pending for Production ({(searchQuery || firmFilter !== "all") ? `${filteredPending.length} / ${pendingOrders.length}` : pendingOrders.length})
+                      Pending for Production ({(searchQuery || firmFilter.length > 0) ? `${filteredPending.length} / ${pendingOrders.length}` : pendingOrders.length})
                     </CardTitle>
                     <div className="flex items-center gap-2">
                       <Button
@@ -766,7 +780,7 @@ export default function JobCardsPage() {
                                   <Checkbox
                                     id={`toggle-pending-${col.dataKey}`}
                                     checked={!!visiblePendingColumns[col.dataKey]}
-                                    onCheckedChange={(checked) =>
+                                    onCheckedChange={(checked: boolean) =>
                                       handleToggleColumn("pending", col.dataKey, Boolean(checked))
                                     }
                                     disabled={col.alwaysVisible}
@@ -846,7 +860,7 @@ export default function JobCardsPage() {
                   <div className="flex flex-wrap justify-between items-center bg-olive-50 rounded-md p-2 gap-4">
                     <CardTitle className="flex items-center text-md font-semibold text-foreground">
                       <History className="h-5 w-5 text-primary mr-2" />
-                      Job Card History ({(searchQuery || firmFilter !== "all") ? `${filteredHistory.length} / ${historyJobCards.length}` : historyJobCards.length})
+                      Job Card History ({(searchQuery || firmFilter.length > 0) ? `${filteredHistory.length} / ${historyJobCards.length}` : historyJobCards.length})
                     </CardTitle>
                     <div className="flex items-center gap-2">
                       <Button
@@ -892,7 +906,7 @@ export default function JobCardsPage() {
                                   <Checkbox
                                     id={`toggle-history-${col.dataKey}`}
                                     checked={!!visibleHistoryColumns[col.dataKey]}
-                                    onCheckedChange={(checked) =>
+                                    onCheckedChange={(checked: boolean) =>
                                       handleToggleColumn("history", col.dataKey, Boolean(checked))
                                     }
                                     disabled={col.alwaysVisible}

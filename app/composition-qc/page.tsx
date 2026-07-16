@@ -427,6 +427,7 @@ export default function CompositionQCPage() {
                   <TableHead className="text-xs font-bold text-slate-600">DO No.</TableHead>
                   <TableHead className="text-xs font-bold text-slate-600">Party</TableHead>
                   <TableHead className="text-xs font-bold text-slate-600">Product</TableHead>
+                  <TableHead className="text-xs font-bold text-slate-600">Firm Name</TableHead>
                   <TableHead className="text-xs font-bold text-slate-600 text-right">FG Qty</TableHead>
                   <TableHead className="text-xs font-bold text-slate-600 text-center">Mat. Diff %</TableHead>
                   <TableHead className="text-xs font-bold text-slate-600 text-center">Cost Diff %</TableHead>
@@ -437,7 +438,7 @@ export default function CompositionQCPage() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-12 text-sm text-slate-400 italic">
+                    <TableCell colSpan={11} className="text-center py-12 text-sm text-slate-400 italic">
                       No records found. Production logs with matching compositions will appear here.
                     </TableCell>
                   </TableRow>
@@ -452,13 +453,14 @@ export default function CompositionQCPage() {
                     <TableCell className="py-3 text-xs text-slate-600">{r.doNo || "—"}</TableCell>
                     <TableCell className="py-3 text-xs text-slate-700">{r.partyName || "—"}</TableCell>
                     <TableCell className="py-3 text-xs text-slate-700 max-w-[160px] truncate">{r.productName}</TableCell>
+                    <TableCell className="py-3 text-xs text-slate-600">{r.firmName || "—"}</TableCell>
                     <TableCell className="py-3 text-xs text-right font-medium">{r.fgQty.toLocaleString()}</TableCell>
                     <TableCell className="py-3 text-center"><DiffBadge value={r.matDiffPct} /></TableCell>
                     <TableCell className="py-3 text-center"><DiffBadge value={r.costDiffPct} /></TableCell>
                     <TableCell className="py-3 text-right text-xs font-bold">
                       {r.profitLoss !== null ? (
                         <span className={r.profitLoss >= 0 ? "text-emerald-600" : "text-red-600"}>
-                          {money(r.profitLoss)}
+                           {money(r.profitLoss)}
                         </span>
                       ) : "—"}
                     </TableCell>
@@ -485,6 +487,7 @@ export default function CompositionQCPage() {
                 <div className="flex flex-wrap gap-2 pt-1">
                   <Badge variant="outline" className="text-xs">{selected.doNo}</Badge>
                   <Badge variant="outline" className="text-xs">ID: {selected.productionId || "—"}</Badge>
+                  <Badge variant="outline" className="text-xs">{selected.firmName}</Badge>
                   <Badge variant="outline" className="text-xs">{selected.partyName}</Badge>
                   <Badge variant="outline" className="text-xs">{selected.productName}</Badge>
                   {selected.productionDate && (

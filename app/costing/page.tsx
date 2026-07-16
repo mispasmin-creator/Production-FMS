@@ -1093,7 +1093,7 @@ export default function CostingPage() {
                               </TableRow>
                               <TableRow className="bg-olive-50">
                                 <TableCell colSpan={5} className="text-right text-olive-800 font-extrabold text-sm">
-                                  Total Production Cost:
+                                  Total Production Cost / MT:
                                 </TableCell>
                                 <TableCell className="text-right text-olive-800 font-extrabold text-md">
                                   ₹{totalProductionCost.toFixed(2)} / MT
@@ -1118,37 +1118,42 @@ export default function CostingPage() {
                       <h3 className="text-md font-semibold flex items-center gap-2 text-violet-700 bg-violet-50 p-2 rounded">
                         <DollarSign className="h-4 w-4" /> Costing Details from Analysis
                       </h3>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 p-4 border border-violet-100 rounded-lg">
-                        <div className="space-y-1">
-                          <Label className="text-xs text-gray-500">VARIABLE COST</Label>
-                          <p className="text-sm font-bold text-violet-700">₹{response.variableCost || "-"}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-gray-500">Manufacturing Cost</Label>
-                          <p className="text-sm font-bold text-violet-700">₹{response.manufacturingCost || "-"}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-gray-500">Interest (days)</Label>
-                          <p className="text-sm font-bold text-slate-700">{response.interestDays || "-"}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-gray-500">Interest Cost</Label>
-                          <p className="text-sm font-bold text-violet-700">₹{response.interestCost || "-"}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-gray-500">Transporting (FOR)</Label>
-                          <p className="text-sm font-bold text-violet-700">₹{response.transporting || "-"}</p>
-                        </div>
-                        <div className="space-y-1 text-olive-700">
-                          <Label className="text-xs text-olive-700 font-bold">SELLING PRICE (ANALYSIS)</Label>
-                          <p className="text-lg font-black">₹{response.sellingPrice || "-"}</p>
-                        </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border border-violet-100 rounded-lg">
                         <div className="space-y-1 text-blue-700">
                           <Label className="text-xs text-blue-700 font-bold">ACTUAL ORDER RATE</Label>
                           <p className="text-lg font-black">
                             ₹{orderRates[selectedCosting?.deliveryOrderNo || ""] 
                               ? orderRates[selectedCosting.deliveryOrderNo].toLocaleString('en-IN', { minimumFractionDigits: 2 }) 
                               : "-"}
+                          </p>
+                        </div>
+                        <div className="space-y-1 text-blue-700">
+                          <Label className="text-xs text-blue-700 font-bold">PRODUCTION COST %</Label>
+                          <p className="text-lg font-black">
+                            {(() => {
+                              const actualOrderRate = Number(orderRates[selectedCosting?.deliveryOrderNo || ""]) || 0;
+                              
+                              let totalMaterialCost = 0;
+                              if (selectedCosting?.completeDetails?.rawMaterials) {
+                                selectedCosting.completeDetails.rawMaterials.forEach((rm) => {
+                                  const rmName = rm.name ? rm.name.trim() : "";
+                                  const rateInfo = liftRates[rmName];
+                                  if (rateInfo) {
+                                    const qty = Number(rm.quantity || 0);
+                                    totalMaterialCost += qty * (rateInfo.rate + rateInfo.transportRate);
+                                  }
+                                });
+                              }
+                              const fgQty = Number(selectedCosting?.completeDetails?.quantityOfFG || 0);
+                              const perMtCost = fgQty > 0 ? totalMaterialCost / fgQty : 0;
+                              const manufacturingCost = response ? parseFloat(response.manufacturingCost) || 0 : 0;
+                              const productionCost = perMtCost + manufacturingCost;
+
+                              if (actualOrderRate > 0) {
+                                return ((productionCost / actualOrderRate) * 100).toFixed(2) + "%";
+                              }
+                              return "-";
+                            })()}
                           </p>
                         </div>
                       </div>
@@ -1158,94 +1163,7 @@ export default function CostingPage() {
                 return null;
               })()}
 
-              {/* Section 4: Planning and Actual Data */}
-              <div className="space-y-3">
-                <h3 className="text-md font-semibold flex items-center gap-2 text-olive-700 bg-olive-50 p-2 rounded">
-                  <CheckCircle className="h-4 w-4" /> Planning & Actual Data
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border rounded-lg">
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Planned 1</Label>
-                    <p className="text-sm">{selectedCosting.completeDetails.planned1 || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Actual 1</Label>
-                    <p className="text-sm">{selectedCosting.completeDetails.actual1 || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Status</Label>
-                    <p className="text-sm"><Badge variant="outline">{selectedCosting.completeDetails.status || "N/A"}</Badge></p>
-                  </div>
-                  {/* <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Actual Qty 1</Label>
-                    <p className="text-sm">{selectedCosting.completeDetails.actualQty1 || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Planned 2</Label>
-                    <p className="text-sm">{selectedCosting.completeDetails.planned2 || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Actual 2</Label>
-                    <p className="text-sm">{selectedCosting.completeDetails.actual2 || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Time Delay 2</Label>
-                    <p className="text-sm">{selectedCosting.completeDetails.timeDelay2 || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Remarks</Label>
-                    <p className="text-sm">{selectedCosting.completeDetails.remarks || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Planned 3</Label>
-                    <p className="text-sm font-medium text-green-600">{selectedCosting.completeDetails.planned3 || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Actual 3</Label>
-                    <p className="text-sm">{selectedCosting.completeDetails.actual3 || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Costing Amount 2</Label>
-                    <p className="text-sm">{selectedCosting.completeDetails.costingAmount2 || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Planned 4</Label>
-                    <p className="text-sm">{selectedCosting.completeDetails.planned4 || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Actual 4</Label>
-                    <p className="text-sm">{selectedCosting.completeDetails.actual4 || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Remarks 1.2</Label>
-                    <p className="text-sm">{selectedCosting.completeDetails.remarks1_2 || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Planned 5</Label>
-                    <p className="text-sm">{selectedCosting.completeDetails.planned5 || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Actual 5</Label>
-                    <p className="text-sm">{selectedCosting.completeDetails.actual5 || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Remarks 2</Label>
-                    <p className="text-sm">{selectedCosting.completeDetails.remarks2 || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Planned 6</Label>
-                    <p className="text-sm">{selectedCosting.completeDetails.planned6 || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Actual 6</Label>
-                    <p className="text-sm">{selectedCosting.completeDetails.actual6 || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold text-gray-600">Remarks 3</Label>
-                    <p className="text-sm">{selectedCosting.completeDetails.remarks3 || "N/A"}</p>
-                  </div> */}
-                </div>
-              </div>
+
 
               <Separator />
 

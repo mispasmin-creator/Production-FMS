@@ -1,4 +1,6 @@
-"use client";
+"use client"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
+;
 
 import React, { useState, useEffect, useMemo } from "react";
 import {
@@ -139,7 +141,7 @@ export default function OrdersPage() {
   const [cancelQuantity, setCancelQuantity] = useState("");
   const [cancelReason, setCancelReason] = useState("");
   const [activeTab, setActiveTab] = useState("all");
-  const [firmFilter, setFirmFilter] = useState("all");
+  const [firmFilter, setFirmFilter] = useState<string[]>([]);
   const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
 
   // Column visibility state
@@ -610,9 +612,9 @@ export default function OrdersPage() {
     }
 
     // Filter by selected firm filter
-    if (firmFilter !== "all") {
+    if (firmFilter.length > 0) {
       baseData = baseData.filter(
-        (item) => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase()
+        (item) => firmFilter.includes(String(item.firmName || ""))
       );
     }
 
@@ -716,7 +718,7 @@ export default function OrdersPage() {
                   <Checkbox
                     id={`toggle-${col.dataKey}`}
                     checked={!!visibleColumns[col.dataKey]}
-                    onCheckedChange={(checked) =>
+                    onCheckedChange={(checked: boolean) =>
                       handleToggleColumn(col.dataKey, Boolean(checked))
                     }
                     className="data-[state=checked]:bg-olive-600 data-[state=checked]:border-olive-600"
@@ -881,22 +883,34 @@ export default function OrdersPage() {
 
             <div className="flex items-center gap-3 w-full lg:w-auto">
               <div className="w-48">
-                <Select
-                  value={firmFilter}
-                  onValueChange={setFirmFilter}
-                >
-                  <SelectTrigger className="h-10 rounded-xl border-gray-200 focus:ring-olive-500/20 focus:border-olive-500">
-                    <SelectValue placeholder="All Firms" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-xl">
-                    <SelectItem value="all">All Firms</SelectItem>
+                
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="h-10 rounded-xl border-gray-200 justify-between font-normal text-muted-foreground hover:bg-transparent min-w-[140px]">
+                      {firmFilter.length === 0 ? "All Firms" : `${firmFilter.length} Firm${firmFilter.length > 1 ? 's' : ''} Selected`}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-56 rounded-xl">
+                    <DropdownMenuLabel>Filter by Firm</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
                     {uniqueFirmsForFilter.map((firm) => (
-                      <SelectItem key={firm} value={firm}>
+                      <DropdownMenuCheckboxItem
+                        key={firm}
+                        checked={firmFilter.includes(firm)}
+                        onCheckedChange={(checked: boolean) => {
+                          if (checked) {
+                            setFirmFilter([...firmFilter, firm])
+                          } else {
+                            setFirmFilter(firmFilter.filter((f) => f !== firm))
+                          }
+                        }}
+                      >
                         {firm}
-                      </SelectItem>
+                      </DropdownMenuCheckboxItem>
                     ))}
-                  </SelectContent>
-                </Select>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
               </div>
               <div className="relative flex-1 lg:w-64">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />

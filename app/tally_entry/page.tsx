@@ -1,4 +1,6 @@
 "use client"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
+
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth, FIRM_MAP } from "@/lib/auth";
@@ -169,7 +171,7 @@ export default function Step4List() {
     const [markDoneRemarks, setMarkDoneRemarks] = useState('');
     const [markDoneErrors, setMarkDoneErrors] = useState<Record<string, string>>({});
     const [searchQuery, setSearchQuery] = useState("");
-    const [firmFilter, setFirmFilter] = useState("all");
+    const [firmFilter, setFirmFilter] = useState<string[]>([]);
 
     const uniqueFirmsForFilter = useMemo(() => {
         const firms = new Set<string>();
@@ -256,8 +258,8 @@ export default function Step4List() {
     const filteredSemiActual = useMemo(() => {
         const q = searchQuery.toLowerCase().trim();
         let data = semiActualData;
-        if (firmFilter !== "all") {
-            data = data.filter((item) => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase());
+        if (firmFilter.length > 0) {
+            data = data.filter((item) => firmFilter.includes(String(item.firmName || "")));
         }
         if (!q) return data;
         return data.filter(item =>
@@ -443,22 +445,35 @@ export default function Step4List() {
                             </button>
                         </div>
                         <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                            <Select
-                                value={firmFilter}
-                                onValueChange={setFirmFilter}
-                            >
-                                <SelectTrigger className="w-full sm:w-[150px] bg-white border-slate-200 text-xs h-9 rounded-lg">
-                                    <SelectValue placeholder="All Firms" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all" className="text-xs">All Firms</SelectItem>
-                                    {uniqueFirmsForFilter.map((firm) => (
-                                        <SelectItem key={firm} value={firm} className="text-xs">
-                                            {firm}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="w-full sm:w-[150px] bg-white border-slate-200 text-xs h-9 rounded-lg justify-between font-normal hover:bg-transparent">
+                      {firmFilter.length === 0 ? "All Firms" : `${firmFilter.length} Firm${firmFilter.length > 1 ? 's' : ''} Selected`}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-[150px] rounded-lg">
+                    <DropdownMenuLabel className="text-xs">Filter by Firm</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {uniqueFirmsForFilter.map((firm) => (
+                      <DropdownMenuCheckboxItem
+                        key={firm}
+                        checked={firmFilter.includes(firm)}
+                        className="text-xs"
+                        onCheckedChange={(checked: boolean) => {
+                          if (checked) {
+                            setFirmFilter([...firmFilter, firm])
+                          } else {
+                            setFirmFilter(firmFilter.filter((f) => f !== firm))
+                          }
+                        }}
+                      >
+                        {firm}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
                             <div className="relative w-full sm:w-[250px]">
                                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input

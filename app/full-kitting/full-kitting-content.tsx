@@ -1,4 +1,6 @@
-"use client";
+"use client"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
+;
 
 import type React from "react";
 
@@ -207,6 +209,7 @@ const HISTORY_COLUMNS_META = [
   },
   { header: "Timestamp", dataKey: "timestamp", toggleable: true },
   { header: "ID", dataKey: "productionId", toggleable: true },
+  { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Composition No.", dataKey: "compositionNo", toggleable: true },
   { header: "Order No.", dataKey: "orderNo", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
@@ -248,7 +251,7 @@ export default function CheckPage() {
 
   // Search and Firm filters for listing
   const [searchTerm, setSearchTerm] = useState<string>("");
-  const [firmFilter, setFirmFilter] = useState<string>("all");
+  const [firmFilter, setFirmFilter] = useState<string[]>([]);
 
   // Extract unique firm names dynamically from pending and history items
   const uniqueFirms = useMemo(() => {
@@ -264,8 +267,8 @@ export default function CheckPage() {
 
   const filteredPendingChecks = useMemo(() => {
     return pendingChecks.filter((item) => {
-      if (firmFilter !== "all") {
-        if (!item.firmName || item.firmName.toLowerCase() !== firmFilter.toLowerCase()) {
+      if (firmFilter.length > 0) {
+        if (!item.firmName || !firmFilter.includes(item.firmName)) {
           return false;
         }
       }
@@ -288,8 +291,8 @@ export default function CheckPage() {
 
   const filteredHistoryChecks = useMemo(() => {
     return historyChecks.filter((item) => {
-      if (firmFilter !== "all") {
-        if (!item.firmName || item.firmName.toLowerCase() !== firmFilter.toLowerCase()) {
+      if (firmFilter.length > 0) {
+        if (!item.firmName || !firmFilter.includes(item.firmName)) {
           return false;
         }
       }
@@ -1375,19 +1378,34 @@ export default function CheckPage() {
 
                 {/* Firm Dropdown Filter */}
                 <div className="w-full sm:w-48">
-                  <Select value={firmFilter} onValueChange={setFirmFilter}>
-                    <SelectTrigger className="h-9 text-sm border-slate-200">
-                      <SelectValue placeholder="All Firms" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Firms</SelectItem>
-                      {uniqueFirms.map((firm) => (
-                        <SelectItem key={firm} value={firm}>
-                          {firm}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="h-10 rounded-xl border-gray-200 justify-between font-normal text-muted-foreground hover:bg-transparent min-w-[140px]">
+                      {firmFilter.length === 0 ? "All Firms" : `${firmFilter.length} Firm${firmFilter.length > 1 ? 's' : ''} Selected`}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-56 rounded-xl">
+                    <DropdownMenuLabel>Filter by Firm</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {uniqueFirms.map((firm) => (
+                      <DropdownMenuCheckboxItem
+                        key={firm}
+                        checked={firmFilter.includes(firm)}
+                        onCheckedChange={(checked: boolean) => {
+                          if (checked) {
+                            setFirmFilter([...firmFilter, firm])
+                          } else {
+                            setFirmFilter(firmFilter.filter((f) => f !== firm))
+                          }
+                        }}
+                      >
+                        {firm}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
                 </div>
               </div>
             </div>

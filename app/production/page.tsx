@@ -1,4 +1,6 @@
 "use client"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
+
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { Loader2, AlertTriangle, Settings, Plus, X, Factory, History, Eye, Search, XCircle } from "lucide-react"
 import { format } from "date-fns"
@@ -234,7 +236,7 @@ export default function ProductionPage() {
   const isAdmin = user?.role?.toLowerCase() === "admin"
 
   const [searchQuery, setSearchQuery] = useState("")
-  const [firmFilter, setFirmFilter] = useState("all")
+  const [firmFilter, setFirmFilter] = useState<string[]>([]);
   const [fromDate, setFromDate] = useState("")
   const [toDate, setToDate] = useState("")
 
@@ -494,8 +496,8 @@ export default function ProductionPage() {
 
   const filteredPending = useMemo(() => {
     let data = pendingProductions
-    if (firmFilter !== "all") {
-      data = data.filter((item) => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase())
+    if (firmFilter.length > 0) {
+      data = data.filter((item) => firmFilter.includes(String(item.firmName || "")))
     }
     return data.filter((item) => {
       // 1. Search Query filter
@@ -538,8 +540,8 @@ export default function ProductionPage() {
 
   const filteredHistory = useMemo(() => {
     let data = historyProductions
-    if (firmFilter !== "all") {
-      data = data.filter((item) => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase())
+    if (firmFilter.length > 0) {
+      data = data.filter((item) => firmFilter.includes(String(item.firmName || "")))
     }
     return data.filter((item) => {
       // 1. Search Query filter
@@ -628,8 +630,8 @@ export default function ProductionPage() {
     const matchingRuns: any[] = []
 
     let data = historyProductions
-    if (firmFilter !== "all") {
-      data = data.filter((item) => String(item.firmName || "").toLowerCase() === firmFilter.toLowerCase())
+    if (firmFilter.length > 0) {
+      data = data.filter((item) => firmFilter.includes(String(item.firmName || "")))
     }
 
     data.forEach((run) => {
@@ -1047,7 +1049,7 @@ export default function ProductionPage() {
                     checked={
                       tab === "pending" ? !!visiblePendingColumns[col.dataKey] : !!visibleHistoryColumns[col.dataKey]
                     }
-                    onCheckedChange={(checked) => handleToggleColumn(tab, col.dataKey, Boolean(checked))}
+                    onCheckedChange={(checked: boolean) => handleToggleColumn(tab, col.dataKey, Boolean(checked))}
                   />
                   <Label htmlFor={`toggle-${tab}-${col.dataKey}`} className="text-xs font-normal cursor-pointer">
                     {col.header}
@@ -1226,22 +1228,34 @@ export default function ProductionPage() {
           <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row flex-wrap gap-4 items-end mb-6">
             <div className="space-y-1.5 w-full sm:w-[200px]">
               <Label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Firm Name</Label>
-              <Select
-                value={firmFilter}
-                onValueChange={setFirmFilter}
-              >
-                <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-white focus:ring-olive-500/20">
-                  <SelectValue placeholder="All Firms" />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl">
-                  <SelectItem value="all">All Firms</SelectItem>
-                  {uniqueFirmsForFilter.map((firm) => (
-                    <SelectItem key={firm} value={firm}>
-                      {firm}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="h-10 rounded-xl border-gray-200 justify-between font-normal text-muted-foreground hover:bg-transparent min-w-[140px]">
+                      {firmFilter.length === 0 ? "All Firms" : `${firmFilter.length} Firm${firmFilter.length > 1 ? 's' : ''} Selected`}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-56 rounded-xl">
+                    <DropdownMenuLabel>Filter by Firm</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {uniqueFirmsForFilter.map((firm) => (
+                      <DropdownMenuCheckboxItem
+                        key={firm}
+                        checked={firmFilter.includes(firm)}
+                        onCheckedChange={(checked: boolean) => {
+                          if (checked) {
+                            setFirmFilter([...firmFilter, firm])
+                          } else {
+                            setFirmFilter(firmFilter.filter((f) => f !== firm))
+                          }
+                        }}
+                      >
+                        {firm}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
             </div>
 
             <div className="space-y-1.5 flex-1 min-w-[200px]">
@@ -1291,7 +1305,7 @@ export default function ProductionPage() {
                   setToDate("")
                 }}
                 className="h-10 px-4 rounded-xl border-slate-200 hover:bg-slate-50 font-semibold text-sm w-full bg-white whitespace-nowrap"
-                disabled={!searchQuery && firmFilter === "all" && !fromDate && !toDate}
+                disabled={!searchQuery && firmFilter.length === 0 && !fromDate && !toDate}
               >
                 Clear Filters
               </Button>
@@ -1304,13 +1318,13 @@ export default function ProductionPage() {
                 <TabsTrigger value="pending" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
                   <Factory className="h-4 w-4 mr-2" /> Pending
                   <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                    {searchQuery || firmFilter !== "all" || fromDate || toDate ? `${filteredPending.length} / ${pendingProductions.length}` : pendingProductions.length}
+                    {searchQuery || firmFilter.length > 0 || fromDate || toDate ? `${filteredPending.length} / ${pendingProductions.length}` : pendingProductions.length}
                   </Badge>
                 </TabsTrigger>
                 <TabsTrigger value="history" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
                   <History className="h-4 w-4 mr-2" /> History
                   <Badge variant="secondary" className="ml-1.5 px-1.5 py-0.5 text-xs">
-                    {searchQuery || firmFilter !== "all" || fromDate || toDate ? `${filteredHistory.length} / ${historyProductions.length}` : historyProductions.length}
+                    {searchQuery || firmFilter.length > 0 || fromDate || toDate ? `${filteredHistory.length} / ${historyProductions.length}` : historyProductions.length}
                   </Badge>
                 </TabsTrigger>
                 <TabsTrigger value="rm-summary" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-olive-700 data-[state=active]:shadow-sm transition-all">
