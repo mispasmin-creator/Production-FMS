@@ -1139,7 +1139,7 @@ export default function CostingPage() {
                                   const rmName = rm.name ? rm.name.trim() : "";
                                   const rateInfo = liftRates[rmName];
                                   if (rateInfo) {
-                                    const qty = Number(rm.quantity || 0);
+                                    const qty = Number(rm.quantity || 0); 
                                     totalMaterialCost += qty * (rateInfo.rate + rateInfo.transportRate);
                                   }
                                 });
