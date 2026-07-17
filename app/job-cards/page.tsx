@@ -198,10 +198,16 @@ export default function JobCardsPage() {
         return isApproved && emptyActual3
       })
 
-      const findProductionRow = (deliveryOrderNo: string, productName: string) => {
+      const findProductionRow = (deliveryOrderNo: string, partyName: string, productName: string) => {
         const normalizedDo = deliveryOrderNo.trim().toLowerCase()
+        const normalizedParty = partyName.trim().toLowerCase()
         const normalizedProduct = productName.trim().toLowerCase()
         return allProductionData.find((p) => {
+          const pDo = String(p["Delivery Order No."] || "").trim().toLowerCase()
+          const pParty = String(p["Party Name"] || "").trim().toLowerCase()
+          const pProduct = String(p["Product Name"] || "").trim().toLowerCase()
+          return pDo === normalizedDo && pProduct === normalizedProduct && pParty === normalizedParty
+        }) || allProductionData.find((p) => {
           const pDo = String(p["Delivery Order No."] || "").trim().toLowerCase()
           const pProduct = String(p["Product Name"] || "").trim().toLowerCase()
           return pDo === normalizedDo && pProduct === normalizedProduct
@@ -213,16 +219,19 @@ export default function JobCardsPage() {
       const processedOrders: Order[] = filteredRows.map((row) => {
         const deliveryOrderNo = String(row["Order No."] || "").trim()
         const productName = String(row["product name"] || "").trim()
-        const prodRow = findProductionRow(deliveryOrderNo, productName)
+        const partyName = String(row["Party Name"] || "").trim()
+        const prodRow = findProductionRow(deliveryOrderNo, partyName, productName)
         const orderQty = prodRow ? Number(prodRow["Order Quantity"] || 0) : 0
 
         const normalizedDo = deliveryOrderNo.toLowerCase()
         const normalizedProduct = productName.toLowerCase()
+        const normalizedParty = partyName.toLowerCase()
         const matchingJobCards = allJobCardsData.filter((jc: any) => {
           const jcDo = String(jc["Delivery Order No."] || "").trim().toLowerCase()
           const jcProduct = String(jc["Product Name"] || "").trim().toLowerCase()
+          const jcParty = String(jc["Party Name"] || "").trim().toLowerCase()
           const jcStatus = String(jc["Status"] || "active").toLowerCase()
-          return jcDo === normalizedDo && jcProduct === normalizedProduct && jcStatus !== "cancelled"
+          return jcDo === normalizedDo && jcProduct === normalizedProduct && (!normalizedParty || jcParty === normalizedParty) && jcStatus !== "cancelled"
         })
         const totalMadeSum = matchingJobCards.reduce(
           (sum: number, jc: any) => sum + Number(jc["Total Made"] || jc["Quantity"] || 0),
@@ -263,6 +272,7 @@ export default function JobCardsPage() {
           
           const productionRow = findProductionRow(
             String(row["Delivery Order No."] || ""),
+            String(row["Party Name"] || ""),
             String(row["Product Name"] || "")
           )
 
