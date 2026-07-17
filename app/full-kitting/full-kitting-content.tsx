@@ -390,6 +390,15 @@ export default function CheckPage() {
           .toLowerCase();
       const makeOrderProductKey = (orderNo: any, productName: any) =>
         `${normalize(orderNo)}::${normalize(productName)}`;
+      // The same DO + product can exist for several parties, so party is part
+      // of a line item's identity. Without it one party's composition marks
+      // every other party's row as done.
+      const makeOrderPartyProductKey = (
+        orderNo: any,
+        partyName: any,
+        productName: any,
+      ) =>
+        `${normalize(orderNo)}::${normalize(partyName)}::${normalize(productName)}`;
       const pick = (row: any, keys: string[]) => {
         for (const key of keys) {
           const value = row?.[key];
@@ -429,6 +438,7 @@ export default function CheckPage() {
       (allProdData || []).forEach((row: any) => {
         const doNo = String(row["Delivery Order No."] || "").trim();
         const productName = String(row["Product Name"] || "").trim();
+        const partyName = String(row["Party Name"] || "").trim();
         if (doNo) {
           const prodInfo = {
             plannedDate: row["Planned 1"] || "",
@@ -449,6 +459,7 @@ export default function CheckPage() {
           };
           if (!prodMap.has(doNo)) prodMap.set(doNo, prodInfo);
           prodMap.set(makeOrderProductKey(doNo, productName), prodInfo);
+          prodMap.set(makeOrderPartyProductKey(doNo, partyName, productName), prodInfo);
           productionKeys.add(makeOrderProductKey(doNo, productName));
         }
       });
@@ -467,13 +478,25 @@ export default function CheckPage() {
 
       
       const verifiedKeys = new Set<string>();
+      // Legacy costing rows saved before party was recorded: they can only be
+      // matched on DO + product, so they still verify every party of that pair.
+      const verifiedKeysWithoutParty = new Set<string>();
       const verifiedDosWithoutProduct = new Set<string>();
       (costData || []).forEach((row: any) => {
         const orderNo = String(row["Order No."] || "").trim();
         const productName = String(row["product name"] || "").trim();
+        const partyName = String(row["Party Name"] || "").trim();
         if (orderNo) {
           if (productName) {
-            verifiedKeys.add(makeOrderProductKey(orderNo, productName));
+            if (partyName) {
+              verifiedKeys.add(
+                makeOrderPartyProductKey(orderNo, partyName, productName),
+              );
+            } else {
+              verifiedKeysWithoutParty.add(
+                makeOrderProductKey(orderNo, productName),
+              );
+            }
           } else {
             verifiedDosWithoutProduct.add(normalize(orderNo));
           }
@@ -490,10 +513,14 @@ export default function CheckPage() {
         return String(val);
       };
 
-      const isVerified = (orderNo: any, productName: any) => {
-        const key = makeOrderProductKey(orderNo, productName);
+      const isVerified = (orderNo: any, partyName: any, productName: any) => {
         return (
-          verifiedKeys.has(key) ||
+          verifiedKeys.has(
+            makeOrderPartyProductKey(orderNo, partyName, productName),
+          ) ||
+          verifiedKeysWithoutParty.has(
+            makeOrderProductKey(orderNo, productName),
+          ) ||
           (verifiedDosWithoutProduct.has(normalize(orderNo)) &&
             !normalize(productName))
         );
@@ -508,7 +535,7 @@ export default function CheckPage() {
         if (!doNo) return;
 
         if (row["Actual 1"] || row["Order Cancel"]) return;
-        if (isVerified(doNo, productName)) return;
+        if (isVerified(doNo, row["Party Name"], productName)) return;
 
         const key = makeOrderProductKey(doNo, productName);
         let meta = orderMetaMap.get(key);
@@ -549,7 +576,8 @@ export default function CheckPage() {
         const doNo = String(row["DO-Delivery Order No."] || "").trim();
         const productName = String(row["Product Name"] || "").trim();
         const firmName = String(row["Firm Name"] || "").trim();
-        if (!doNo || isVerified(doNo, productName)) return;
+        const partyName = String(row["Party Names"] || "").trim();
+        if (!doNo || isVerified(doNo, partyName, productName)) return;
 
         const matchingProd = (allProdData || []).find((p: any) => {
           if (matchedProdIds.has(p.id)) return false;
@@ -559,7 +587,14 @@ export default function CheckPage() {
           const oProduct = normalize(productName);
           const pFirm = normalize(p["Firm Name"]);
           const oFirm = normalize(firmName);
-          return pDO === oDO && pProduct === oProduct && (!oFirm || pFirm === oFirm);
+          const pParty = normalize(p["Party Name"]);
+          const oParty = normalize(partyName);
+          return (
+            pDO === oDO &&
+            pProduct === oProduct &&
+            (!oFirm || pFirm === oFirm) &&
+            (!oParty || !pParty || pParty === oParty)
+          );
         });
 
         if (matchingProd) {
@@ -567,12 +602,22 @@ export default function CheckPage() {
           return;
         }
 
+        const keyWithParty = makeOrderPartyProductKey(doNo, partyName, productName);
         const key = makeOrderProductKey(doNo, productName);
-        let enriched = prodMap.get(key);
+        let enriched = prodMap.get(keyWithParty);
+        if (!enriched) {
+          enriched = prodMap.get(key);
+          if (enriched && enriched.partyName && partyName && normalize(enriched.partyName) !== normalize(partyName)) {
+            enriched = null;
+          }
+        }
         if (!enriched) {
           const fallback = prodMap.get(doNo);
           if (fallback && (!fallback.productName || !productName || normalize(fallback.productName) === normalize(productName))) {
             enriched = fallback;
+            if (enriched && enriched.partyName && partyName && normalize(enriched.partyName) !== normalize(partyName)) {
+              enriched = null;
+            }
           }
         }
         if (!enriched) {
@@ -588,7 +633,7 @@ export default function CheckPage() {
 
         pendingList.push({
           id: row.id,
-          productionId: enriched.productionId || "",
+          productionId: "",
           timestamp: row["Timestamp"] || "",
           firmName: row["Firm Name"] || enriched.firmName || "",
           deliveryOrderNo: doNo,
@@ -642,18 +687,42 @@ export default function CheckPage() {
         }
         const orderNo = String(row["Order No."] || "").trim();
         const productName = String(row["product name"] || "").trim();
-        let meta = orderMetaMap.get(makeOrderProductKey(orderNo, productName));
+        const partyName = String(row["Party Name"] || "").trim();
+        
+        const keyWithParty = makeOrderPartyProductKey(orderNo, partyName, productName);
+        const key = makeOrderProductKey(orderNo, productName);
+
+        let meta = orderMetaMap.get(keyWithParty);
+        if (!meta) {
+          meta = orderMetaMap.get(key);
+          if (meta && meta.partyName && partyName && normalize(meta.partyName) !== normalize(partyName)) {
+            meta = undefined;
+          }
+        }
         if (!meta) {
           const fallback = orderMetaMap.get(orderNo);
           if (fallback && (!fallback.productName || !productName || normalize(fallback.productName) === normalize(productName))) {
             meta = fallback;
+            if (meta && meta.partyName && partyName && normalize(meta.partyName) !== normalize(partyName)) {
+              meta = undefined;
+            }
           }
         }
-        let enriched = prodMap.get(makeOrderProductKey(orderNo, productName));
+
+        let enriched = prodMap.get(keyWithParty);
+        if (!enriched) {
+          enriched = prodMap.get(key);
+          if (enriched && enriched.partyName && partyName && normalize(enriched.partyName) !== normalize(partyName)) {
+            enriched = { ...enriched, productionId: "" };
+          }
+        }
         if (!enriched) {
           const fallback = prodMap.get(orderNo);
           if (fallback && (!fallback.productName || !productName || normalize(fallback.productName) === normalize(productName))) {
             enriched = fallback;
+            if (enriched && enriched.partyName && partyName && normalize(enriched.partyName) !== normalize(partyName)) {
+              enriched = { ...enriched, productionId: "" };
+            }
           }
         }
         if (!enriched) {
@@ -1119,6 +1188,8 @@ export default function CheckPage() {
         "Composition No.": compositionNumber,
         "Order No.": selectedCheck.deliveryOrderNo,
         "product name": selectedCheck.productName,
+        "Firm Name": selectedCheck.firmName || null,
+        "Party Name": selectedCheck.partyName || null,
         alumina: kittingTotals.al,
         iron: kittingTotals.fe,
         BD: kittingTotals.bd,
@@ -1203,6 +1274,10 @@ export default function CheckPage() {
 
         if (selectedCheck.firmName) {
           updateQuery = updateQuery.eq("Firm Name", selectedCheck.firmName);
+        }
+
+        if (selectedCheck.partyName) {
+          updateQuery = updateQuery.eq("Party Name", selectedCheck.partyName);
         }
 
         const { data: updatedRows, error: updateErr } =
