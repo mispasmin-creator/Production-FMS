@@ -181,6 +181,28 @@ export default function CostingPage() {
   const [editedRates, setEditedRates] = useState<Record<string, { rate: string; transportRate: string }>>({})
   const [orderRates, setOrderRates] = useState<Record<string, number>>({})
 
+  const getActualOrderRate = useCallback((item: PendingCostingItem | null): number => {
+    if (!item) return 0
+    const doNo = String(item.deliveryOrderNo || "").trim()
+    const firmName = String(item.firmName || "").trim().toLowerCase()
+    const productName = String(item.productName || "").trim().toLowerCase()
+
+    // 1. Try DO No. + Product Name + Firm Name
+    const key1 = `${doNo}_${productName}_${firmName}`.toLowerCase()
+    if (orderRates[key1] !== undefined) return orderRates[key1]
+
+    // 2. Try DO No. + Product Name
+    const key2 = `${doNo}_${productName}`.toLowerCase()
+    if (orderRates[key2] !== undefined) return orderRates[key2]
+
+    // 3. Try DO No. + Firm Name
+    const key3 = `${doNo}_${firmName}`.toLowerCase()
+    if (orderRates[key3] !== undefined) return orderRates[key3]
+
+    // 4. Try DO No. only (fallback)
+    return orderRates[doNo] || orderRates[doNo.toLowerCase()] || 0
+  }, [orderRates])
+
   const filteredPending = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
     if (!q) return pendingCosting
@@ -292,7 +314,7 @@ export default function CostingPage() {
         supabase.from(JOBCARDS_TABLE).select("*"),
         supabase.from(COSTING_RESPONSE_TABLE).select("*"),
         Promise.resolve(
-          dispatchSupabase.from("ORDER RECEIPT").select('"DO-Delivery Order No.", "Rate Of Material"')
+          dispatchSupabase.from("ORDER RECEIPT").select('"DO-Delivery Order No.", "Rate Of Material", "Product Name", "Firm Name"')
         ).catch((err: any) => ({ data: null, error: err })),
       ])
 
@@ -351,8 +373,25 @@ export default function CostingPage() {
         orderReceiptRes.data.forEach((row: any) => {
           const doNo = String(row["DO-Delivery Order No."] || "").trim()
           const rate = Number(row["Rate Of Material"] || 0)
+          const firmName = String(row["Firm Name"] || "").trim()
+          const productName = String(row["Product Name"] || "").trim()
+
           if (doNo) {
+            // 1. Map by DO + Product + Firm
+            if (productName && firmName) {
+              rates[`${doNo}_${productName}_${firmName}`.toLowerCase()] = rate
+            }
+            // 2. Map by DO + Product
+            if (productName) {
+              rates[`${doNo}_${productName}`.toLowerCase()] = rate
+            }
+            // 3. Map by DO + Firm
+            if (firmName) {
+              rates[`${doNo}_${firmName}`.toLowerCase()] = rate
+            }
+            // 4. Legacy/fallback map by DO only
             rates[doNo] = rate
+            rates[doNo.toLowerCase()] = rate
           }
         })
       }
@@ -1122,8 +1161,8 @@ export default function CostingPage() {
                         <div className="space-y-1 text-blue-700">
                           <Label className="text-xs text-blue-700 font-bold">ACTUAL ORDER RATE</Label>
                           <p className="text-lg font-black">
-                            ₹{orderRates[selectedCosting?.deliveryOrderNo || ""] 
-                              ? orderRates[selectedCosting.deliveryOrderNo].toLocaleString('en-IN', { minimumFractionDigits: 2 }) 
+                            {getActualOrderRate(selectedCosting) > 0 
+                              ? `₹${getActualOrderRate(selectedCosting).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` 
                               : "-"}
                           </p>
                         </div>
@@ -1131,7 +1170,7 @@ export default function CostingPage() {
                           <Label className="text-xs text-blue-700 font-bold">PRODUCTION COST %</Label>
                           <p className="text-lg font-black">
                             {(() => {
-                              const actualOrderRate = Number(orderRates[selectedCosting?.deliveryOrderNo || ""]) || 0;
+                              const actualOrderRate = getActualOrderRate(selectedCosting);
                               
                               let totalMaterialCost = 0;
                               if (selectedCosting?.completeDetails?.rawMaterials) {
