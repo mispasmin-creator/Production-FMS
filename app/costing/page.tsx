@@ -322,13 +322,31 @@ export default function CostingPage() {
       if (jobCardsErr) throw jobCardsErr
       if (costingErr) throw costingErr
 
-      const jobCardsByNo = new Map<string, any>(
-        (jobCardsRows || []).map((jc: any) => [String(jc["JC-Job Card Number"] || "").trim(), jc])
-      )
+      // The same job card number is reused across several DOs, so a lookup on
+      // the number alone resolves to whichever row happened to be last and
+      // pulls in another order's party/firm. Key on DO + product as well.
+      const normalizeKey = (value: any) => String(value ?? "").trim().toLowerCase()
+      const jobCardsByNo = new Map<string, any>()
+      ;(jobCardsRows || []).forEach((jc: any) => {
+        const jcNo = String(jc["JC-Job Card Number"] || "").trim()
+        if (!jcNo) return
+        const doNo = normalizeKey(jc["Delivery Order No."])
+        const product = normalizeKey(jc["Product Name"])
+        jobCardsByNo.set(`${jcNo}::${doNo}::${product}`, jc)
+        jobCardsByNo.set(`${jcNo}::${doNo}`, jc)
+        jobCardsByNo.set(jcNo, jc)
+      })
 
       const buildItem = (row: any) => {
         const jobCardNo = String(row["Job Card No."] || "").trim()
-        const jobCard = jobCardsByNo.get(jobCardNo)
+        const rowDoNo = normalizeKey(row["Order No."])
+        const rowProduct = normalizeKey(row["Product Name"])
+        // Most specific match first; falls back to the plain number so job
+        // cards that appear only once behave exactly as before.
+        const jobCard =
+          jobCardsByNo.get(`${jobCardNo}::${rowDoNo}::${rowProduct}`) ||
+          jobCardsByNo.get(`${jobCardNo}::${rowDoNo}`) ||
+          jobCardsByNo.get(jobCardNo)
 
         return {
           id: row.id,

@@ -275,6 +275,7 @@ export default function LabTesting1Page() {
     if (!q) return list
     return list.filter(item =>
       (item.jobCardNo || "").toLowerCase().includes(q) ||
+      (item.deliveryOrderNo || "").toLowerCase().includes(q) ||
       (item.productName || "").toLowerCase().includes(q) ||
       (item.partyName || "").toLowerCase().includes(q) ||
       (item.supervisorName || "").toLowerCase().includes(q)
@@ -307,6 +308,7 @@ export default function LabTesting1Page() {
     if (!q) return list
     return list.filter(item =>
       (item.jobCardNo || "").toLowerCase().includes(q) ||
+      (item.deliveryOrderNo || "").toLowerCase().includes(q) ||
       (item.productName || "").toLowerCase().includes(q) ||
       (item.partyName || "").toLowerCase().includes(q) ||
       (item.testedBy || "").toLowerCase().includes(q)

@@ -160,11 +160,21 @@ export default function CompositionQCPage() {
         if (name) priceMap.set(name, Number(r["Price"] || 0))
       })
 
-      // Build actual production lookup: job card no → actual record
+      // Build actual production lookup: job card no → actual record.
+      // The same job card number is reused across several DOs, so keying on it
+      // alone returns whichever row the query happened to yield first and pulls
+      // another order's FG qty and materials in. Key on DO + product as well.
       const apMap = new Map<string, any>()
       ;(apData || []).forEach((r: any) => {
         const jc = String(r["Job Card No."] || "").trim()
-        if (jc && !apMap.has(jc)) apMap.set(jc, r) // keep first (latest insert)
+        if (!jc) return
+        const apDo = normalize(r["Order No."])
+        const apProduct = normalize(r["Product Name"])
+        const withProduct = `${jc}::${apDo}::${apProduct}`
+        const withDo = `${jc}::${apDo}`
+        if (!apMap.has(withProduct)) apMap.set(withProduct, r)
+        if (!apMap.has(withDo)) apMap.set(withDo, r)
+        if (!apMap.has(jc)) apMap.set(jc, r) // keep first (latest insert)
       })
 
       // Build costing lookup: order no → latest costing row
@@ -184,7 +194,12 @@ export default function CompositionQCPage() {
         const jobCardNo = String(jc["JC-Job Card Number"] || "").trim()
         const doNo      = String(jc["Delivery Order No."] || "").trim()
         const productName = String(jc["Product Name"] || "").trim()
-        const apRow     = apMap.get(jobCardNo)
+        // Most specific match first; falls back to the bare number so job cards
+        // that appear only once behave exactly as before.
+        const apRow =
+          apMap.get(`${jobCardNo}::${normalize(doNo)}::${normalize(productName)}`) ||
+          apMap.get(`${jobCardNo}::${normalize(doNo)}`) ||
+          apMap.get(jobCardNo)
         let costRow = costMap.get(makeOrderProductKey(doNo, productName));
         if (!costRow) {
           const fallback = costMap.get(doNo);

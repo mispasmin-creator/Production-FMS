@@ -199,6 +199,7 @@ export default function ChemicalTestPage() {
     if (!q) return pendingTests
     return pendingTests.filter(item =>
       (item.jobCardNo || "").toLowerCase().includes(q) ||
+      (item.deliveryOrderNo || "").toLowerCase().includes(q) ||
       (item.productName || "").toLowerCase().includes(q) ||
       (item.partyName || "").toLowerCase().includes(q) ||
       (item.firmName || "").toLowerCase().includes(q)
@@ -210,6 +211,7 @@ export default function ChemicalTestPage() {
     if (!q) return historyTests
     return historyTests.filter(item =>
       (item.jobCardNo || "").toLowerCase().includes(q) ||
+      (item.deliveryOrderNo || "").toLowerCase().includes(q) ||
       (item.productName || "").toLowerCase().includes(q) ||
       (item.partyName || "").toLowerCase().includes(q) ||
       (item.firmName || "").toLowerCase().includes(q) ||
