@@ -383,6 +383,11 @@ export default function Step5List() {
         if (!formData.machineHours || Number(formData.machineHours) <= 0) errors.machineHours = "Machine hours are required";
         if (user?.role === 'admin' && !formData.firmName) errors.firmName = "Firm name is required";
         
+        if (formData.fg1Name && (!formData.fg1Cost || Number(formData.fg1Cost) <= 0)) errors.fg1Cost = "Processing Cost 1 is required";
+        if (formData.fg2Name && (!formData.fg2Cost || Number(formData.fg2Cost) <= 0)) errors.fg2Cost = "Processing Cost 2 is required";
+        if (formData.fg3Name && (!formData.fg3Cost || Number(formData.fg3Cost) <= 0)) errors.fg3Cost = "Processing Cost 3 is required";
+        if (formData.fg4Name && (!formData.fg4Cost || Number(formData.fg4Cost) <= 0)) errors.fg4Cost = "Processing Cost 4 is required";
+
         setFormErrors(errors);
         return Object.keys(errors).length === 0;
     };
@@ -553,12 +558,16 @@ export default function Step5List() {
                     "Qty Of Semi Finished Good": record.inputQty,
                     "Raw Material Name 1": record.fg1Name || null,
                     "Quantity Of Raw Material 1": record.fg1Qty || null,
+                    "Processing Cost 1": record.fg1Cost || null,
                     "Raw Material Name 2": record.fg2Name || null,
                     "Quantity Of Raw Material 2": record.fg2Qty || null,
+                    "Processing Cost 2": record.fg2Cost || null,
                     "Raw Material Name 3": record.fg3Name || null,
                     "Quantity Of Raw Material 3": record.fg3Qty || null,
+                    "Processing Cost 3": record.fg3Cost || null,
                     "Raw Material Name 4": record.fg4Name || null,
                     "Quantity Of Raw Material 4": record.fg4Qty || null,
+                    "Processing Cost 4": record.fg4Cost || null,
                     "S No.": `CR-${record._rowIndex}`,
                     "Starting Reading Photo": record.startingPhoto || null,
                     "Ending Reading Photo": record.endingPhoto || null,
@@ -1025,7 +1034,11 @@ export default function Step5List() {
                                         value={formData.fg1Cost}
                                         onChange={(e) => setFormData({ ...formData, fg1Cost: e.target.value })}
                                         placeholder="0.00"
+                                        className={formErrors.fg1Cost ? "border-red-500" : ""}
                                     />
+                                    {formErrors.fg1Cost && (
+                                        <p className="text-xs text-red-500">{formErrors.fg1Cost}</p>
+                                    )}
                                 </div>
                             </div>
 
@@ -1071,7 +1084,11 @@ export default function Step5List() {
                                         value={formData.fg2Cost}
                                         onChange={(e) => setFormData({ ...formData, fg2Cost: e.target.value })}
                                         placeholder="0.00"
+                                        className={formErrors.fg2Cost ? "border-red-500" : ""}
                                     />
+                                    {formErrors.fg2Cost && (
+                                        <p className="text-xs text-red-500">{formErrors.fg2Cost}</p>
+                                    )}
                                 </div>
                             </div>
 
@@ -1117,7 +1134,11 @@ export default function Step5List() {
                                         value={formData.fg3Cost}
                                         onChange={(e) => setFormData({ ...formData, fg3Cost: e.target.value })}
                                         placeholder="0.00"
+                                        className={formErrors.fg3Cost ? "border-red-500" : ""}
                                     />
+                                    {formErrors.fg3Cost && (
+                                        <p className="text-xs text-red-500">{formErrors.fg3Cost}</p>
+                                    )}
                                 </div>
                             </div>
 
@@ -1163,7 +1184,11 @@ export default function Step5List() {
                                         value={formData.fg4Cost}
                                         onChange={(e) => setFormData({ ...formData, fg4Cost: e.target.value })}
                                         placeholder="0.00"
+                                        className={formErrors.fg4Cost ? "border-red-500" : ""}
                                     />
+                                    {formErrors.fg4Cost && (
+                                        <p className="text-xs text-red-500">{formErrors.fg4Cost}</p>
+                                    )}
                                 </div>
                             </div>
                         </div>

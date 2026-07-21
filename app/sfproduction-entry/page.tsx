@@ -389,6 +389,14 @@ export default function SemiActualProductionPage() {
         if (!formData.startingReading) { setFormError('Starting reading is required.'); return; }
         if (!formData.endingReading) { setFormError('Ending reading is required.'); return; }
 
+        for (let i = 0; i < rawMaterialRows.length; i++) {
+            const row = rawMaterialRows[i];
+            if (row.name && (!row.cost || Number(row.cost) <= 0)) {
+                setFormError(`Please enter a valid rate/cost for Raw Material: ${row.name}.`);
+                return;
+            }
+        }
+
         setIsSubmitting(true);
         setIsUploading(true);
         setFormError('');
