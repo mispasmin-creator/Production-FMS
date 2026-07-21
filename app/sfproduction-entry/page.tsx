@@ -100,6 +100,7 @@ interface SemiActualRecord {
 interface RawMaterialRow {
     name: string;
     qty: string;
+    cost: string;
 }
 
 interface RawMaterial {
@@ -183,7 +184,7 @@ export default function SemiActualProductionPage() {
     const [endPhotoPreview, setEndPhotoPreview] = useState('');
 
     // Dynamic raw material rows (start with 1 row)
-    const [rawMaterialRows, setRawMaterialRows] = useState<RawMaterialRow[]>([{ name: '', qty: '' }]);
+    const [rawMaterialRows, setRawMaterialRows] = useState<RawMaterialRow[]>([{ name: '', qty: '', cost: '' }]);
 
     const [formData, setFormData] = useState({
         qtyOfSemiFinishedGood: '',
@@ -292,7 +293,7 @@ export default function SemiActualProductionPage() {
             machineRunningHour: '',
             dateOfProduction: '',
         });
-        setRawMaterialRows([{ name: '', qty: '' }]);
+        setRawMaterialRows([{ name: '', qty: '', cost: '' }]);
         setStartPhotoFile(null); setEndPhotoFile(null);
         setStartPhotoPreview(''); setEndPhotoPreview('');
         setFormError('');
@@ -316,7 +317,7 @@ export default function SemiActualProductionPage() {
 
     const addRawMaterialRow = () => {
         if (rawMaterialRows.length < MAX_RAW_MATERIALS) {
-            setRawMaterialRows(prev => [...prev, { name: '', qty: '' }]);
+            setRawMaterialRows(prev => [...prev, { name: '', qty: '', cost: '' }]);
         }
     };
 
@@ -326,7 +327,7 @@ export default function SemiActualProductionPage() {
         }
     };
 
-    const updateRawMaterialRow = (index: number, field: 'name' | 'qty', value: string) => {
+    const updateRawMaterialRow = (index: number, field: 'name' | 'qty' | 'cost', value: string) => {
         setRawMaterialRows(prev => prev.map((row, i) => i === index ? { ...row, [field]: value } : row));
     };
 
@@ -357,7 +358,7 @@ export default function SemiActualProductionPage() {
 
             // Pad raw material rows to 5
             const paddedRM = [...rawMaterialRows];
-            while (paddedRM.length < 5) paddedRM.push({ name: '', qty: '' });
+            while (paddedRM.length < 5) paddedRM.push({ name: '', qty: '', cost: '' });
 
             const calculatedMachineHours = (Number(formData.endingReading) - Number(formData.startingReading)) || 0;
             const machineHours = formData.machineRunningHour !== ''
@@ -373,14 +374,19 @@ export default function SemiActualProductionPage() {
                 "Qty Of Semi Finished Good": madeQty,
                 "Raw Material Name 1": paddedRM[0].name || '',
                 "Quantity Of Raw Material 1": Number(paddedRM[0].qty) || 0,
+                "Processing Cost 1": Number(paddedRM[0].cost) || 0,
                 "Raw Material Name 2": paddedRM[1].name || '',
                 "Quantity Of Raw Material 2": Number(paddedRM[1].qty) || 0,
+                "Processing Cost 2": Number(paddedRM[1].cost) || 0,
                 "Raw Material Name 3": paddedRM[2].name || '',
                 "Quantity Of Raw Material 3": Number(paddedRM[2].qty) || 0,
+                "Processing Cost 3": Number(paddedRM[2].cost) || 0,
                 "Raw Material Name 4": paddedRM[3].name || '',
                 "Quantity Of Raw Material 4": Number(paddedRM[3].qty) || 0,
+                "Processing Cost 4": Number(paddedRM[3].cost) || 0,
                 "Raw Material Name 5": paddedRM[4].name || '',
                 "Quantity Of Raw Material 5": Number(paddedRM[4].qty) || 0,
+                "Processing Cost 5": Number(paddedRM[4].cost) || 0,
                 "Is Any End Product": formData.isAnyEndProduct === "Yes",
                 "End Product Name": formData.endProductRawMaterialName || '',
                 "End Product Qty": Number(formData.endProductQty) || 0,
@@ -836,13 +842,14 @@ export default function SemiActualProductionPage() {
                                     )}
                                 </div>
                                 <div className="space-y-2">
-                                    <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                                    <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2">
                                         <div className="text-[10px] text-slate-400 uppercase font-semibold px-1">Material Name</div>
                                         <div className="text-[10px] text-slate-400 uppercase font-semibold px-1">Quantity</div>
+                                        <div className="text-[10px] text-slate-400 uppercase font-semibold px-1">Processing Cost</div>
                                         <div className="w-8" />
                                     </div>
                                     {rawMaterialRows.map((row, index) => (
-                                        <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                                        <div key={index} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center">
                                             <Select
                                                 value={row.name}
                                                 onValueChange={v => updateRawMaterialRow(index, 'name', v)}
@@ -863,6 +870,15 @@ export default function SemiActualProductionPage() {
                                                 placeholder="Qty"
                                                 value={row.qty}
                                                 onChange={e => updateRawMaterialRow(index, 'qty', e.target.value)}
+                                                className="h-9 text-xs focus-visible:ring-olive-500"
+                                            />
+                                            <Input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                placeholder="Cost"
+                                                value={row.cost}
+                                                onChange={e => updateRawMaterialRow(index, 'cost', e.target.value)}
                                                 className="h-9 text-xs focus-visible:ring-olive-500"
                                             />
                                             {rawMaterialRows.length > 1 ? (
