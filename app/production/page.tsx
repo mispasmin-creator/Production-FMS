@@ -1300,7 +1300,7 @@ export default function ProductionPage() {
                 type="button"
                 onClick={() => {
                   setSearchQuery("")
-                  setFirmFilter("all")
+                  setFirmFilter([])
                   setFromDate("")
                   setToDate("")
                 }}

@@ -478,6 +478,12 @@ export default function CheckPage() {
 
       
       const verifiedKeys = new Set<string>();
+      // How many compositions (costing rows) exist per DO+party+product key.
+      // An order can have several identical "For Production Planning" lines
+      // (same DO/party/product) that each need their own composition. Tracking
+      // the count lets the surplus lines stay pending instead of one
+      // composition hiding all of them.
+      const verifiedCountByKey = new Map<string, number>();
       // Legacy costing rows saved before party was recorded: they can only be
       // matched on DO + product, so they still verify every party of that pair.
       const verifiedKeysWithoutParty = new Set<string>();
@@ -489,9 +495,9 @@ export default function CheckPage() {
         if (orderNo) {
           if (productName) {
             if (partyName) {
-              verifiedKeys.add(
-                makeOrderPartyProductKey(orderNo, partyName, productName),
-              );
+              const partyKey = makeOrderPartyProductKey(orderNo, partyName, productName);
+              verifiedKeys.add(partyKey);
+              verifiedCountByKey.set(partyKey, (verifiedCountByKey.get(partyKey) || 0) + 1);
             } else {
               verifiedKeysWithoutParty.add(
                 makeOrderProductKey(orderNo, productName),
@@ -572,14 +578,37 @@ export default function CheckPage() {
         });
       });
 
+      // Tracks how many order lines have already "used up" the compositions
+      // available for a DO+party+product key, so surplus lines stay pending.
+      const consumedVerifiedByKey = new Map<string, number>();
       (orderReceiptData || []).forEach((row: any) => {
         const doNo = String(row["DO-Delivery Order No."] || "").trim();
         const productName = String(row["Product Name"] || "").trim();
         const firmName = String(row["Firm Name"] || "").trim();
         const partyName = String(row["Party Names"] || "").trim();
-        if (!doNo || isVerified(doNo, partyName, productName)) return;
+        if (!doNo) return;
 
-        const matchingProd = (allProdData || []).find((p: any) => {
+        // Count-aware verification: consume one composition per matching line;
+        // any line beyond the number of compositions done stays pending. Legacy
+        // party-less / DO-only verifications keep their original behaviour.
+        let isSurplusLine = false;
+        const exactKey = makeOrderPartyProductKey(doNo, partyName, productName);
+        if (verifiedKeys.has(exactKey)) {
+          const allowed = verifiedCountByKey.get(exactKey) || 0;
+          const consumed = consumedVerifiedByKey.get(exactKey) || 0;
+          if (consumed < allowed) {
+            consumedVerifiedByKey.set(exactKey, consumed + 1);
+            return;
+          }
+          isSurplusLine = true;
+        } else if (isVerified(doNo, partyName, productName)) {
+          return;
+        }
+
+        // A surplus line has no dedicated production row of its own — every
+        // existing one belongs to an already-composed line — so it goes
+        // straight to pending without stealing another line's production row.
+        const matchingProd = isSurplusLine ? undefined : (allProdData || []).find((p: any) => {
           if (matchedProdIds.has(p.id)) return false;
           const pDO = normalize(p["Delivery Order No."]);
           const oDO = normalize(doNo);
