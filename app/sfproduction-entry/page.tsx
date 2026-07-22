@@ -99,7 +99,7 @@ interface SemiActualRecord {
     timeDelay2: string;
     actualQty2: number;
     finalQty: number;
-    productRate?: number;
+    processingCost?: number;
     firmName?: string;
 }
 
@@ -166,9 +166,9 @@ export default function SemiActualProductionPage() {
     const [firmFilter, setFirmFilter] = useState<string[]>([]);
     const isAdmin = user?.role?.toLowerCase() === 'admin';
 
-    const [isEditingProductRate, setIsEditingProductRate] = useState(false);
-    const [editProductRateValue, setEditProductRateValue] = useState('');
-    const [savingProductRate, setSavingProductRate] = useState(false);
+    const [isEditingProcessingCost, setIsEditingProcessingCost] = useState(false);
+    const [editProcessingCostValue, setEditProcessingCostValue] = useState('');
+    const [savingProcessingCost, setSavingProcessingCost] = useState(false);
 
     const [jobCardData, setJobCardData] = useState<SemiJobCardRecord[]>([]);
     const [semiActualData, setSemiActualData] = useState<SemiActualRecord[]>([]);
@@ -198,7 +198,7 @@ export default function SemiActualProductionPage() {
 
     const [formData, setFormData] = useState({
         qtyOfSemiFinishedGood: '',
-        productRate: '',
+        processingCost: '',
         isAnyEndProduct: 'No',
         endProductRawMaterialName: '',
         endProductQty: '',
@@ -296,7 +296,7 @@ export default function SemiActualProductionPage() {
     const resetForm = () => {
         setFormData({
             qtyOfSemiFinishedGood: '',
-            productRate: '',
+            processingCost: '',
             isAnyEndProduct: 'No',
             endProductRawMaterialName: '',
             endProductQty: '',
@@ -327,29 +327,29 @@ export default function SemiActualProductionPage() {
         setIsViewModalOpen(true);
     };
 
-    const handleSaveProductRate = async () => {
+    const handleSaveProcessingCost = async () => {
         if (!selectedActual) return;
-        setSavingProductRate(true);
+        setSavingProcessingCost(true);
         try {
-            const newRate = Number(editProductRateValue) || 0;
+            const newRate = Number(editProcessingCostValue) || 0;
             const { error } = await supabase
                 .from(SEMI_ACTUAL_TABLE)
-                .update({ "Product Rate": newRate })
+                .update({ "Processing Cost": newRate })
                 .eq("id", selectedActual._rowIndex);
             if (error) throw error;
             
             setSelectedActual({
                 ...selectedActual,
-                productRate: newRate
+                processingCost: newRate
             });
 
-            setIsEditingProductRate(false);
-            setSuccessMessage('Product rate saved successfully!');
+            setIsEditingProcessingCost(false);
+            setSuccessMessage('Processing cost saved successfully!');
             await loadAllData();
         } catch (err: any) {
-            setLoadError(err?.message || 'Failed to save product rate.');
+            setLoadError(err?.message || 'Failed to save processing cost.');
         } finally {
-            setSavingProductRate(false);
+            setSavingProcessingCost(false);
         }
     };
 
@@ -378,8 +378,8 @@ export default function SemiActualProductionPage() {
         }
         if (!formData.startingReading) { setFormError('Starting reading is required.'); return; }
         if (!formData.endingReading) { setFormError('Ending reading is required.'); return; }
-        if (!formData.productRate || Number(formData.productRate) <= 0) {
-            setFormError('Please enter a valid Product Rate.');
+        if (!formData.processingCost || Number(formData.processingCost) <= 0) {
+            setFormError('Please enter a valid Processing Cost.');
             return;
         }
 
@@ -407,7 +407,7 @@ export default function SemiActualProductionPage() {
                 ? Number(formData.machineRunningHour)
                 : calculatedMachineHours;
             const madeQty = Number(formData.qtyOfSemiFinishedGood) || 0;
-            const productRateValue = Number(formData.productRate) || 0;
+            const processingCostValue = Number(formData.processingCost) || 0;
             const { error: insertError } = await supabase.from(SEMI_ACTUAL_TABLE).insert({
                 "Timestamp": new Date().toISOString(),
                 "Semi Finished Job Card No.": selectedSjc.sjcSrNo,
@@ -415,7 +415,7 @@ export default function SemiActualProductionPage() {
                 "Date Of Production": toSupabaseDate(formData.dateOfProduction),
                 "Product Name": selectedSjc.productName,
                 "Qty Of Semi Finished Good": madeQty,
-                "Product Rate": productRateValue,
+                "Processing Cost": processingCostValue,
                 "Raw Material Name 1": paddedRM[0].name || '',
                 "Quantity Of Raw Material 1": Number(paddedRM[0].qty) || 0,
                 "Raw Material Name 2": paddedRM[1].name || '',
@@ -746,7 +746,7 @@ export default function SemiActualProductionPage() {
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">SF No.</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Product</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Qty</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Rate</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Processing Cost</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Date of Prod.</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Supervisor</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Machine Hrs</th>
@@ -779,7 +779,7 @@ export default function SemiActualProductionPage() {
                                                 <span className="text-sm font-semibold text-slate-800">{entry.qtyOfSemiFinishedGood}</span>
                                             </td>
                                             <td className="px-6 py-3.5">
-                                                <span className="text-sm font-semibold text-emerald-600">₹{entry.productRate || 0}</span>
+                                                <span className="text-sm font-semibold text-emerald-600">₹{entry.processingCost || 0}</span>
                                             </td>
                                             <td className="px-6 py-3.5 text-sm text-slate-500 whitespace-nowrap">{entry.dateOfProduction || '-'}</td>
                                             <td className="px-6 py-3.5 text-sm text-slate-600 whitespace-nowrap">{entry.supervisorName}</td>
@@ -871,16 +871,16 @@ export default function SemiActualProductionPage() {
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label className="text-xs font-semibold text-slate-700">
-                                        Product Rate (₹) <span className="text-red-500">*</span>
+                                        Processing Cost (₹) <span className="text-red-500">*</span>
                                     </Label>
                                     <Input
                                         type="number"
                                         min="0.01"
                                         step="0.01"
                                         required
-                                        placeholder="Enter product rate"
-                                        value={formData.productRate}
-                                        onChange={e => setFormData({ ...formData, productRate: e.target.value })}
+                                        placeholder="Enter processing cost"
+                                        value={formData.processingCost}
+                                        onChange={e => setFormData({ ...formData, processingCost: e.target.value })}
                                         className="font-semibold focus-visible:ring-olive-500"
                                     />
                                 </div>
@@ -1130,7 +1130,7 @@ export default function SemiActualProductionPage() {
                 setIsViewModalOpen(open);
                 if (!open) {
                     setSelectedActual(null);
-                    setIsEditingProductRate(false);
+                    setIsEditingProcessingCost(false);
                 }
             }}>
                 <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto">
@@ -1161,33 +1161,33 @@ export default function SemiActualProductionPage() {
                                         { label: 'Supervisor', value: selectedActual.supervisorName },
                                         { label: 'Date of Prod.', value: selectedActual.dateOfProduction || '-' },
                                         { label: 'Qty Made', value: String(selectedActual.qtyOfSemiFinishedGood), accent: true },
-                                        { label: 'Product Rate', value: `₹${selectedActual.productRate || 0}`, accent: true },
+                                        { label: 'Processing Cost', value: `₹${selectedActual.processingCost || 0}`, accent: true },
                                     ].map(({ label, value, accent }) => (
                                         <div key={label}>
                                             <div className="text-[10px] text-slate-400 uppercase font-semibold mb-0.5">{label}</div>
-                                            {label === 'Product Rate' && isAdmin && isEditingProductRate ? (
+                                            {label === 'Processing Cost' && isAdmin && isEditingProcessingCost ? (
                                                 <div className="flex items-center gap-1.5 mt-0.5">
                                                     <Input
                                                         type="number"
                                                         min="0"
                                                         step="0.01"
                                                         autoFocus
-                                                        value={editProductRateValue}
-                                                        onChange={e => setEditProductRateValue(e.target.value)}
+                                                        value={editProcessingCostValue}
+                                                        onChange={e => setEditProcessingCostValue(e.target.value)}
                                                         className="h-7 w-20 text-[10px] focus-visible:ring-olive-500 bg-white"
                                                     />
                                                     <button
                                                         type="button"
-                                                        onClick={handleSaveProductRate}
-                                                        disabled={savingProductRate}
+                                                        onClick={handleSaveProcessingCost}
+                                                        disabled={savingProcessingCost}
                                                         className="w-6 h-6 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors disabled:opacity-50"
                                                     >
-                                                        {savingProductRate ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                                                        {savingProcessingCost ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
                                                     </button>
                                                     <button
                                                         type="button"
-                                                        onClick={() => setIsEditingProductRate(false)}
-                                                        disabled={savingProductRate}
+                                                        onClick={() => setIsEditingProcessingCost(false)}
+                                                        disabled={savingProcessingCost}
                                                         className="w-6 h-6 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
                                                     >
                                                         <X size={12} />
@@ -1196,15 +1196,15 @@ export default function SemiActualProductionPage() {
                                             ) : (
                                                 <div className={`flex items-center gap-2 text-xs ${accent ? 'text-olive-600 font-bold' : 'text-slate-700 font-medium'}`}>
                                                     <span>{value || '-'}</span>
-                                                    {label === 'Product Rate' && isAdmin && (
+                                                    {label === 'Processing Cost' && isAdmin && (
                                                         <button
                                                             type="button"
                                                             onClick={() => {
-                                                                setIsEditingProductRate(true);
-                                                                setEditProductRateValue(String(selectedActual?.productRate || 0));
+                                                                setIsEditingProcessingCost(true);
+                                                                setEditProcessingCostValue(String(selectedActual?.processingCost || 0));
                                                             }}
                                                             className="w-5 h-5 flex items-center justify-center text-olive-600 hover:bg-olive-50 rounded-md transition-colors"
-                                                            title="Edit product rate"
+                                                            title="Edit processing cost"
                                                         >
                                                             <Pencil size={10} />
                                                         </button>
