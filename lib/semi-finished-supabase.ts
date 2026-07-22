@@ -99,6 +99,7 @@ export const mapSemiActual = (row: any) => ({
   isAnyEndProduct: row["Is Any End Product"] ? "Yes" : "No",
   endProductRawMaterialName: String(row["End Product Name"] || ""),
   endProductQty: toNumber(row["End Product Qty"]),
+  productRate: toNumber(row["Product Rate"]),
   narration: String(row["Narration"] || ""),
   sNo: String(row["S No."] || ""),
   serialNo: String(row["S No."] || ""),

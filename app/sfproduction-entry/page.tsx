@@ -99,13 +99,13 @@ interface SemiActualRecord {
     timeDelay2: string;
     actualQty2: number;
     finalQty: number;
+    productRate?: number;
     firmName?: string;
 }
 
 interface RawMaterialRow {
     name: string;
     qty: string;
-    cost: string;
 }
 
 interface RawMaterial {
@@ -165,11 +165,10 @@ export default function SemiActualProductionPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [firmFilter, setFirmFilter] = useState<string[]>([]);
     const isAdmin = user?.role?.toLowerCase() === 'admin';
-    // Inline product-rate editing in the history tab (admin only)
-    const [editingRateId, setEditingRateId] = useState<number | null>(null);
-    const [editingRmIndex, setEditingRmIndex] = useState<number | null>(null);
-    const [rateInput, setRateInput] = useState('');
-    const [savingRate, setSavingRate] = useState(false);
+
+    const [isEditingProductRate, setIsEditingProductRate] = useState(false);
+    const [editProductRateValue, setEditProductRateValue] = useState('');
+    const [savingProductRate, setSavingProductRate] = useState(false);
 
     const [jobCardData, setJobCardData] = useState<SemiJobCardRecord[]>([]);
     const [semiActualData, setSemiActualData] = useState<SemiActualRecord[]>([]);
@@ -195,10 +194,11 @@ export default function SemiActualProductionPage() {
     const [endPhotoPreview, setEndPhotoPreview] = useState('');
 
     // Dynamic raw material rows (start with 1 row)
-    const [rawMaterialRows, setRawMaterialRows] = useState<RawMaterialRow[]>([{ name: '', qty: '', cost: '' }]);
+    const [rawMaterialRows, setRawMaterialRows] = useState<RawMaterialRow[]>([{ name: '', qty: '' }]);
 
     const [formData, setFormData] = useState({
         qtyOfSemiFinishedGood: '',
+        productRate: '',
         isAnyEndProduct: 'No',
         endProductRawMaterialName: '',
         endProductQty: '',
@@ -296,6 +296,7 @@ export default function SemiActualProductionPage() {
     const resetForm = () => {
         setFormData({
             qtyOfSemiFinishedGood: '',
+            productRate: '',
             isAnyEndProduct: 'No',
             endProductRawMaterialName: '',
             endProductQty: '',
@@ -304,7 +305,7 @@ export default function SemiActualProductionPage() {
             machineRunningHour: '',
             dateOfProduction: '',
         });
-        setRawMaterialRows([{ name: '', qty: '', cost: '' }]);
+        setRawMaterialRows([{ name: '', qty: '' }]);
         setStartPhotoFile(null); setEndPhotoFile(null);
         setStartPhotoPreview(''); setEndPhotoPreview('');
         setFormError('');
@@ -326,46 +327,35 @@ export default function SemiActualProductionPage() {
         setIsViewModalOpen(true);
     };
 
-    const startEditRmRate = (rmIndex: number, currentRate: number) => {
-        setEditingRmIndex(rmIndex);
-        setRateInput(currentRate ? String(currentRate) : '');
-    };
-
-    const cancelEditRmRate = () => {
-        setEditingRmIndex(null);
-        setRateInput('');
-    };
-
-    const handleSaveRmRate = async () => {
-        if (!selectedActual || editingRmIndex === null) return;
-        setSavingRate(true);
+    const handleSaveProductRate = async () => {
+        if (!selectedActual) return;
+        setSavingProductRate(true);
         try {
-            const fieldName = `Processing Cost ${editingRmIndex}`;
+            const newRate = Number(editProductRateValue) || 0;
             const { error } = await supabase
                 .from(SEMI_ACTUAL_TABLE)
-                .update({ [fieldName]: Number(rateInput) || 0 })
+                .update({ "Product Rate": newRate })
                 .eq("id", selectedActual._rowIndex);
             if (error) throw error;
             
             setSelectedActual({
                 ...selectedActual,
-                [`rawMaterial${editingRmIndex}Rate`]: Number(rateInput) || 0
+                productRate: newRate
             });
 
-            setEditingRmIndex(null);
-            setRateInput('');
-            setSuccessMessage('Raw material rate saved successfully!');
+            setIsEditingProductRate(false);
+            setSuccessMessage('Product rate saved successfully!');
             await loadAllData();
         } catch (err: any) {
-            setLoadError(err?.message || 'Failed to save rate.');
+            setLoadError(err?.message || 'Failed to save product rate.');
         } finally {
-            setSavingRate(false);
+            setSavingProductRate(false);
         }
     };
 
     const addRawMaterialRow = () => {
         if (rawMaterialRows.length < MAX_RAW_MATERIALS) {
-            setRawMaterialRows(prev => [...prev, { name: '', qty: '', cost: '' }]);
+            setRawMaterialRows(prev => [...prev, { name: '', qty: '' }]);
         }
     };
 
@@ -388,13 +378,9 @@ export default function SemiActualProductionPage() {
         }
         if (!formData.startingReading) { setFormError('Starting reading is required.'); return; }
         if (!formData.endingReading) { setFormError('Ending reading is required.'); return; }
-
-        for (let i = 0; i < rawMaterialRows.length; i++) {
-            const row = rawMaterialRows[i];
-            if (row.name && (!row.cost || Number(row.cost) <= 0)) {
-                setFormError(`Please enter a valid rate/cost for Raw Material: ${row.name}.`);
-                return;
-            }
+        if (!formData.productRate || Number(formData.productRate) <= 0) {
+            setFormError('Please enter a valid Product Rate.');
+            return;
         }
 
         setIsSubmitting(true);
@@ -414,13 +400,14 @@ export default function SemiActualProductionPage() {
 
             // Pad raw material rows to 5
             const paddedRM = [...rawMaterialRows];
-            while (paddedRM.length < 5) paddedRM.push({ name: '', qty: '', cost: '' });
+            while (paddedRM.length < 5) paddedRM.push({ name: '', qty: '' });
 
             const calculatedMachineHours = (Number(formData.endingReading) - Number(formData.startingReading)) || 0;
             const machineHours = formData.machineRunningHour !== ''
                 ? Number(formData.machineRunningHour)
                 : calculatedMachineHours;
             const madeQty = Number(formData.qtyOfSemiFinishedGood) || 0;
+            const productRateValue = Number(formData.productRate) || 0;
             const { error: insertError } = await supabase.from(SEMI_ACTUAL_TABLE).insert({
                 "Timestamp": new Date().toISOString(),
                 "Semi Finished Job Card No.": selectedSjc.sjcSrNo,
@@ -428,21 +415,17 @@ export default function SemiActualProductionPage() {
                 "Date Of Production": toSupabaseDate(formData.dateOfProduction),
                 "Product Name": selectedSjc.productName,
                 "Qty Of Semi Finished Good": madeQty,
+                "Product Rate": productRateValue,
                 "Raw Material Name 1": paddedRM[0].name || '',
                 "Quantity Of Raw Material 1": Number(paddedRM[0].qty) || 0,
-                "Processing Cost 1": Number(paddedRM[0].cost) || 0,
                 "Raw Material Name 2": paddedRM[1].name || '',
                 "Quantity Of Raw Material 2": Number(paddedRM[1].qty) || 0,
-                "Processing Cost 2": Number(paddedRM[1].cost) || 0,
                 "Raw Material Name 3": paddedRM[2].name || '',
                 "Quantity Of Raw Material 3": Number(paddedRM[2].qty) || 0,
-                "Processing Cost 3": Number(paddedRM[2].cost) || 0,
                 "Raw Material Name 4": paddedRM[3].name || '',
                 "Quantity Of Raw Material 4": Number(paddedRM[3].qty) || 0,
-                "Processing Cost 4": Number(paddedRM[3].cost) || 0,
                 "Raw Material Name 5": paddedRM[4].name || '',
                 "Quantity Of Raw Material 5": Number(paddedRM[4].qty) || 0,
-                "Processing Cost 5": Number(paddedRM[4].cost) || 0,
                 "Is Any End Product": formData.isAnyEndProduct === "Yes",
                 "End Product Name": formData.endProductRawMaterialName || '',
                 "End Product Qty": Number(formData.endProductQty) || 0,
@@ -763,7 +746,7 @@ export default function SemiActualProductionPage() {
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">SF No.</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Product</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Qty</th>
-
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Rate</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Date of Prod.</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Supervisor</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wide">Machine Hrs</th>
@@ -795,7 +778,9 @@ export default function SemiActualProductionPage() {
                                             <td className="px-6 py-3.5">
                                                 <span className="text-sm font-semibold text-slate-800">{entry.qtyOfSemiFinishedGood}</span>
                                             </td>
-
+                                            <td className="px-6 py-3.5">
+                                                <span className="text-sm font-semibold text-emerald-600">₹{entry.productRate || 0}</span>
+                                            </td>
                                             <td className="px-6 py-3.5 text-sm text-slate-500 whitespace-nowrap">{entry.dateOfProduction || '-'}</td>
                                             <td className="px-6 py-3.5 text-sm text-slate-600 whitespace-nowrap">{entry.supervisorName}</td>
                                             <td className="px-6 py-3.5 text-sm font-semibold text-amber-600">{entry.machineRunningHour}h</td>
@@ -867,21 +852,38 @@ export default function SemiActualProductionPage() {
                                 </div>
                             </div>
 
-                            {/* Qty of Semi Finished Good */}
-                            <div className="space-y-1.5">
-                                <Label className="text-xs font-semibold text-slate-700">
-                                    Qty Of Semi Finished Good <span className="text-red-500">*</span>
-                                </Label>
-                                <Input
-                                    type="number"
-                                    min="0.001"
-                                    step="0.001"
-                                    required
-                                    placeholder="Enter quantity produced"
-                                    value={formData.qtyOfSemiFinishedGood}
-                                    onChange={e => setFormData({ ...formData, qtyOfSemiFinishedGood: e.target.value })}
-                                    className="font-semibold focus-visible:ring-olive-500"
-                                />
+                            {/* Qty and Rate */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-semibold text-slate-700">
+                                        Qty Of Semi Finished Good <span className="text-red-500">*</span>
+                                    </Label>
+                                    <Input
+                                        type="number"
+                                        min="0.001"
+                                        step="0.001"
+                                        required
+                                        placeholder="Enter quantity produced"
+                                        value={formData.qtyOfSemiFinishedGood}
+                                        onChange={e => setFormData({ ...formData, qtyOfSemiFinishedGood: e.target.value })}
+                                        className="font-semibold focus-visible:ring-olive-500"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-semibold text-slate-700">
+                                        Product Rate (₹) <span className="text-red-500">*</span>
+                                    </Label>
+                                    <Input
+                                        type="number"
+                                        min="0.01"
+                                        step="0.01"
+                                        required
+                                        placeholder="Enter product rate"
+                                        value={formData.productRate}
+                                        onChange={e => setFormData({ ...formData, productRate: e.target.value })}
+                                        className="font-semibold focus-visible:ring-olive-500"
+                                    />
+                                </div>
                             </div>
 
                             {/* Raw Materials */}
@@ -900,14 +902,13 @@ export default function SemiActualProductionPage() {
                                     )}
                                 </div>
                                 <div className="space-y-2">
-                                    <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2">
+                                    <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
                                         <div className="text-[10px] text-slate-400 uppercase font-semibold px-1">Material Name</div>
                                         <div className="text-[10px] text-slate-400 uppercase font-semibold px-1">Quantity</div>
-                                        <div className="text-[10px] text-slate-400 uppercase font-semibold px-1">Processing Cost</div>
                                         <div className="w-8" />
                                     </div>
                                     {rawMaterialRows.map((row, index) => (
-                                        <div key={index} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center">
+                                        <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
                                             <Select
                                                 value={row.name}
                                                 onValueChange={v => updateRawMaterialRow(index, 'name', v)}
@@ -928,15 +929,6 @@ export default function SemiActualProductionPage() {
                                                 placeholder="Qty"
                                                 value={row.qty}
                                                 onChange={e => updateRawMaterialRow(index, 'qty', e.target.value)}
-                                                className="h-9 text-xs focus-visible:ring-olive-500"
-                                            />
-                                            <Input
-                                                type="number"
-                                                step="0.01"
-                                                min="0"
-                                                placeholder="Cost"
-                                                value={row.cost}
-                                                onChange={e => updateRawMaterialRow(index, 'cost', e.target.value)}
                                                 className="h-9 text-xs focus-visible:ring-olive-500"
                                             />
                                             {rawMaterialRows.length > 1 ? (
@@ -1136,7 +1128,10 @@ export default function SemiActualProductionPage() {
             {/* ── View Detail Modal ── */}
             <Dialog open={isViewModalOpen} onOpenChange={(open) => {
                 setIsViewModalOpen(open);
-                if (!open) setSelectedActual(null);
+                if (!open) {
+                    setSelectedActual(null);
+                    setIsEditingProductRate(false);
+                }
             }}>
                 <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto">
                     <DialogHeader>
@@ -1166,10 +1161,56 @@ export default function SemiActualProductionPage() {
                                         { label: 'Supervisor', value: selectedActual.supervisorName },
                                         { label: 'Date of Prod.', value: selectedActual.dateOfProduction || '-' },
                                         { label: 'Qty Made', value: String(selectedActual.qtyOfSemiFinishedGood), accent: true },
+                                        { label: 'Product Rate', value: `₹${selectedActual.productRate || 0}`, accent: true },
                                     ].map(({ label, value, accent }) => (
                                         <div key={label}>
                                             <div className="text-[10px] text-slate-400 uppercase font-semibold mb-0.5">{label}</div>
-                                            <div className={`text-xs ${accent ? 'text-olive-600 font-bold' : 'text-slate-700 font-medium'}`}>{value || '-'}</div>
+                                            {label === 'Product Rate' && isAdmin && isEditingProductRate ? (
+                                                <div className="flex items-center gap-1.5 mt-0.5">
+                                                    <Input
+                                                        type="number"
+                                                        min="0"
+                                                        step="0.01"
+                                                        autoFocus
+                                                        value={editProductRateValue}
+                                                        onChange={e => setEditProductRateValue(e.target.value)}
+                                                        className="h-7 w-20 text-[10px] focus-visible:ring-olive-500 bg-white"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleSaveProductRate}
+                                                        disabled={savingProductRate}
+                                                        className="w-6 h-6 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors disabled:opacity-50"
+                                                    >
+                                                        {savingProductRate ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsEditingProductRate(false)}
+                                                        disabled={savingProductRate}
+                                                        className="w-6 h-6 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
+                                                    >
+                                                        <X size={12} />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className={`flex items-center gap-2 text-xs ${accent ? 'text-olive-600 font-bold' : 'text-slate-700 font-medium'}`}>
+                                                    <span>{value || '-'}</span>
+                                                    {label === 'Product Rate' && isAdmin && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setIsEditingProductRate(true);
+                                                                setEditProductRateValue(String(selectedActual?.productRate || 0));
+                                                            }}
+                                                            className="w-5 h-5 flex items-center justify-center text-olive-600 hover:bg-olive-50 rounded-md transition-colors"
+                                                            title="Edit product rate"
+                                                        >
+                                                            <Pencil size={10} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
@@ -1179,74 +1220,23 @@ export default function SemiActualProductionPage() {
                             <div className="bg-slate-50 p-4 rounded-xl">
                                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Raw Materials Used</div>
                                 {[
-                                    { name: selectedActual.rawMaterial1Name, qty: selectedActual.rawMaterial1Qty, rate: selectedActual.rawMaterial1Rate, rmIndex: 1 },
-                                    { name: selectedActual.rawMaterial2Name, qty: selectedActual.rawMaterial2Qty, rate: selectedActual.rawMaterial2Rate, rmIndex: 2 },
-                                    { name: selectedActual.rawMaterial3Name, qty: selectedActual.rawMaterial3Qty, rate: selectedActual.rawMaterial3Rate, rmIndex: 3 },
-                                    { name: selectedActual.rawMaterial4Name, qty: selectedActual.rawMaterial4Qty, rate: selectedActual.rawMaterial4Rate, rmIndex: 4 },
-                                    { name: selectedActual.rawMaterial5Name, qty: selectedActual.rawMaterial5Qty, rate: selectedActual.rawMaterial5Rate, rmIndex: 5 },
+                                    { name: selectedActual.rawMaterial1Name, qty: selectedActual.rawMaterial1Qty },
+                                    { name: selectedActual.rawMaterial2Name, qty: selectedActual.rawMaterial2Qty },
+                                    { name: selectedActual.rawMaterial3Name, qty: selectedActual.rawMaterial3Qty },
+                                    { name: selectedActual.rawMaterial4Name, qty: selectedActual.rawMaterial4Qty },
+                                    { name: selectedActual.rawMaterial5Name, qty: selectedActual.rawMaterial5Qty },
                                 ].filter(rm => rm.name && rm.qty > 0).length > 0 ? (
                                     <div className="space-y-2">
                                         {[
-                                            { name: selectedActual.rawMaterial1Name, qty: selectedActual.rawMaterial1Qty, rate: selectedActual.rawMaterial1Rate, rmIndex: 1 },
-                                            { name: selectedActual.rawMaterial2Name, qty: selectedActual.rawMaterial2Qty, rate: selectedActual.rawMaterial2Rate, rmIndex: 2 },
-                                            { name: selectedActual.rawMaterial3Name, qty: selectedActual.rawMaterial3Qty, rate: selectedActual.rawMaterial3Rate, rmIndex: 3 },
-                                            { name: selectedActual.rawMaterial4Name, qty: selectedActual.rawMaterial4Qty, rate: selectedActual.rawMaterial4Rate, rmIndex: 4 },
-                                            { name: selectedActual.rawMaterial5Name, qty: selectedActual.rawMaterial5Qty, rate: selectedActual.rawMaterial5Rate, rmIndex: 5 },
+                                            { name: selectedActual.rawMaterial1Name, qty: selectedActual.rawMaterial1Qty },
+                                            { name: selectedActual.rawMaterial2Name, qty: selectedActual.rawMaterial2Qty },
+                                            { name: selectedActual.rawMaterial3Name, qty: selectedActual.rawMaterial3Qty },
+                                            { name: selectedActual.rawMaterial4Name, qty: selectedActual.rawMaterial4Qty },
+                                            { name: selectedActual.rawMaterial5Name, qty: selectedActual.rawMaterial5Qty },
                                         ].filter(rm => rm.name && rm.qty > 0).map((rm, i) => (
-                                            <div key={i} className="flex flex-col gap-2 bg-white px-3 py-2 rounded-lg border border-slate-100">
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-xs font-medium text-slate-700">{rm.name}</span>
-                                                    <span className="text-xs font-bold text-olive-600">{rm.qty}</span>
-                                                </div>
-                                                <div className="flex items-center justify-between border-t border-slate-50 pt-2">
-                                                    <span className="text-[10px] text-slate-400 font-semibold uppercase">Rate</span>
-                                                    {isAdmin && editingRmIndex === rm.rmIndex ? (
-                                                        <div className="flex items-center gap-1.5">
-                                                            <Input
-                                                                type="number"
-                                                                min="0"
-                                                                step="0.01"
-                                                                autoFocus
-                                                                placeholder="Rate"
-                                                                value={rateInput}
-                                                                onChange={e => setRateInput(e.target.value)}
-                                                                className="h-7 w-20 text-[10px] focus-visible:ring-olive-500"
-                                                            />
-                                                            <button
-                                                                type="button"
-                                                                onClick={handleSaveRmRate}
-                                                                disabled={savingRate}
-                                                                className="w-6 h-6 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors disabled:opacity-50"
-                                                            >
-                                                                {savingRate ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={cancelEditRmRate}
-                                                                disabled={savingRate}
-                                                                className="w-6 h-6 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
-                                                            >
-                                                                <X size={12} />
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-xs font-semibold text-slate-700">
-                                                                {rm.rate ? `₹${rm.rate}` : '-'}
-                                                            </span>
-                                                            {isAdmin && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => startEditRmRate(rm.rmIndex, rm.rate)}
-                                                                    className="w-6 h-6 flex items-center justify-center text-olive-600 hover:bg-olive-50 rounded-md transition-colors"
-                                                                    title={rm.rate ? 'Edit rate' : 'Add rate'}
-                                                                >
-                                                                    {rm.rate ? <Pencil size={10} /> : <Plus size={11} />}
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
+                                            <div key={i} className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-slate-100">
+                                                <span className="text-xs font-medium text-slate-700">{rm.name}</span>
+                                                <span className="text-xs font-bold text-olive-600">{rm.qty}</span>
                                             </div>
                                         ))}
                                     </div>
