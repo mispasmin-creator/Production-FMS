@@ -193,26 +193,42 @@ export default function JobCardsPage() {
       // Process pending orders from Costing Response
       // Logic: has Planned 2 date and missing Actual 3 date
       const filteredRows = allCostingData.filter((row) => {
-        const isApproved = row.Status === "Management Approved"
+        const status = String(row.Status || row["Status"] || "").trim().toLowerCase()
+        const isApproved = status === "management approved"
         const emptyActual3 = !row["Actual 3"] || String(row["Actual 3"]).trim() === ""
         return isApproved && emptyActual3
       })
 
+      const normalizeKey = (key: string) => (key || "").toLowerCase().replace(/[\s-]/g, "");
+
       const findProductionRow = (deliveryOrderNo: string, partyName: string, productName: string) => {
-        const normalizedDo = deliveryOrderNo.trim().toLowerCase()
-        const normalizedParty = partyName.trim().toLowerCase()
-        const normalizedProduct = productName.trim().toLowerCase()
+        const normalizedDo = normalizeKey(deliveryOrderNo)
+        const normalizedParty = normalizeKey(partyName)
+        const normalizedProduct = normalizeKey(productName)
+        
+        // Highly resilient numeric match for DOs (e.g. 'DO-306' vs 'D0-306' vs '306')
+        const getNumericDo = (doStr: string) => {
+           const numStr = String(doStr || "").replace(/\D/g, '');
+           return numStr ? Number(numStr) : null;
+        }
+        const numericDo = getNumericDo(deliveryOrderNo);
+
         return allProductionData.find((p) => {
-          const pDo = String(p["Delivery Order No."] || "").trim().toLowerCase()
-          const pParty = String(p["Party Name"] || "").trim().toLowerCase()
-          const pProduct = String(p["Product Name"] || "").trim().toLowerCase()
+          const pDo = normalizeKey(String(p["Delivery Order No."] || ""))
+          const pParty = normalizeKey(String(p["Party Name"] || ""))
+          const pProduct = normalizeKey(String(p["Product Name"] || ""))
           return pDo === normalizedDo && pProduct === normalizedProduct && pParty === normalizedParty
         }) || allProductionData.find((p) => {
-          const pDo = String(p["Delivery Order No."] || "").trim().toLowerCase()
-          const pProduct = String(p["Product Name"] || "").trim().toLowerCase()
+          const pDo = normalizeKey(String(p["Delivery Order No."] || ""))
+          const pProduct = normalizeKey(String(p["Product Name"] || ""))
           return pDo === normalizedDo && pProduct === normalizedProduct
         }) || allProductionData.find(
-          (p) => String(p["Delivery Order No."] || "").trim().toLowerCase() === normalizedDo
+          (p) => normalizeKey(String(p["Delivery Order No."] || "")) === normalizedDo
+        ) || allProductionData.find(
+          (p) => {
+             const pNum = getNumericDo(p["Delivery Order No."]);
+             return numericDo !== null && pNum !== null && numericDo === pNum;
+          }
         )
       }
 
@@ -262,7 +278,10 @@ export default function JobCardsPage() {
           note: "",
           orderCancel: prodRow ? !!prodRow["Order Cancel"] : false,
         }
-      }).filter((order) => Number(order.pending || 0) > 0 && !order.orderCancel)
+      // Show all Management Approved + Actual 3 empty orders that are not cancelled.
+      // Do NOT filter by pending qty — if prodRow not found, orderQty = 0 → pending = 0
+      // which would incorrectly hide a genuinely pending order like DO-298.
+      }).filter((order) => !order.orderCancel)
 
       // Process job cards history
       const processedHistory: JobCard[] = allJobCardsData
@@ -305,14 +324,21 @@ export default function JobCardsPage() {
       // Filter by Firm
       const filterByFirm = (data: any[]) => {
         if (!user?.firm || user?.role?.toLowerCase() === 'admin') return data;
-        const userFirms = user.firm.split(',').map(f => f.trim()).filter(Boolean);
-        return data.filter(item => {
-          const fName = String(item.firmName || "").toLowerCase();
-          return userFirms.some(uf => {
-            const firmSearch = uf.toLowerCase();
-            const mappedFirmLower = (FIRM_MAP[uf] || uf).toLowerCase();
-            return fName.includes(firmSearch) || fName.includes(mappedFirmLower);
+        
+        const getFirmMatchValues = (firm?: string) => {
+          const firms = String(firm || "").split(',').map(f => f.trim()).filter(Boolean);
+          return firms.flatMap(rawFirm => {
+            const mappedFirm = Object.entries(FIRM_MAP).find(
+              ([key, value]) => key.toLowerCase() === rawFirm.toLowerCase() || value.toLowerCase() === rawFirm.toLowerCase()
+            )?.[1] || ""
+            return [rawFirm, mappedFirm].map(v => (v || "").toLowerCase().trim()).filter(Boolean)
           });
+        }
+        
+        const firmSearchValues = getFirmMatchValues(user.firm);
+        return data.filter(item => {
+          const fName = String(item.firmName || "").toLowerCase().trim();
+          return firmSearchValues.some(firmSearch => fName.includes(firmSearch) || firmSearch.includes(fName));
         });
       };
 
