@@ -7,6 +7,7 @@ import { format } from "date-fns"
 import * as XLSX from "xlsx"
 import { supabase } from "@/lib/supabase"
 import { useAuth, FIRM_MAP } from "@/lib/auth"
+import { normalizeKey, filterDataByFirm, findMatchingRow } from "@/lib/matching-utils"
 
 // Shadcn UI components
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -174,24 +175,10 @@ const hasValue = (value: any) => {
 
 const isCancelledStatus = (value: any) => String(value || "").trim().toLowerCase() === "cancelled"
 
-const normalizeKey = (value: any) => String(value || "").trim().toLowerCase()
-
 const hasCompletedProductionFlag = (value: any) => hasValue(value) && normalizeKey(value) !== "0"
 
 const makeProductionRecordKey = (jobCardNo: any, orderNo: any, productName: any) =>
   `${normalizeKey(jobCardNo)}::${normalizeKey(orderNo)}::${normalizeKey(productName)}`
-
-const getFirmMatchValues = (firm?: string) => {
-  const firms = String(firm || "").split(',').map(f => f.trim()).filter(Boolean);
-  return firms.flatMap(rawFirm => {
-    const mappedFirm = Object.entries(FIRM_MAP).find(
-      ([key, value]) => normalizeKey(key) === normalizeKey(rawFirm) || normalizeKey(value) === normalizeKey(rawFirm)
-    )?.[1] || ""
-    return [rawFirm, mappedFirm]
-      .map((value) => normalizeKey(value))
-      .filter(Boolean)
-  });
-}
 
 const parseDDMMYYYY = (dateStr: string) => {
   if (!dateStr || dateStr === "-") return null
@@ -331,16 +318,13 @@ export default function ProductionPage() {
       // 2. Process Pending Job Cards
       // Condition: Actual 1 is NOT null AND Time Delay 1 IS null (as per original logic)
       const findProductionInfo = (deliveryOrderNo: string, productName: string) => {
-        const normalizedDo = normalizeKey(deliveryOrderNo)
-        const normalizedProduct = normalizeKey(productName)
-        const matchingDoRows = (productionData || []).filter(
-          (p: any) => normalizeKey(p["Delivery Order No."]) === normalizedDo
-        )
-        return matchingDoRows.find((p: any) => {
-          const pDo = normalizeKey(p["Delivery Order No."])
-          const pProduct = normalizeKey(p["Product Name"])
-          return pDo === normalizedDo && pProduct === normalizedProduct
-        }) || (matchingDoRows.length === 1 ? matchingDoRows[0] : null)
+        return findMatchingRow(
+          productionData || [],
+          deliveryOrderNo,
+          productName,
+          (p: any) => String(p["Delivery Order No."] || ""),
+          (p: any) => String(p["Product Name"] || "")
+        );
       }
 
       const pending = (jobCardsData || [])
@@ -423,14 +407,7 @@ export default function ProductionPage() {
       })
 
       // Filter by Firm
-      const filterByFirm = (data: any[]) => {
-        if (!user?.firm || user?.role?.toLowerCase() === 'admin') return data;
-        const firmSearchValues = getFirmMatchValues(user.firm);
-        return data.filter(item => {
-          const fName = normalizeKey(item.firmName);
-          return firmSearchValues.some((firmSearch) => fName.includes(firmSearch) || firmSearch.includes(fName));
-        });
-      };
+      const filterByFirm = (data: any[]) => filterDataByFirm(data, user, (item) => String(item.firmName || ""));
 
       setPendingProductions(filterByFirm(pending))
       setHistoryProductions(filterByFirm(history).sort((a, b) => b._rowIndex - a._rowIndex))

@@ -19,6 +19,7 @@ import {
 import { format } from "date-fns";
 import { supabase } from "@/lib/supabase";
 import { useAuth, FIRM_MAP } from "@/lib/auth";
+import { normalizeKey, getNumericDo, filterDataByFirm, makeOrderProductKey, findMatchingRow } from "@/lib/matching-utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import {
@@ -63,10 +64,6 @@ import { cn } from "@/lib/utils";
 const COSTING_RESPONSE_TABLE = "costing_response";
 const KYC_TABLE = "kyc";
 const PRODUCTION_TABLE = "production";
-
-const normalizeKey = (value: any) => String(value || "").trim().toLowerCase();
-const makeOrderProductKey = (orderNo: any, productName: any) =>
-  `${normalizeKey(orderNo)}::${normalizeKey(productName)}`;
 
 const EXPECTED_LABELS: { key: string; label: string }[] = [
   { key: "Expected WC %", label: "W/C (%)" },
@@ -233,28 +230,6 @@ export default function ManagementApp() {
         kycMap.set(String(k["Product name"] || "").trim().toLowerCase(), k);
       });
 
-      const productionMetaMap = new Map<
-        string,
-        { productionId?: number | string; productRate: number; firmName: string; partyName: string; orderQuantity: number }
-      >();
-      (prodData || []).forEach((p: any) => {
-        const orderNo = String(p["Delivery Order No."] || "").trim();
-        const productName = String(p["Product Name"] || "").trim();
-        if (orderNo) {
-          const meta = {
-            productionId: p.id,
-            productRate: Number(p.product_rate || 0),
-            firmName: String(p["Firm Name"] || ""),
-            partyName: String(p["Party Name"] || ""),
-            orderQuantity: Number(p["Order Quantity"] || 0),
-          };
-          productionMetaMap.set(makeOrderProductKey(orderNo, productName), meta);
-          if (!productionMetaMap.has(normalizeKey(orderNo))) {
-            productionMetaMap.set(normalizeKey(orderNo), meta);
-          }
-        }
-      });
-
       // 3. Fetch Costing data (PI Approved only)
       const { data, error: dbErr } = await supabase
         .from(COSTING_RESPONSE_TABLE)
@@ -291,9 +266,24 @@ export default function ManagementApp() {
 
         const orderNo = row["Order No."] || "";
         const productName = row["product name"] || "";
-        const productionMeta =
-          productionMetaMap.get(makeOrderProductKey(orderNo, productName)) ||
-          productionMetaMap.get(normalizeKey(orderNo));
+        
+        // Find matching production row with robust fallback logic
+        const prodRowMatch = findMatchingRow(
+          prodData || [],
+          orderNo,
+          productName,
+          (p: any) => String(p["Delivery Order No."] || ""),
+          (p: any) => String(p["Product Name"] || "")
+        );
+        
+        const productionMeta = prodRowMatch ? {
+          productionId: prodRowMatch.id,
+          productRate: Number(prodRowMatch.product_rate || 0),
+          firmName: String(prodRowMatch["Firm Name"] || ""),
+          partyName: String(prodRowMatch["Party Name"] || ""),
+          orderQuantity: Number(prodRowMatch["Order Quantity"] || 0)
+        } : null;
+
         const productRate = productionMeta?.productRate || 0;
 
         return {
@@ -337,16 +327,7 @@ export default function ManagementApp() {
 
       const userFirms = user?.firm ? user.firm.split(',').map(f => f.trim()).filter(Boolean) : [];
       const isAdmin = user?.role?.toLowerCase() === "admin";
-      const filtered = mapped.filter((r) => {
-        if (isAdmin) return true;
-        if (userFirms.length === 0) return true;
-        const fName = r.firmName.toLowerCase();
-        return userFirms.some(uf => {
-          const firmSearch = uf.toLowerCase();
-          const mappedFirmLower = (FIRM_MAP[uf] || uf).toLowerCase();
-          return fName.includes(firmSearch) || fName.includes(mappedFirmLower);
-        });
-      });
+      const filtered = filterDataByFirm(mapped, user, (item) => String(item.firmName || ""));
 
       setPendingItems(filtered.filter((i) => !i.managementApprovalStatus));
       setHistoryItems(filtered.filter((i) => !!i.managementApprovalStatus));

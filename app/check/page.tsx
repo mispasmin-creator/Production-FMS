@@ -151,6 +151,7 @@ interface CombinedHistoryItem {
   id: string
   type: 'devshree' | 'hemlal' | 'jitendra'
   jobCardNo: string
+  orderNo?: string
   firmName: string
   productName: string
   partyName: string
@@ -168,6 +169,7 @@ interface GvizRow {
 const HEMLAL_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true },
+  { header: "DO Number", dataKey: "orderNo", alwaysVisible: true, toggleable: true },
   { header: "Firm Name", dataKey: "firmName", alwaysVisible: true },
   { header: "Product Name", dataKey: "productName", alwaysVisible: true },
   { header: "Party Name", dataKey: "partyName", alwaysVisible: true },
@@ -187,6 +189,7 @@ for (let i = 1; i <= 20; i++) {
 const JITENDRA_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true },
+  { header: "DO Number", dataKey: "orderNo", alwaysVisible: true, toggleable: true },
   { header: "Firm Name", dataKey: "firmName", alwaysVisible: true },
   { header: "Product Name", dataKey: "productName", alwaysVisible: true },
   { header: "Party Name", dataKey: "partyName", alwaysVisible: true },
@@ -206,6 +209,7 @@ for (let i = 1; i <= 20; i++) {
 const DEVSHREE_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true },
+  { header: "DO Number", dataKey: "orderNo", alwaysVisible: true, toggleable: true },
   { header: "Firm Name", dataKey: "firmName", alwaysVisible: true },
   { header: "Product Name", dataKey: "productName", alwaysVisible: true },
   { header: "Party Name", dataKey: "partyName", alwaysVisible: true },
@@ -229,6 +233,7 @@ for (let i = 1; i <= 20; i++) {
 const HISTORY_COLUMNS_META = [
   { header: "Type", dataKey: "type", alwaysVisible: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true },
+  { header: "DO Number", dataKey: "orderNo", alwaysVisible: true, toggleable: true },
   { header: "Firm Name", dataKey: "firmName", alwaysVisible: true },
   { header: "Product Name", dataKey: "productName", alwaysVisible: true },
   { header: "Party Name", dataKey: "partyName", alwaysVisible: true },
@@ -291,7 +296,7 @@ function parseActualProductionRow(row: any): ActualProductionItem {
     ppBagSmall: String(row["PP Bag (Small)"] || ""),
     costingAmount: String(row["Costing Amount"] || ""),
     colorCondition: String(row["Color Condition"] || ""),
-    orderNo: String(row["Order No."] || ""),
+    orderNo: String(row["Order No."] || row["Delivery Order No."] || row["DO Number"] || row["DO No."] || row["DO-Delivery Order No."] || ""),
     planned1: formatDate(row["Planned1"]),
     actual1: formatDate(row["Actual1"]),
     timeDelay1: String(row["Time Delay1"] || ""),
@@ -779,6 +784,7 @@ export default function CheckPage() {
     if (!q) return combinedHistory
     return combinedHistory.filter(item =>
       (item.jobCardNo || "").toLowerCase().includes(q) ||
+      (item.orderNo || "").toLowerCase().includes(q) ||
       (item.firmName || "").toLowerCase().includes(q) ||
       (item.productName || "").toLowerCase().includes(q) ||
       (item.partyName || "").toLowerCase().includes(q) ||
@@ -832,6 +838,12 @@ export default function CheckPage() {
 
       const allItems = filterByFirm((actualProdData || []).map((row: any) => parseActualProductionRow(row)))
 
+      // Helper to find DO Number from job cards
+      const getDoNoFromJobCard = (jobCardNo: string) => {
+        const jobCard = (jobCardsData || []).find((jc: any) => String(jc["JC-Job Card Number"] || '').trim() === String(jobCardNo).trim())
+        return jobCard ? String(jobCard["Delivery Order No."] || jobCard["Order No."] || jobCard["DO Number"] || '').trim() : ''
+      }
+
       // Hemlal Pending
       const hemlalPendingData: HemlalPendingItem[] = allItems
         .filter(item => item.jobCardNo && item.planned4 && item.planned4 !== "-" && (item.actual4 === null || item.actual4 === "-"))
@@ -854,7 +866,7 @@ export default function CheckPage() {
           ppBagSmall: item.ppBagSmall,
           costingAmount: item.costingAmount,
           colorCondition: item.colorCondition,
-          orderNo: item.orderNo,
+          orderNo: item.orderNo || getDoNoFromJobCard(item.jobCardNo),
         }))
       setHemlalPending(hemlalPendingData)
 
@@ -880,7 +892,7 @@ export default function CheckPage() {
           ppBagSmall: item.ppBagSmall,
           costingAmount: item.costingAmount,
           colorCondition: item.colorCondition,
-          orderNo: item.orderNo,
+          orderNo: item.orderNo || getDoNoFromJobCard(item.jobCardNo),
         }))
       setJitendraPending(jitendraPendingData)
 
@@ -889,6 +901,7 @@ export default function CheckPage() {
         .filter(item => item.jobCardNo && item.planned6 && item.planned6 !== "-" && (item.actual6 === null || item.actual6 === "-"))
         .map(item => {
           const jobCard = (jobCardsData || []).find((jc: any) => String(jc["JC-Job Card Number"] || '').trim() === String(item.jobCardNo).trim())
+          const doNo = item.orderNo || (jobCard ? String(jobCard["Delivery Order No."] || jobCard["Order No."] || jobCard["DO Number"] || '').trim() : '')
           return {
             id: item.id,
             jobCardNo: item.jobCardNo,
@@ -912,7 +925,7 @@ export default function CheckPage() {
             ppBagSmall: item.ppBagSmall,
             costingAmount: item.costingAmount,
             colorCondition: item.colorCondition,
-            orderNo: item.orderNo,
+            orderNo: doNo,
             timeDelay1: item.timeDelay1,
             remarks: item.remarks,
             planned2: item.planned2,
@@ -930,6 +943,7 @@ export default function CheckPage() {
           id: `check-done-${item.jobCardNo}-${item.actual6}`, 
           type: 'devshree', 
           jobCardNo: item.jobCardNo, 
+          orderNo: item.orderNo || getDoNoFromJobCard(item.jobCardNo),
           firmName: item.firmName, 
           productName: item.productName, 
           partyName: item.partyName, 

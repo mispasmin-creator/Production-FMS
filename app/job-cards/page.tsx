@@ -8,7 +8,7 @@ import { Loader2, CalendarIcon, FileCheck, History, AlertTriangle, Settings, XCi
 import { format } from "date-fns"
 import { supabase } from "@/lib/supabase"
 import { useAuth, FIRM_MAP } from "@/lib/auth"
-
+import { normalizeKey, getNumericDo, filterDataByFirm, findMatchingRow } from "@/lib/matching-utils"
 
 // Shadcn UI components
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -199,37 +199,16 @@ export default function JobCardsPage() {
         return isApproved && emptyActual3
       })
 
-      const normalizeKey = (key: string) => (key || "").toLowerCase().replace(/[\s-]/g, "");
-
       const findProductionRow = (deliveryOrderNo: string, partyName: string, productName: string) => {
-        const normalizedDo = normalizeKey(deliveryOrderNo)
-        const normalizedParty = normalizeKey(partyName)
-        const normalizedProduct = normalizeKey(productName)
-        
-        // Highly resilient numeric match for DOs (e.g. 'DO-306' vs 'D0-306' vs '306')
-        const getNumericDo = (doStr: string) => {
-           const numStr = String(doStr || "").replace(/\D/g, '');
-           return numStr ? Number(numStr) : null;
-        }
-        const numericDo = getNumericDo(deliveryOrderNo);
-
-        return allProductionData.find((p) => {
-          const pDo = normalizeKey(String(p["Delivery Order No."] || ""))
-          const pParty = normalizeKey(String(p["Party Name"] || ""))
-          const pProduct = normalizeKey(String(p["Product Name"] || ""))
-          return pDo === normalizedDo && pProduct === normalizedProduct && pParty === normalizedParty
-        }) || allProductionData.find((p) => {
-          const pDo = normalizeKey(String(p["Delivery Order No."] || ""))
-          const pProduct = normalizeKey(String(p["Product Name"] || ""))
-          return pDo === normalizedDo && pProduct === normalizedProduct
-        }) || allProductionData.find(
-          (p) => normalizeKey(String(p["Delivery Order No."] || "")) === normalizedDo
-        ) || allProductionData.find(
-          (p) => {
-             const pNum = getNumericDo(p["Delivery Order No."]);
-             return numericDo !== null && pNum !== null && numericDo === pNum;
-          }
-        )
+        return findMatchingRow(
+          allProductionData,
+          deliveryOrderNo,
+          productName,
+          (p: any) => String(p["Delivery Order No."] || ""),
+          (p: any) => String(p["Product Name"] || ""),
+          partyName,
+          (p: any) => String(p["Party Name"] || "")
+        );
       }
 
       const processedOrders: Order[] = filteredRows.map((row) => {
@@ -322,25 +301,7 @@ export default function JobCardsPage() {
         .sort((a, b) => b.id - a.id)
 
       // Filter by Firm
-      const filterByFirm = (data: any[]) => {
-        if (!user?.firm || user?.role?.toLowerCase() === 'admin') return data;
-        
-        const getFirmMatchValues = (firm?: string) => {
-          const firms = String(firm || "").split(',').map(f => f.trim()).filter(Boolean);
-          return firms.flatMap(rawFirm => {
-            const mappedFirm = Object.entries(FIRM_MAP).find(
-              ([key, value]) => key.toLowerCase() === rawFirm.toLowerCase() || value.toLowerCase() === rawFirm.toLowerCase()
-            )?.[1] || ""
-            return [rawFirm, mappedFirm].map(v => (v || "").toLowerCase().trim()).filter(Boolean)
-          });
-        }
-        
-        const firmSearchValues = getFirmMatchValues(user.firm);
-        return data.filter(item => {
-          const fName = String(item.firmName || "").toLowerCase().trim();
-          return firmSearchValues.some(firmSearch => fName.includes(firmSearch) || firmSearch.includes(fName));
-        });
-      };
+      const filterByFirm = (data: any[]) => filterDataByFirm(data, user, (item) => String(item.firmName || ""));
 
       setPendingOrders(filterByFirm(processedOrders))
       setHistoryJobCards(filterByFirm(processedHistory))
