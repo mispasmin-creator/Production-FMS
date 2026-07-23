@@ -259,15 +259,26 @@ export default function ManagementApprovalPage() {
       }
 
       const pendingData: PendingApprovalItem[] = (actualProductionRows || [])
-        .filter((row: any) => hasValue(row["Job Card No."]) && hasValue(row["Planned7"]) && !hasValue(row["Actual7"]))
+        .filter((row: any) => 
+          hasValue(row["Job Card No."]) && 
+          (
+            (hasValue(row["Planned4"]) && !hasValue(row["Actual4"])) ||
+            (hasValue(row["Planned5"]) && !hasValue(row["Actual5"])) ||
+            (hasValue(row["Planned6"]) && !hasValue(row["Actual6"])) ||
+            (hasValue(row["Planned7"]) && !hasValue(row["Actual7"]))
+          )
+        )
         .map(buildItem)
  
       const historyData: HistoryApprovalItem[] = (actualProductionRows || [])
-        .filter((row: any) => hasValue(row["Job Card No."]) && hasValue(row["Planned7"]) && hasValue(row["Actual7"]))
+        .filter((row: any) => 
+          hasValue(row["Job Card No."]) && 
+          (hasValue(row["Actual7"]) || hasValue(row["Actual6"]) || hasValue(row["Actual5"]) || hasValue(row["Actual4"]))
+        )
         .map((row: any) => ({
           ...buildItem(row),
-          approvalDate: formatDateValue(row["Actual7"], "dd/MM/yy HH:mm"),
-          remarks: String(row["Remarks2"] || "-"),
+          approvalDate: formatDateValue(row["Actual7"] || row["Actual6"] || row["Actual5"] || row["Actual4"], "dd/MM/yy HH:mm"),
+          remarks: String(row["Remarks2"] || row["Remarks4"] || row["Remarks3"] || row["Remarks"] || "-"),
         }))
         .sort((a, b) => new Date(b.approvalDate).getTime() - new Date(a.approvalDate).getTime())
 
@@ -313,10 +324,15 @@ export default function ManagementApprovalPage() {
     if (!validateForm() || !selectedApproval) return
     setIsSubmitting(true)
     try {
+      const now = new Date().toISOString()
+      const todayDate = format(new Date(), "yyyy-MM-dd")
       const { error: updateErr } = await supabase
         .from(ACTUAL_PRODUCTION_TABLE)
         .update({
-          "Actual7": format(new Date(), "yyyy-MM-dd"),
+          "Actual4": now,
+          "Actual5": now,
+          "Actual6": now,
+          "Actual7": todayDate,
           "Remarks2": formData.remarks,
         })
         .eq("id", selectedApproval.id)

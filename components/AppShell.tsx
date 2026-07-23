@@ -90,7 +90,6 @@ const topNavItems = [
     label: "Chemical Test",
     icon: CheckSquare,
   },
-  { id: "check", href: "/check", label: "Check", icon: FileCheck },
   {
     id: "management",
     href: "/management",

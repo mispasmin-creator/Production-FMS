@@ -107,7 +107,6 @@ export function AppSidebar() {
         icon: FileSpreadsheet,
         href: "/chemical-test",
       },
-      { id: "check", title: "Check", icon: ClipboardCheck, href: "/check" },
       { id: "tally", title: "Tally", icon: ListChecks, href: "/tally" },
       {
         id: "sf-production",
