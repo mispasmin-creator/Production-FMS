@@ -157,7 +157,6 @@ CREATE TABLE public.crushing_actual (
   Date Of Production date,
   Crushing Product Name text,
   Qty Of Crushing Product numeric,
-  Processing Cost numeric,
   Finished Goods Name 1 text,
   Qty 1 numeric,
   Finished Goods Name 2 text,
