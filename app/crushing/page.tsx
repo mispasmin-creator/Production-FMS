@@ -588,7 +588,8 @@ export default function Step5List() {
             setSuccessMessage("Crushing entry successfully submitted to Tally Entry!");
         } catch (err: any) {
             console.error("Error submitting to Tally:", err);
-            setError(err.message || String(err));
+            const msg = err?.message || err?.details || (typeof err === 'object' ? JSON.stringify(err) : String(err));
+            setError(msg);
         } finally {
             setIsSubmitting(false);
         }

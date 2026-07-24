@@ -148,6 +148,7 @@ interface CostingHistoryItem {
   crmName?: string;
   quantityDelivered?: string;
   productionPending?: string;
+  manufacturingCost?: number;
 }
 
 // --- Constants ---
@@ -245,6 +246,7 @@ export default function CheckPage() {
   const [expectedValues, setExpectedValues] = useState<ExpectedValueRow[]>(
     DEFAULT_EXPECTED_PROPERTIES,
   );
+  const [manufacturingCost, setManufacturingCost] = useState<number>(1500);
 
   // Admin firm filter
   const [adminFirmFilter, setAdminFirmFilter] = useState<string>("");
@@ -801,6 +803,7 @@ export default function CheckPage() {
           crmName: meta?.crmName || enriched.crmName || "",
           quantityDelivered: meta?.quantityDelivered || enriched.quantityDelivered || "",
           productionPending: meta?.productionPending || enriched.productionPending || "",
+          manufacturingCost: row["Manufacturing Cost"] !== undefined && row["Manufacturing Cost"] !== null ? Number(row["Manufacturing Cost"]) : undefined,
         };
       });
 
@@ -941,6 +944,7 @@ export default function CheckPage() {
     setExpectedValues(
       DEFAULT_EXPECTED_PROPERTIES.map((r) => ({ ...r, value: "" })),
     );
+    setManufacturingCost(1500);
   };
 
   const handleOpenKittingForm = (item: ProductionItem) => {
@@ -1012,6 +1016,7 @@ export default function CheckPage() {
     setExpectedValues(
       DEFAULT_EXPECTED_PROPERTIES.map((r) => ({ ...r, value: "" })),
     );
+    setManufacturingCost(item.manufacturingCost !== undefined ? item.manufacturingCost : 1500);
     setIsKittingDialogOpen(true);
   };
 
@@ -1224,7 +1229,8 @@ export default function CheckPage() {
         BD: kittingTotals.bd,
         AP: kittingTotals.ap,
         "VARIABLE COST": kittingTotals.variableCost,
-        "SELLING PRICE": kittingTotals.variableCost, // Defaulting selling price to variable cost for now
+        "Manufacturing Cost": manufacturingCost || 1500,
+        "SELLING PRICE": kittingTotals.variableCost + (manufacturingCost || 1500),
         ...rmFields,
         // Expected Values (mapped by index to DB columns)
         "Expected WC %": expectedValues[0]?.value || null,
@@ -1971,6 +1977,7 @@ export default function CheckPage() {
                       <TableHead className="bg-yellow-100 min-w-[110px] p-2">
                         % (Input)
                       </TableHead>
+                      <TableHead className="p-2 min-w-[90px]">Price (₹)</TableHead>
                       <TableHead className="p-2">AL (Calc)</TableHead>
                       <TableHead className="p-2">FE (Calc)</TableHead>
                       <TableHead className="p-2">BD (Calc)</TableHead>
@@ -2088,6 +2095,9 @@ export default function CheckPage() {
                             className="h-8 text-xs"
                           />
                         </TableCell>
+                        <TableCell className="p-2 text-xs font-medium text-slate-700">
+                          ₹{row.basePrice ? row.basePrice.toFixed(2) : "0.00"}
+                        </TableCell>
                         <TableCell className="p-2">
                           <Input
                             type="number"
@@ -2171,12 +2181,15 @@ export default function CheckPage() {
                     ))}
                   </TableBody>
                   <TableFooter>
-                    <TableRow className="bg-slate-50 font-bold text-sm">
-                      <TableCell colSpan={6} className="text-right p-2">
-                        Total
+                    <TableRow className="bg-slate-50 font-bold text-xs">
+                      <TableCell colSpan={6} className="text-right p-2 text-slate-600">
+                        Raw Material Cost Subtotal
                       </TableCell>
                       <TableCell className="bg-yellow-100 p-2">
                         {kittingTotals.percentage.toFixed(2)}%
+                      </TableCell>
+                      <TableCell className="p-2 text-xs font-semibold text-slate-400">
+                        -
                       </TableCell>
                       <TableCell className="p-2">
                         {kittingTotals.al.toFixed(4)}
@@ -2190,8 +2203,31 @@ export default function CheckPage() {
                       <TableCell className="p-2">
                         {kittingTotals.ap.toFixed(4)}
                       </TableCell>
-                      <TableCell className="bg-green-50 p-2">
-                        {kittingTotals.variableCost.toFixed(2)}
+                      <TableCell className="bg-green-50 p-2 font-bold text-slate-800">
+                        ₹{kittingTotals.variableCost.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="p-2" />
+                    </TableRow>
+                    <TableRow className="bg-amber-50/70 font-semibold text-xs border-t">
+                      <TableCell colSpan={12} className="text-right p-2 text-amber-900 font-medium">
+                        + Manufacturing Cost (₹)
+                      </TableCell>
+                      <TableCell className="bg-amber-100/80 p-1">
+                        <Input
+                          type="number"
+                          value={manufacturingCost}
+                          onChange={(e) => setManufacturingCost(Number(e.target.value) || 0)}
+                          className="h-7 text-xs font-bold text-amber-900 border-amber-300 bg-white text-right px-2"
+                        />
+                      </TableCell>
+                      <TableCell className="p-2" />
+                    </TableRow>
+                    <TableRow className="bg-emerald-100/80 font-bold text-sm border-t-2 border-emerald-300">
+                      <TableCell colSpan={12} className="text-right p-2 text-emerald-950 font-bold">
+                        = Total Cost (₹)
+                      </TableCell>
+                      <TableCell className="bg-emerald-200/90 p-2 text-emerald-950 font-extrabold text-sm">
+                        ₹{(kittingTotals.variableCost + (manufacturingCost || 0)).toFixed(2)}
                       </TableCell>
                       <TableCell className="p-2" />
                     </TableRow>

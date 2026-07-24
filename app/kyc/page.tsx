@@ -94,14 +94,16 @@ const COLUMNS = [
 ];
 
 const fmt = (val: number | null | undefined) =>
-  val !== null && val !== undefined ? Number(val).toLocaleString("en-IN") : "-";
+  val !== null && val !== undefined
+    ? Number(val).toLocaleString("en-IN", { maximumFractionDigits: 2 })
+    : "-";
 
 function handleFieldChange(
   form: KycFormData,
   key: keyof KycFormData,
   value: string,
 ): KycFormData {
-  return {
+  const updated = {
     ...form,
     [key]:
       value === ""
@@ -109,6 +111,21 @@ function handleFieldChange(
         : key === "Product name" || key === "Firm Name"
         ? value
         : Number(value),
+  };
+
+  const alumina = updated.Alumina !== null && updated.Alumina !== undefined ? Number(updated.Alumina) : null;
+  const bd = updated.Bd !== null && updated.Bd !== undefined ? Number(updated.Bd) : null;
+  const price = updated.Price !== null && updated.Price !== undefined ? Number(updated.Price) : null;
+
+  const albd = (alumina !== null && bd !== null) ? Number((alumina * bd).toFixed(2)) : updated.ALBD;
+  const ratePerAlumina = (price !== null && alumina !== null && alumina > 0)
+    ? Number((price / alumina).toFixed(2))
+    : (alumina === 0 ? 0 : updated["Rate Per Alumina"]);
+
+  return {
+    ...updated,
+    ALBD: albd,
+    "Rate Per Alumina": ratePerAlumina,
   };
 }
 
@@ -190,7 +207,28 @@ export default function KycPage() {
       .order("id", { ascending: true });
 
     if (error) console.error("KYC fetch error:", error.message);
-    setData(rows || []);
+
+    const processedRows = (rows || []).map((row: any) => {
+      const alumina = row.Alumina !== null && row.Alumina !== undefined ? Number(row.Alumina) : null;
+      const bd = row.Bd !== null && row.Bd !== undefined ? Number(row.Bd) : null;
+      const price = row.Price !== null && row.Price !== undefined ? Number(row.Price) : null;
+
+      const albd = (alumina !== null && bd !== null)
+        ? Number((alumina * bd).toFixed(2))
+        : (row.ALBD !== null && row.ALBD !== undefined ? Number(row.ALBD) : null);
+
+      const ratePerAlumina = (price !== null && alumina !== null && alumina > 0)
+        ? Number((price / alumina).toFixed(2))
+        : (alumina === 0 ? 0 : (row["Rate Per Alumina"] !== null && row["Rate Per Alumina"] !== undefined ? Number(row["Rate Per Alumina"]) : null));
+
+      return {
+        ...row,
+        ALBD: albd,
+        "Rate Per Alumina": ratePerAlumina,
+      };
+    });
+
+    setData(processedRows);
     setLoading(false);
   };
 
