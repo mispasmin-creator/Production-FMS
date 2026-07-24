@@ -50,18 +50,15 @@ interface CrushingRecord {
     dateOfProduction: string;
     crushingProductName: string;
     inputQty: number;
+    processingCost: number;
     fg1Name: string;
     fg1Qty: number;
-    fg1Cost: number;
     fg2Name: string;
     fg2Qty: number;
-    fg2Cost: number;
     fg3Name: string;
     fg3Qty: number;
-    fg3Cost: number;
     fg4Name: string;
     fg4Qty: number;
-    fg4Cost: number;
     startingPhoto: string;
     endingPhoto: string;
     remarks: string;
@@ -80,6 +77,7 @@ const CRUSHING_COLUMNS_META = [
     { header: "Firm Name", dataKey: "firmName", alwaysVisible: true },
     { header: "Product", dataKey: "product", alwaysVisible: true },
     { header: "Input Qty", dataKey: "inputQty" },
+    { header: "Processing Cost", dataKey: "processingCost" },
     { header: "Output", dataKey: "output" },
     { header: "Machine Hours", dataKey: "machineHours" },
     { header: "Photos", dataKey: "photos" },
@@ -195,7 +193,7 @@ export default function Step5List() {
     const [submittedIds, setSubmittedIds] = useState<Set<number>>(new Set());
     
     // Inline edit states for Processing Cost
-    const [editingCostIndex, setEditingCostIndex] = useState<number | null>(null);
+    const [isEditingCost, setIsEditingCost] = useState(false);
     const [costInput, setCostInput] = useState("");
     const [savingCost, setSavingCost] = useState(false);
 
@@ -212,18 +210,15 @@ export default function Step5List() {
         dateOfProduction: format(new Date(), 'yyyy-MM-dd'),
         crushingProductName: '',
         inputQty: '',
+        processingCost: '',
         fg1Name: '',
         fg1Qty: '',
-        fg1Cost: '',
         fg2Name: '',
         fg2Qty: '',
-        fg2Cost: '',
         fg3Name: '',
         fg3Qty: '',
-        fg3Cost: '',
         fg4Name: '',
         fg4Qty: '',
-        fg4Cost: '',
         remarks: '',
         machineHours: '',
         firmName: '',
@@ -277,18 +272,15 @@ export default function Step5List() {
                 dateOfProduction: row['Date Of Production'] || '',
                 crushingProductName: row['Crushing Product Name'] || '',
                 inputQty: Number(row['Qty Of Crushing Product'] || 0),
+                processingCost: Number(row['Processing Cost'] || 0),
                 fg1Name: row['Finished Goods Name 1'] || '',
                 fg1Qty: Number(row['Qty 1'] || 0),
-                fg1Cost: Number(row['Processing Cost 1'] || 0),
                 fg2Name: row['Finished Goods Name 2'] || '',
                 fg2Qty: Number(row['Qty 2'] || 0),
-                fg2Cost: Number(row['Processing Cost 2'] || 0),
                 fg3Name: row['Finished Goods Name 3'] || '',
                 fg3Qty: Number(row['Qty 3'] || 0),
-                fg3Cost: Number(row['Processing Cost 3'] || 0),
                 fg4Name: row['Finished Goods Name 4'] || '',
                 fg4Qty: Number(row['Qty 4'] || 0),
-                fg4Cost: Number(row['Processing Cost 4'] || 0),
                 startingPhoto: row['Starting Reading Photo'] || '',
                 endingPhoto: row['Ending Reading Photo'] || '',
                 remarks: row['Remarks'] || '',
@@ -380,13 +372,9 @@ export default function Step5List() {
         
         if (!formData.crushingProductName) errors.crushingProductName = "Product name is required";
         if (!formData.inputQty || Number(formData.inputQty) <= 0) errors.inputQty = "Valid input quantity is required";
+        if (formData.processingCost === '' || Number(formData.processingCost) < 0) errors.processingCost = "Processing cost is required";
         if (!formData.machineHours || Number(formData.machineHours) <= 0) errors.machineHours = "Machine hours are required";
         if (user?.role === 'admin' && !formData.firmName) errors.firmName = "Firm name is required";
-        
-        if (formData.fg1Name && (!formData.fg1Cost || Number(formData.fg1Cost) <= 0)) errors.fg1Cost = "Processing Cost 1 is required";
-        if (formData.fg2Name && (!formData.fg2Cost || Number(formData.fg2Cost) <= 0)) errors.fg2Cost = "Processing Cost 2 is required";
-        if (formData.fg3Name && (!formData.fg3Cost || Number(formData.fg3Cost) <= 0)) errors.fg3Cost = "Processing Cost 3 is required";
-        if (formData.fg4Name && (!formData.fg4Cost || Number(formData.fg4Cost) <= 0)) errors.fg4Cost = "Processing Cost 4 is required";
 
         setFormErrors(errors);
         return Object.keys(errors).length === 0;
@@ -427,18 +415,15 @@ export default function Step5List() {
                     "Date Of Production": formData.dateOfProduction,
                     "Crushing Product Name": formData.crushingProductName,
                     "Qty Of Crushing Product": Number(formData.inputQty),
+                    "Processing Cost": Number(formData.processingCost) || 0,
                     "Finished Goods Name 1": formData.fg1Name || '',
                     "Qty 1": Number(formData.fg1Qty) || 0,
-                    "Processing Cost 1": Number(formData.fg1Cost) || 0,
                     "Finished Goods Name 2": formData.fg2Name || '',
                     "Qty 2": Number(formData.fg2Qty) || 0,
-                    "Processing Cost 2": Number(formData.fg2Cost) || 0,
                     "Finished Goods Name 3": formData.fg3Name || '',
                     "Qty 3": Number(formData.fg3Qty) || 0,
-                    "Processing Cost 3": Number(formData.fg3Cost) || 0,
                     "Finished Goods Name 4": formData.fg4Name || '',
                     "Qty 4": Number(formData.fg4Qty) || 0,
-                    "Processing Cost 4": Number(formData.fg4Cost) || 0,
                     "Starting Reading Photo": startPhotoUrl,
                     "Ending Reading Photo": endPhotoUrl,
                     "Remarks": formData.remarks || '',
@@ -458,18 +443,15 @@ export default function Step5List() {
                 dateOfProduction: format(new Date(), 'yyyy-MM-dd'),
                 crushingProductName: '',
                 inputQty: '',
+                processingCost: '',
                 fg1Name: '',
                 fg1Qty: '',
-                fg1Cost: '',
                 fg2Name: '',
                 fg2Qty: '',
-                fg2Cost: '',
                 fg3Name: '',
                 fg3Qty: '',
-                fg3Cost: '',
                 fg4Name: '',
                 fg4Qty: '',
-                fg4Cost: '',
                 remarks: '',
                 machineHours: '',
                 firmName: '',
@@ -487,34 +469,33 @@ export default function Step5List() {
         }
     };
 
-    const startEditCost = (index: number, currentCost: number) => {
-        setEditingCostIndex(index);
+    const startEditCost = (currentCost: number) => {
+        setIsEditingCost(true);
         setCostInput((currentCost || 0).toString());
     };
 
     const cancelEditCost = () => {
-        setEditingCostIndex(null);
+        setIsEditingCost(false);
         setCostInput("");
     };
 
-    const handleSaveCost = async (index: number) => {
+    const handleSaveCost = async () => {
         if (!selectedRecord) return;
         setSavingCost(true);
         try {
-            const costColumn = `Processing Cost ${index}`;
             const { error } = await supabase
                 .from('crushing_actual')
-                .update({ [costColumn]: Number(costInput) })
+                .update({ "Processing Cost": Number(costInput) })
                 .eq('id', selectedRecord._rowIndex);
 
             if (error) throw error;
 
-            const updatedRecord = { ...selectedRecord, [`fg${index}Cost`]: Number(costInput) };
+            const updatedRecord = { ...selectedRecord, processingCost: Number(costInput) };
             setSelectedRecord(updatedRecord as CrushingRecord);
             setCrushingRecords(prev => prev.map(r => r._rowIndex === selectedRecord._rowIndex ? updatedRecord as CrushingRecord : r));
             
-            setSuccessMessage(`Processing Cost ${index} updated successfully`);
-            setEditingCostIndex(null);
+            setSuccessMessage(`Processing Cost updated successfully`);
+            setIsEditingCost(false);
         } catch (err: any) {
             setError(err.message || "Failed to update cost");
         } finally {
@@ -558,16 +539,12 @@ export default function Step5List() {
                     "Qty Of Semi Finished Good": record.inputQty,
                     "Raw Material Name 1": record.fg1Name || null,
                     "Quantity Of Raw Material 1": record.fg1Qty || null,
-                    "Processing Cost 1": record.fg1Cost || null,
                     "Raw Material Name 2": record.fg2Name || null,
                     "Quantity Of Raw Material 2": record.fg2Qty || null,
-                    "Processing Cost 2": record.fg2Cost || null,
                     "Raw Material Name 3": record.fg3Name || null,
                     "Quantity Of Raw Material 3": record.fg3Qty || null,
-                    "Processing Cost 3": record.fg3Cost || null,
                     "Raw Material Name 4": record.fg4Name || null,
                     "Quantity Of Raw Material 4": record.fg4Qty || null,
-                    "Processing Cost 4": record.fg4Cost || null,
                     "S No.": `CR-${record._rowIndex}`,
                     "Starting Reading Photo": record.startingPhoto || null,
                     "Ending Reading Photo": record.endingPhoto || null,
@@ -780,6 +757,13 @@ export default function Step5List() {
                                                 </Badge>
                                             </TableCell>
 
+                                            {/* Processing Cost */}
+                                            <TableCell className="whitespace-nowrap">
+                                                <span className="text-sm font-semibold text-slate-800">
+                                                    ₹{record.processingCost || 0}
+                                                </span>
+                                            </TableCell>
+
                                             {/* Output */}
                                             <TableCell className="whitespace-nowrap">
                                                 <div className="space-y-1 max-w-[200px]">
@@ -787,7 +771,7 @@ export default function Step5List() {
                                                         <div className="text-xs truncate">
                                                             <span className="text-slate-500">1:</span>
                                                             <span className="ml-1 font-medium text-olive-600">
-                                                                {record.fg1Name} ({record.fg1Qty}) {record.fg1Cost ? `[₹${record.fg1Cost}]` : ''}
+                                                                {record.fg1Name} ({record.fg1Qty})
                                                             </span>
                                                         </div>
                                                     )}
@@ -795,7 +779,7 @@ export default function Step5List() {
                                                         <div className="text-xs truncate">
                                                             <span className="text-slate-500">2:</span>
                                                             <span className="ml-1 font-medium text-olive-600">
-                                                                {record.fg2Name} ({record.fg2Qty}) {record.fg2Cost ? `[₹${record.fg2Cost}]` : ''}
+                                                                {record.fg2Name} ({record.fg2Qty})
                                                             </span>
                                                         </div>
                                                     )}
@@ -803,7 +787,7 @@ export default function Step5List() {
                                                         <div className="text-xs truncate">
                                                             <span className="text-slate-500">3:</span>
                                                             <span className="ml-1 font-medium text-olive-600">
-                                                                {record.fg3Name} ({record.fg3Qty}) {record.fg3Cost ? `[₹${record.fg3Cost}]` : ''}
+                                                                {record.fg3Name} ({record.fg3Qty})
                                                             </span>
                                                         </div>
                                                     )}
@@ -811,7 +795,7 @@ export default function Step5List() {
                                                         <div className="text-xs truncate">
                                                             <span className="text-slate-500">4:</span>
                                                             <span className="ml-1 font-medium text-olive-600">
-                                                                {record.fg4Name} ({record.fg4Qty}) {record.fg4Cost ? `[₹${record.fg4Cost}]` : ''}
+                                                                {record.fg4Name} ({record.fg4Qty})
                                                             </span>
                                                         </div>
                                                     )}
@@ -981,6 +965,25 @@ export default function Step5List() {
                             )}
                         </div>
 
+                        {/* Processing Cost */}
+                        <div className="space-y-2">
+                            <Label htmlFor="processingCost">Processing Cost (₹) *</Label>
+                            <Input
+                                id="processingCost"
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={formData.processingCost}
+                                onChange={(e) => setFormData({ ...formData, processingCost: e.target.value })}
+                                placeholder="Enter processing cost"
+                                className={formErrors.processingCost ? "border-red-500" : ""}
+                                required
+                            />
+                            {formErrors.processingCost && (
+                                <p className="text-xs text-red-500">{formErrors.processingCost}</p>
+                            )}
+                        </div>
+
                         {/* Finished Goods Section */}
                         <div className="bg-olive-50/50 p-4 rounded-lg space-y-4">
                             <h4 className="text-sm font-semibold text-olive-700 flex items-center">
@@ -989,7 +992,7 @@ export default function Step5List() {
                             </h4>
 
                             {/* FG 1 */}
-                            <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="fg1Name">Finished Goods 1 Name</Label>
                                     <Select
@@ -1024,26 +1027,10 @@ export default function Step5List() {
                                         placeholder="0"
                                     />
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="fg1Cost">Processing Cost 1</Label>
-                                    <Input
-                                        id="fg1Cost"
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
-                                        value={formData.fg1Cost}
-                                        onChange={(e) => setFormData({ ...formData, fg1Cost: e.target.value })}
-                                        placeholder="0.00"
-                                        className={formErrors.fg1Cost ? "border-red-500" : ""}
-                                    />
-                                    {formErrors.fg1Cost && (
-                                        <p className="text-xs text-red-500">{formErrors.fg1Cost}</p>
-                                    )}
-                                </div>
                             </div>
 
                             {/* FG 2 */}
-                            <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="fg2Name">Finished Goods 2 Name</Label>
                                     <Select
@@ -1074,26 +1061,10 @@ export default function Step5List() {
                                         placeholder="0"
                                     />
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="fg2Cost">Processing Cost 2</Label>
-                                    <Input
-                                        id="fg2Cost"
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
-                                        value={formData.fg2Cost}
-                                        onChange={(e) => setFormData({ ...formData, fg2Cost: e.target.value })}
-                                        placeholder="0.00"
-                                        className={formErrors.fg2Cost ? "border-red-500" : ""}
-                                    />
-                                    {formErrors.fg2Cost && (
-                                        <p className="text-xs text-red-500">{formErrors.fg2Cost}</p>
-                                    )}
-                                </div>
                             </div>
 
                             {/* FG 3 */}
-                            <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="fg3Name">Finished Goods 3 Name</Label>
                                     <Select
@@ -1124,26 +1095,10 @@ export default function Step5List() {
                                         placeholder="0"
                                     />
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="fg3Cost">Processing Cost 3</Label>
-                                    <Input
-                                        id="fg3Cost"
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
-                                        value={formData.fg3Cost}
-                                        onChange={(e) => setFormData({ ...formData, fg3Cost: e.target.value })}
-                                        placeholder="0.00"
-                                        className={formErrors.fg3Cost ? "border-red-500" : ""}
-                                    />
-                                    {formErrors.fg3Cost && (
-                                        <p className="text-xs text-red-500">{formErrors.fg3Cost}</p>
-                                    )}
-                                </div>
                             </div>
 
                             {/* FG 4 */}
-                            <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="fg4Name">Finished Goods 4 Name</Label>
                                     <Select
@@ -1173,22 +1128,6 @@ export default function Step5List() {
                                         onChange={(e) => setFormData({ ...formData, fg4Qty: e.target.value })}
                                         placeholder="0"
                                     />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="fg4Cost">Processing Cost 4</Label>
-                                    <Input
-                                        id="fg4Cost"
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
-                                        value={formData.fg4Cost}
-                                        onChange={(e) => setFormData({ ...formData, fg4Cost: e.target.value })}
-                                        placeholder="0.00"
-                                        className={formErrors.fg4Cost ? "border-red-500" : ""}
-                                    />
-                                    {formErrors.fg4Cost && (
-                                        <p className="text-xs text-red-500">{formErrors.fg4Cost}</p>
-                                    )}
                                 </div>
                             </div>
                         </div>
@@ -1332,6 +1271,35 @@ export default function Step5List() {
                                     <p className="text-xs text-slate-400 font-medium">Timestamp</p>
                                     <p className="text-sm text-slate-600">{formatDisplayDate(selectedRecord.timestamp)}</p>
                                 </div>
+                                <div>
+                                    <p className="text-xs text-slate-400 font-medium">Processing Cost</p>
+                                    {isEditingCost ? (
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <Input
+                                                type="number"
+                                                step="0.01"
+                                                className="h-7 text-xs w-24"
+                                                value={costInput}
+                                                onChange={(e) => setCostInput(e.target.value)}
+                                            />
+                                            <Button size="sm" className="h-7 px-2 text-xs bg-olive-600 hover:bg-olive-700" onClick={handleSaveCost} disabled={savingCost}>
+                                                {savingCost ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+                                            </Button>
+                                            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={cancelEditCost} disabled={savingCost}>
+                                                <X className="h-3 w-3" />
+                                            </Button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <p className="text-sm font-semibold text-slate-700">₹{selectedRecord.processingCost || 0}</p>
+                                            {user?.role === 'admin' && (
+                                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-slate-400 hover:text-olive-600" onClick={() => startEditCost(selectedRecord.processingCost)}>
+                                                    <Edit2 className="h-3 w-3" />
+                                                </Button>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
                                 <div className="col-span-2">
                                     <p className="text-xs text-slate-400 font-medium">Product</p>
                                     <p className="text-base font-bold text-olive-600">{selectedRecord.crushingProductName}</p>
@@ -1355,161 +1323,33 @@ export default function Step5List() {
                                     {selectedRecord.fg1Name && (
                                         <div className="bg-white p-3 rounded border border-slate-100 shadow-sm">
                                             <p className="text-xs text-slate-400 font-medium mb-1">FG 1</p>
-                                            <div className="flex justify-between items-center">
-                                                <p className="text-sm text-slate-700">
-                                                    {selectedRecord.fg1Name}: <span className="font-semibold text-olive-600">{selectedRecord.fg1Qty}</span>
-                                                </p>
-                                            </div>
-                                            <div className="mt-2 pt-2 border-t border-slate-50 flex items-center justify-between">
-                                                {editingCostIndex === 1 ? (
-                                                    <div className="flex items-center gap-2 w-full">
-                                                        <Input
-                                                            type="number"
-                                                            step="0.01"
-                                                            className="h-7 text-xs w-20"
-                                                            value={costInput}
-                                                            onChange={(e) => setCostInput(e.target.value)}
-                                                        />
-                                                        <Button size="sm" className="h-7 px-2 text-xs bg-olive-600 hover:bg-olive-700" onClick={() => handleSaveCost(1)} disabled={savingCost}>
-                                                            {savingCost ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
-                                                        </Button>
-                                                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={cancelEditCost} disabled={savingCost}>
-                                                            <X className="h-3 w-3" />
-                                                        </Button>
-                                                    </div>
-                                                ) : (
-                                                    <>
-                                                        <p className="text-xs text-slate-500">
-                                                            Cost: <span className="font-medium text-slate-700">₹{selectedRecord.fg1Cost || 0}</span>
-                                                        </p>
-                                                        {user?.role === 'admin' && (
-                                                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-slate-400 hover:text-olive-600" onClick={() => startEditCost(1, selectedRecord.fg1Cost)}>
-                                                                <Edit2 className="h-3 w-3" />
-                                                            </Button>
-                                                        )}
-                                                    </>
-                                                )}
-                                            </div>
+                                            <p className="text-sm text-slate-700">
+                                                {selectedRecord.fg1Name}: <span className="font-semibold text-olive-600">{selectedRecord.fg1Qty}</span>
+                                            </p>
                                         </div>
                                     )}
                                     {selectedRecord.fg2Name && (
                                         <div className="bg-white p-3 rounded border border-slate-100 shadow-sm">
                                             <p className="text-xs text-slate-400 font-medium mb-1">FG 2</p>
-                                            <div className="flex justify-between items-center">
-                                                <p className="text-sm text-slate-700">
-                                                    {selectedRecord.fg2Name}: <span className="font-semibold text-olive-600">{selectedRecord.fg2Qty}</span>
-                                                </p>
-                                            </div>
-                                            <div className="mt-2 pt-2 border-t border-slate-50 flex items-center justify-between">
-                                                {editingCostIndex === 2 ? (
-                                                    <div className="flex items-center gap-2 w-full">
-                                                        <Input
-                                                            type="number"
-                                                            step="0.01"
-                                                            className="h-7 text-xs w-20"
-                                                            value={costInput}
-                                                            onChange={(e) => setCostInput(e.target.value)}
-                                                        />
-                                                        <Button size="sm" className="h-7 px-2 text-xs bg-olive-600 hover:bg-olive-700" onClick={() => handleSaveCost(2)} disabled={savingCost}>
-                                                            {savingCost ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
-                                                        </Button>
-                                                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={cancelEditCost} disabled={savingCost}>
-                                                            <X className="h-3 w-3" />
-                                                        </Button>
-                                                    </div>
-                                                ) : (
-                                                    <>
-                                                        <p className="text-xs text-slate-500">
-                                                            Cost: <span className="font-medium text-slate-700">₹{selectedRecord.fg2Cost || 0}</span>
-                                                        </p>
-                                                        {user?.role === 'admin' && (
-                                                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-slate-400 hover:text-olive-600" onClick={() => startEditCost(2, selectedRecord.fg2Cost)}>
-                                                                <Edit2 className="h-3 w-3" />
-                                                            </Button>
-                                                        )}
-                                                    </>
-                                                )}
-                                            </div>
+                                            <p className="text-sm text-slate-700">
+                                                {selectedRecord.fg2Name}: <span className="font-semibold text-olive-600">{selectedRecord.fg2Qty}</span>
+                                            </p>
                                         </div>
                                     )}
                                     {selectedRecord.fg3Name && (
                                         <div className="bg-white p-3 rounded border border-slate-100 shadow-sm">
                                             <p className="text-xs text-slate-400 font-medium mb-1">FG 3</p>
-                                            <div className="flex justify-between items-center">
-                                                <p className="text-sm text-slate-700">
-                                                    {selectedRecord.fg3Name}: <span className="font-semibold text-olive-600">{selectedRecord.fg3Qty}</span>
-                                                </p>
-                                            </div>
-                                            <div className="mt-2 pt-2 border-t border-slate-50 flex items-center justify-between">
-                                                {editingCostIndex === 3 ? (
-                                                    <div className="flex items-center gap-2 w-full">
-                                                        <Input
-                                                            type="number"
-                                                            step="0.01"
-                                                            className="h-7 text-xs w-20"
-                                                            value={costInput}
-                                                            onChange={(e) => setCostInput(e.target.value)}
-                                                        />
-                                                        <Button size="sm" className="h-7 px-2 text-xs bg-olive-600 hover:bg-olive-700" onClick={() => handleSaveCost(3)} disabled={savingCost}>
-                                                            {savingCost ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
-                                                        </Button>
-                                                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={cancelEditCost} disabled={savingCost}>
-                                                            <X className="h-3 w-3" />
-                                                        </Button>
-                                                    </div>
-                                                ) : (
-                                                    <>
-                                                        <p className="text-xs text-slate-500">
-                                                            Cost: <span className="font-medium text-slate-700">₹{selectedRecord.fg3Cost || 0}</span>
-                                                        </p>
-                                                        {user?.role === 'admin' && (
-                                                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-slate-400 hover:text-olive-600" onClick={() => startEditCost(3, selectedRecord.fg3Cost)}>
-                                                                <Edit2 className="h-3 w-3" />
-                                                            </Button>
-                                                        )}
-                                                    </>
-                                                )}
-                                            </div>
+                                            <p className="text-sm text-slate-700">
+                                                {selectedRecord.fg3Name}: <span className="font-semibold text-olive-600">{selectedRecord.fg3Qty}</span>
+                                            </p>
                                         </div>
                                     )}
                                     {selectedRecord.fg4Name && (
                                         <div className="bg-white p-3 rounded border border-slate-100 shadow-sm">
                                             <p className="text-xs text-slate-400 font-medium mb-1">FG 4</p>
-                                            <div className="flex justify-between items-center">
-                                                <p className="text-sm text-slate-700">
-                                                    {selectedRecord.fg4Name}: <span className="font-semibold text-olive-600">{selectedRecord.fg4Qty}</span>
-                                                </p>
-                                            </div>
-                                            <div className="mt-2 pt-2 border-t border-slate-50 flex items-center justify-between">
-                                                {editingCostIndex === 4 ? (
-                                                    <div className="flex items-center gap-2 w-full">
-                                                        <Input
-                                                            type="number"
-                                                            step="0.01"
-                                                            className="h-7 text-xs w-20"
-                                                            value={costInput}
-                                                            onChange={(e) => setCostInput(e.target.value)}
-                                                        />
-                                                        <Button size="sm" className="h-7 px-2 text-xs bg-olive-600 hover:bg-olive-700" onClick={() => handleSaveCost(4)} disabled={savingCost}>
-                                                            {savingCost ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
-                                                        </Button>
-                                                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={cancelEditCost} disabled={savingCost}>
-                                                            <X className="h-3 w-3" />
-                                                        </Button>
-                                                    </div>
-                                                ) : (
-                                                    <>
-                                                        <p className="text-xs text-slate-500">
-                                                            Cost: <span className="font-medium text-slate-700">₹{selectedRecord.fg4Cost || 0}</span>
-                                                        </p>
-                                                        {user?.role === 'admin' && (
-                                                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-slate-400 hover:text-olive-600" onClick={() => startEditCost(4, selectedRecord.fg4Cost)}>
-                                                                <Edit2 className="h-3 w-3" />
-                                                            </Button>
-                                                        )}
-                                                    </>
-                                                )}
-                                            </div>
+                                            <p className="text-sm text-slate-700">
+                                                {selectedRecord.fg4Name}: <span className="font-semibold text-olive-600">{selectedRecord.fg4Qty}</span>
+                                            </p>
                                         </div>
                                     )}
                                     {!selectedRecord.fg1Name && !selectedRecord.fg2Name && !selectedRecord.fg3Name && !selectedRecord.fg4Name && (
