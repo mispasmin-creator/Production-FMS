@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/dialog";
 import { supabase } from "@/lib/supabase";
 import { useAuth, FIRM_MAP } from "@/lib/auth";
+import KycProductTable from "@/components/KycProductTable";
 
 interface KycRecord {
   id: number;
@@ -431,6 +432,9 @@ export default function KycPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* ── Real-Time Product Quality Table (LIFT-ACCOUNTS) ── */}
+      <KycProductTable />
 
       {/* ── Add Dialog ── */}
       <Dialog open={addOpen} onOpenChange={(o) => !o && closeAdd()}>
