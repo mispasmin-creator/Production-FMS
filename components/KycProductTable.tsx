@@ -550,9 +550,22 @@ export default function KycProductTable() {
       list.push(newEntry);
       localStorage.setItem("custom_kyc_products", JSON.stringify(list));
 
-      // Attempt async insert into Supabase if table exists
+      // Attempt async insert into Supabase master 'kyc' table & 'custom_kyc_products' table
       (async () => {
         try {
+          const totalRate = (Number(newEntry.baseRate) || 0) + (Number(newEntry.transportRate) || 0);
+          const firmOrderName = `${newEntry.firmName.toUpperCase()} ORDER`;
+
+          await prodSupabase.from("kyc").insert([{
+            "Product name": newEntry.productName,
+            "Firm Name": firmOrderName,
+            "Alumina": Number(newEntry.alumina) || null,
+            "Iron": Number(newEntry.iron) || null,
+            "Bd": Number(newEntry.bd) || null,
+            "Ap": Number(newEntry.ap) || null,
+            "Price": totalRate > 0 ? totalRate : null,
+          }]);
+
           await prodSupabase.from("custom_kyc_products").insert([{
             firm_name: newEntry.firmName,
             product_name: newEntry.productName,
@@ -563,7 +576,9 @@ export default function KycProductTable() {
             base_rate: Number(newEntry.baseRate) || 0,
             transport_rate: Number(newEntry.transportRate) || 0,
           }]);
-        } catch (e) {}
+        } catch (e) {
+          console.error("Error inserting into kyc table:", e);
+        }
       })();
 
       // Reset form & close modal

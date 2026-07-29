@@ -1088,6 +1088,39 @@ export default function CheckPage() {
         }
       });
 
+      // Merge Custom Products from localStorage
+      try {
+        const storedCustom = typeof window !== "undefined" ? localStorage.getItem("custom_kyc_products") : null;
+        if (storedCustom) {
+          const parsedCustom = JSON.parse(storedCustom);
+          if (Array.isArray(parsedCustom)) {
+            parsedCustom.forEach((item: any) => {
+              if (item.productName && item.firmName) {
+                const key = `${normFirm(item.firmName)}___${normProd(item.productName)}`;
+                if (!recordMap.has(key)) {
+                  const baseRate = Number(item.baseRate) || 0;
+                  const transportRate = Number(item.transportRate) || 0;
+                  const calcPrice = baseRate + transportRate;
+
+                  recordMap.set(key, {
+                    id: idxCounter++,
+                    productName: item.productName,
+                    alumina: item.alumina != null && item.alumina !== "" ? Number(item.alumina) : null,
+                    iron: item.iron != null && item.iron !== "" ? Number(item.iron) : null,
+                    bd: item.bd != null && item.bd !== "" ? Number(item.bd) : null,
+                    ap: item.ap != null && item.ap !== "" ? Number(item.ap) : null,
+                    price: calcPrice > 0 ? calcPrice : null,
+                    firmName: item.firmName,
+                    baseRate,
+                    transportRate,
+                  });
+                }
+              }
+            });
+          }
+        }
+      } catch (e) {}
+
       const products: KycProduct[] = [];
       for (const rec of recordMap.values()) {
         products.push({
