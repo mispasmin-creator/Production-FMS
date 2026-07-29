@@ -15,7 +15,7 @@ export default function KycPage() {
             KYC
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Real-time product quality parameters & calculated rates from Purchase-FMS.
+            Real-time product quality parameters & calculated rates from Purchase-FMS. 
           </p>
         </div>
       </div>
