@@ -18,7 +18,7 @@ export default function KycPage() {
             Real-time product quality parameters & calculated rates from Purchase-FMS. 
           </p>
         </div>
-      </div>
+      </div> 
 
       {/* ── Real-Time Product Quality Table (LIFT-ACCOUNTS) ── */}
       <KycProductTable />
