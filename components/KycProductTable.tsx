@@ -609,8 +609,21 @@ export default function KycProductTable() {
             !(normFirm(item.firmName) === normFirm(firmName) && normProd(item.productName) === normProd(productName))
         );
         localStorage.setItem("custom_kyc_products", JSON.stringify(filtered));
-        fetchData();
       }
+
+      // Also delete from Supabase master 'kyc' table
+      (async () => {
+        try {
+          await prodSupabase
+            .from("kyc")
+            .delete()
+            .ilike("Product name", productName);
+        } catch (e) {
+          console.error("Error deleting from kyc table:", e);
+        }
+      })();
+
+      fetchData();
     } catch (err) {
       console.error("Error deleting custom product:", err);
     }
