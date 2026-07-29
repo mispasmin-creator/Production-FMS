@@ -22,7 +22,7 @@ import {
 import { format } from "date-fns";
 import { supabase, dispatchSupabase, purchaseSupabase } from "@/lib/supabase";
 import { useAuth, FIRM_MAP } from "@/lib/auth";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils"; 
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/components/ui/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
