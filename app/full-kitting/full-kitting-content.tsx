@@ -1094,7 +1094,7 @@ export default function CheckPage() {
         if (storedCustom) {
           const parsedCustom = JSON.parse(storedCustom);
           if (Array.isArray(parsedCustom)) {
-            parsedCustom.forEach((item: any) => {
+            parsedCustom.forEach((item: any) => { 
               if (item.productName && item.firmName) {
                 const key = `${normFirm(item.firmName)}___${normProd(item.productName)}`;
                 if (!recordMap.has(key)) {
