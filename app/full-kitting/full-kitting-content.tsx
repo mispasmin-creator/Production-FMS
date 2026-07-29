@@ -932,13 +932,6 @@ export default function CheckPage() {
           }
         }
 
-        for (const [k, v] of recordMap.entries()) {
-          const pNameInMap = k.split("___")[1].replace(/\s+/g, "").replace("lumps", "").replace("slag", "");
-          if (pNameInMap === cleanP || pNameInMap === fgBase) {
-            return v;
-          }
-        }
-
         return null;
       };
 
