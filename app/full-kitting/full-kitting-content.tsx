@@ -16,10 +16,7 @@ import {
   Edit,
   Zap,
   ChevronsUpDown,
-  Calculator,
-  Trash2,
-  RotateCcw,
-  Sparkles,
+  History as HistoryIcon,
 } from "lucide-react";
 import { format } from "date-fns";
 import { supabase, dispatchSupabase, purchaseSupabase } from "@/lib/supabase";
@@ -244,6 +241,8 @@ export default function CheckPage() {
   );
   const [selectedHistoryItem, setSelectedHistoryItem] =
     useState<CostingHistoryItem | null>(null);
+  const [viewingPrevCostingItem, setViewingPrevCostingItem] =
+    useState<CostingHistoryItem | null>(null);
   const [kittingFormRows, setKittingFormRows] = useState<KittingFormRow[]>([]);
   const [openPopoverId, setOpenPopoverId] = useState<number | null>(null);
   const [materialSearchQuery, setMaterialSearchQuery] = useState("");
@@ -351,87 +350,6 @@ export default function CheckPage() {
   const [visibleHistoryColumns, setVisibleHistoryColumns] = useState<
     Record<string, boolean>
   >({});
-
-  // ── Preview Costing Sandbox State ──
-  const [previewFirm, setPreviewFirm] = useState<string>("Purab");
-  const [previewManufacturingCost, setPreviewManufacturingCost] = useState<number>(1500);
-  const [previewRows, setPreviewRows] = useState<KittingFormRow[]>([
-    { id: 1, productName: "", percentage: "", baseAlumina: 0, baseIron: 0, baseBd: 0, baseAp: 0, basePrice: 0, al: 0, fe: 0, bd: 0, ap: 0, cost: 0 },
-    { id: 2, productName: "", percentage: "", baseAlumina: 0, baseIron: 0, baseBd: 0, baseAp: 0, basePrice: 0, al: 0, fe: 0, bd: 0, ap: 0, cost: 0 },
-    { id: 3, productName: "", percentage: "", baseAlumina: 0, baseIron: 0, baseBd: 0, baseAp: 0, basePrice: 0, al: 0, fe: 0, bd: 0, ap: 0, cost: 0 },
-    { id: 4, productName: "", percentage: "", baseAlumina: 0, baseIron: 0, baseBd: 0, baseAp: 0, basePrice: 0, al: 0, fe: 0, bd: 0, ap: 0, cost: 0 },
-  ]);
-
-  const handlePreviewRowChange = (id: number, field: "productName" | "percentage" | "basePrice", value: string) => {
-    setPreviewRows(prev => prev.map(row => {
-      if (row.id !== id) return row;
-      let newProd = row.productName;
-      let newPctStr = row.percentage;
-      let newBasePrice = row.basePrice;
-
-      if (field === "productName") newProd = value;
-      if (field === "percentage") newPctStr = value;
-      if (field === "basePrice") newBasePrice = parseFloat(value) || 0;
-
-      const productData = findKycProduct(newProd, previewFirm);
-      const bAl = productData ? productData.alumina : row.baseAlumina;
-      const bFe = productData ? productData.iron : row.baseIron;
-      const bBd = productData ? productData.bd : row.baseBd;
-      const bAp = productData ? productData.ap : row.baseAp;
-      if (field === "productName") {
-        newBasePrice = productData ? productData.price : 0;
-      }
-
-      const pct = parseFloat(newPctStr) || 0;
-      return {
-        ...row,
-        productName: newProd,
-        percentage: newPctStr,
-        baseAlumina: bAl,
-        baseIron: bFe,
-        baseBd: bBd,
-        baseAp: bAp,
-        basePrice: newBasePrice,
-        al: (bAl * pct) / 100,
-        fe: (bFe * pct) / 100,
-        bd: (bBd * pct) / 100,
-        ap: (bAp * pct) / 100,
-        cost: (newBasePrice * pct) / 100,
-      };
-    }));
-  };
-
-  const addPreviewRow = () => {
-    if (previewRows.length < 20) {
-      setPreviewRows(prev => [
-        ...prev,
-        { id: (prev[prev.length - 1]?.id || 0) + 1, productName: "", percentage: "", baseAlumina: 0, baseIron: 0, baseBd: 0, baseAp: 0, basePrice: 0, al: 0, fe: 0, bd: 0, ap: 0, cost: 0 }
-      ]);
-    }
-  };
-
-  const removePreviewRow = (id: number) => {
-    if (previewRows.length > 1) {
-      setPreviewRows(prev => prev.filter(r => r.id !== id));
-    }
-  };
-
-  const resetPreviewRows = () => {
-    setPreviewRows([
-      { id: 1, productName: "", percentage: "", baseAlumina: 0, baseIron: 0, baseBd: 0, baseAp: 0, basePrice: 0, al: 0, fe: 0, bd: 0, ap: 0, cost: 0 },
-      { id: 2, productName: "", percentage: "", baseAlumina: 0, baseIron: 0, baseBd: 0, baseAp: 0, basePrice: 0, al: 0, fe: 0, bd: 0, ap: 0, cost: 0 },
-      { id: 3, productName: "", percentage: "", baseAlumina: 0, baseIron: 0, baseBd: 0, baseAp: 0, basePrice: 0, al: 0, fe: 0, bd: 0, ap: 0, cost: 0 },
-      { id: 4, productName: "", percentage: "", baseAlumina: 0, baseIron: 0, baseBd: 0, baseAp: 0, basePrice: 0, al: 0, fe: 0, bd: 0, ap: 0, cost: 0 },
-    ]);
-  };
-
-  const previewTotalPct = useMemo(() => previewRows.reduce((acc, r) => acc + (parseFloat(r.percentage) || 0), 0), [previewRows]);
-  const previewTotalAl = useMemo(() => previewRows.reduce((acc, r) => acc + r.al, 0), [previewRows]);
-  const previewTotalFe = useMemo(() => previewRows.reduce((acc, r) => acc + r.fe, 0), [previewRows]);
-  const previewTotalBd = useMemo(() => previewRows.reduce((acc, r) => acc + r.bd, 0), [previewRows]);
-  const previewTotalAp = useMemo(() => previewRows.reduce((acc, r) => acc + r.ap, 0), [previewRows]);
-  const previewSubtotalCost = useMemo(() => previewRows.reduce((acc, r) => acc + r.cost, 0), [previewRows]);
-  const previewFinalTotalCost = useMemo(() => previewSubtotalCost + (previewManufacturingCost || 0), [previewSubtotalCost, previewManufacturingCost]);
 
   // Initialize column visibility
   useEffect(() => {
@@ -1910,8 +1828,14 @@ export default function CheckPage() {
                     {filteredHistoryChecks.length}
                   </Badge>
                 </TabsTrigger>
-                <TabsTrigger value="preview-costing" className="flex items-center gap-2 font-medium text-emerald-700 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
-                  <Calculator className="h-4 w-4" /> Preview Costing
+                <TabsTrigger value="prev-costing" className="flex items-center gap-2">
+                  <HistoryIcon className="h-4 w-4 text-indigo-600" /> Prev Costing
+                  <Badge
+                    variant="secondary"
+                    className="ml-1 px-1.5 py-0.5 text-xs"
+                  >
+                    {filteredHistoryChecks.length}
+                  </Badge>
                 </TabsTrigger>
               </TabsList>
 
@@ -2291,224 +2215,71 @@ export default function CheckPage() {
               </Card>
             </TabsContent>
 
-            {/* ──── PREVIEW COSTING SANDBOX TAB ──── */}
-            <TabsContent value="preview-costing" className="mt-4">
-              <Card className="border shadow-md rounded-xl bg-white overflow-hidden">
-                <CardHeader className="bg-slate-50/80 border-b pb-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div>
-                      <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                        <Calculator className="h-5 w-5 text-emerald-600" />
-                        Raw Materials Composition Sandbox (Trial Costing)
-                      </CardTitle>
-                      <CardDescription className="text-sm text-slate-500 mt-1">
-                        Select raw materials, adjust percentage ratios, and preview calculated chemical composition & blend cost in real-time.
-                      </CardDescription>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs">
-                        <span className="text-slate-500 font-medium">Target Firm:</span>
-                        <Select value={previewFirm} onValueChange={setPreviewFirm}>
-                          <SelectTrigger className="h-7 w-24 border-none p-0 text-xs font-semibold text-slate-800 shadow-none focus:ring-0">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Purab">Purab</SelectItem>
-                            <SelectItem value="PMM">PMM</SelectItem>
-                            <SelectItem value="RKL">RKL</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={resetPreviewRows}
-                        className="h-8 text-xs text-slate-600 hover:text-slate-900"
-                      >
-                        <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        onClick={addPreviewRow}
-                        className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
-                      >
-                        <Plus className="h-3.5 w-3.5 mr-1" /> Add Row
-                      </Button>
-                    </div>
-                  </div>
+            {/* ──── Prev Costing Tab Content ──── */}
+            <TabsContent value="prev-costing">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <HistoryIcon className="h-5 w-5 text-indigo-600" />
+                    Previous Costing & Raw Materials Composition
+                  </CardTitle>
+                  <CardDescription>
+                    Inspect and review past saved compositions and their raw material costing breakdowns.
+                  </CardDescription>
                 </CardHeader>
-
-                <CardContent className="p-4 sm:p-6 space-y-6">
-                  {/* Composition Table */}
-                  <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-sm">
-                    <Table className="w-full text-xs">
-                      <TableHeader className="bg-slate-100/80">
+                <CardContent className="p-0">
+                  <div className="relative max-h-[600px] overflow-auto rounded-lg border">
+                    <Table className="min-w-max">
+                      <TableHeader className="bg-slate-100 sticky top-0 z-10">
                         <TableRow>
-                          <TableHead className="w-10 text-center font-bold">#</TableHead>
-                          <TableHead className="min-w-[220px] font-bold">Raw Material Product</TableHead>
-                          <TableHead className="text-right font-bold">Base AL (%)</TableHead>
-                          <TableHead className="text-right font-bold">Base FE (%)</TableHead>
-                          <TableHead className="text-right font-bold">Base BD</TableHead>
-                          <TableHead className="text-right font-bold">Base AP</TableHead>
-                          <TableHead className="text-right font-bold text-amber-900 bg-amber-100/60 min-w-[90px]">
-                            % (Input)
-                          </TableHead>
-                          <TableHead className="text-right font-bold text-slate-700 min-w-[100px]">Price (₹/MT)</TableHead>
-                          <TableHead className="text-right font-bold text-emerald-800 bg-emerald-50/50">AL (Calc)</TableHead>
-                          <TableHead className="text-right font-bold text-emerald-800 bg-emerald-50/50">FE (Calc)</TableHead>
-                          <TableHead className="text-right font-bold text-emerald-800 bg-emerald-50/50">BD (Calc)</TableHead>
-                          <TableHead className="text-right font-bold text-emerald-800 bg-emerald-50/50">AP (Calc)</TableHead>
-                          <TableHead className="text-right font-bold text-emerald-900 bg-emerald-100/60 min-w-[110px]">Cost (₹)</TableHead>
-                          <TableHead className="w-12 text-center font-bold">Action</TableHead>
+                          <TableHead className="font-semibold text-slate-700">Timestamp</TableHead>
+                          <TableHead className="font-semibold text-slate-700">Firm</TableHead>
+                          <TableHead className="font-semibold text-slate-700">Composition No.</TableHead>
+                          <TableHead className="font-semibold text-slate-700">Order No.</TableHead>
+                          <TableHead className="font-semibold text-slate-700">Product Name</TableHead>
+                          <TableHead className="font-semibold text-slate-700">Party Name</TableHead>
+                          <TableHead className="font-semibold text-slate-700 text-right">Alumina (%)</TableHead>
+                          <TableHead className="font-semibold text-slate-700 text-right">Iron (%)</TableHead>
+                          <TableHead className="font-semibold text-slate-700 text-right">BD</TableHead>
+                          <TableHead className="font-semibold text-slate-700 text-right">AP</TableHead>
+                          <TableHead className="font-semibold text-slate-700 text-center">Costing Preview</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {previewRows.map((row, idx) => {
-                          const availProducts = filteredKycProducts.length > 0 ? filteredKycProducts : kycProducts;
-                          return (
-                            <TableRow key={row.id} className="hover:bg-slate-50/60 transition-colors">
-                              <TableCell className="text-center font-medium text-slate-400">{idx + 1}</TableCell>
-                              
-                              {/* Product Selector */}
-                              <TableCell>
-                                <Select
-                                  value={row.productName}
-                                  onValueChange={(val) => handlePreviewRowChange(row.id, "productName", val)}
-                                >
-                                  <SelectTrigger className="h-8 text-xs border-slate-200 bg-white">
-                                    <SelectValue placeholder="Select raw material..." />
-                                  </SelectTrigger>
-                                  <SelectContent className="max-h-60">
-                                    {availProducts.map((p, pIdx) => (
-                                      <SelectItem key={pIdx} value={p.productName} className="text-xs">
-                                        {p.productName} ({p.firmName || "All"})
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </TableCell>
-
-                              {/* Base Specs */}
-                              <TableCell className="text-right font-mono text-slate-600">{row.baseAlumina ? row.baseAlumina.toFixed(2) : "-"}</TableCell>
-                              <TableCell className="text-right font-mono text-slate-600">{row.baseIron ? row.baseIron.toFixed(2) : "-"}</TableCell>
-                              <TableCell className="text-right font-mono text-slate-600">{row.baseBd ? row.baseBd.toFixed(2) : "-"}</TableCell>
-                              <TableCell className="text-right font-mono text-slate-600">{row.baseAp ? row.baseAp.toFixed(2) : "-"}</TableCell>
-
-                              {/* % Input */}
-                              <TableCell className="bg-amber-50/40 p-1">
-                                <Input
-                                  type="number"
-                                  placeholder="0"
-                                  value={row.percentage}
-                                  onChange={(e) => handlePreviewRowChange(row.id, "percentage", e.target.value)}
-                                  className="h-8 text-right font-bold text-amber-900 border-amber-300 focus:border-amber-500 focus:ring-amber-500 bg-white text-xs"
-                                />
-                              </TableCell>
-
-                              {/* Base Price */}
-                              <TableCell className="p-1">
-                                <Input
-                                  type="number"
-                                  placeholder="0"
-                                  value={row.basePrice || ""}
-                                  onChange={(e) => handlePreviewRowChange(row.id, "basePrice", e.target.value)}
-                                  className="h-8 text-right font-mono text-slate-800 border-slate-200 bg-white text-xs"
-                                />
-                              </TableCell>
-
-                              {/* Live Calculations */}
-                              <TableCell className="text-right font-mono font-semibold text-emerald-700 bg-emerald-50/30">{row.al ? row.al.toFixed(4) : "-"}</TableCell>
-                              <TableCell className="text-right font-mono font-semibold text-emerald-700 bg-emerald-50/30">{row.fe ? row.fe.toFixed(4) : "-"}</TableCell>
-                              <TableCell className="text-right font-mono font-semibold text-emerald-700 bg-emerald-50/30">{row.bd ? row.bd.toFixed(4) : "-"}</TableCell>
-                              <TableCell className="text-right font-mono font-semibold text-emerald-700 bg-emerald-50/30">{row.ap ? row.ap.toFixed(4) : "-"}</TableCell>
-
-                              <TableCell className="text-right font-mono font-bold text-emerald-900 bg-emerald-100/40">
-                                {row.cost ? `₹${row.cost.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : "-"}
-                              </TableCell>
-
-                              <TableCell className="text-center p-1">
+                        {filteredHistoryChecks.length > 0 ? (
+                          filteredHistoryChecks.map((item) => (
+                            <TableRow key={item.id} className="hover:bg-slate-50 transition-colors">
+                              <TableCell className="text-xs text-slate-500 font-mono">{item.timestamp || "-"}</TableCell>
+                              <TableCell className="font-medium text-slate-700">{item.firmName || "-"}</TableCell>
+                              <TableCell className="font-bold text-indigo-600 font-mono">{item.compositionNo || "-"}</TableCell>
+                              <TableCell className="font-semibold text-slate-800">{item.orderNo || "-"}</TableCell>
+                              <TableCell className="font-medium text-slate-800">{item.productName || "-"}</TableCell>
+                              <TableCell className="text-slate-600">{item.partyName || "-"}</TableCell>
+                              <TableCell className="text-right font-mono font-semibold text-emerald-700">{item.alumina ? item.alumina.toFixed(4) : "-"}</TableCell>
+                              <TableCell className="text-right font-mono font-semibold text-blue-700">{item.iron ? item.iron.toFixed(4) : "-"}</TableCell>
+                              <TableCell className="text-right font-mono text-slate-700">{item.bd ? item.bd.toFixed(4) : "-"}</TableCell>
+                              <TableCell className="text-right font-mono text-slate-700">{item.ap ? item.ap.toFixed(4) : "-"}</TableCell>
+                              <TableCell className="text-center">
                                 <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => removePreviewRow(row.id)}
-                                  disabled={previewRows.length <= 1}
-                                  className="h-7 w-7 text-slate-400 hover:text-red-600 hover:bg-red-50"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setViewingPrevCostingItem(item)}
+                                  className="h-8 px-3 rounded-lg border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition-colors flex items-center gap-1.5 font-medium mx-auto"
                                 >
-                                  <Trash2 className="h-3.5 w-3.5" />
+                                  <Eye className="h-3.5 w-3.5" /> View Costing
                                 </Button>
                               </TableCell>
                             </TableRow>
-                          );
-                        })}
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={11} className="h-24 text-center text-slate-400">
+                              No previous costing items found.
+                            </TableCell>
+                          </TableRow>
+                        )}
                       </TableBody>
                     </Table>
-                  </div>
-
-                  {/* Summary Totals & Manufacturing Cost Section */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                    {/* Left Stats Card */}
-                    <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-slate-500 font-medium">Total Quantity (%):</span>
-                        <span className={cn("font-bold text-sm", Math.abs(previewTotalPct - 100) < 0.01 ? "text-emerald-600" : "text-amber-600")}>
-                          {previewTotalPct.toFixed(2)}%
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-slate-500 font-medium">Calculated Alumina:</span>
-                        <span className="font-mono font-bold text-slate-800">{previewTotalAl.toFixed(4)}%</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-slate-500 font-medium">Calculated Iron:</span>
-                        <span className="font-mono font-bold text-slate-800">{previewTotalFe.toFixed(4)}%</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-slate-500 font-medium">Calculated BD / AP:</span>
-                        <span className="font-mono text-slate-700">{previewTotalBd.toFixed(3)} / {previewTotalAp.toFixed(3)}</span>
-                      </div>
-                    </div>
-
-                    {/* Middle Manufacturing Cost Input */}
-                    <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/30 flex flex-col justify-between">
-                      <div>
-                        <label className="text-xs font-bold text-amber-900 block mb-1">
-                          + Manufacturing Cost (₹/MT)
-                        </label>
-                        <p className="text-[11px] text-amber-700/80 mb-2">
-                          Add processing & operational cost per MT
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-amber-900">₹</span>
-                        <Input
-                          type="number"
-                          value={previewManufacturingCost}
-                          onChange={(e) => setPreviewManufacturingCost(parseFloat(e.target.value) || 0)}
-                          className="h-9 font-mono font-bold text-amber-900 bg-white border-amber-300 focus:ring-amber-500"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Right Final Total Cost Highlight */}
-                    <div className="p-4 rounded-xl border border-emerald-300 bg-emerald-900 text-white flex flex-col justify-between shadow-sm">
-                      <div>
-                        <span className="text-xs font-semibold text-emerald-200 uppercase tracking-wider block">
-                          Preview Total Blend Cost
-                        </span>
-                        <p className="text-[11px] text-emerald-300/80">
-                          Raw Material Subtotal + Manufacturing Cost
-                        </p>
-                      </div>
-                      <div className="mt-3">
-                        <span className="text-2xl font-black font-mono tracking-tight">
-                          ₹{previewFinalTotalCost.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                        </span>
-                        <span className="text-xs text-emerald-200 ml-1">/ MT</span>
-                      </div>
-                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -2516,6 +2287,129 @@ export default function CheckPage() {
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* ──── Prev Costing Read-Only Preview Dialog ──── */}
+      <Dialog open={!!viewingPrevCostingItem} onOpenChange={() => setViewingPrevCostingItem(null)}>
+        <DialogContent className="max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6 bg-white rounded-3xl shadow-2xl">
+          <DialogHeader className="pb-3 border-b border-slate-100">
+            <DialogTitle className="text-lg font-bold flex items-center gap-2 text-slate-900">
+              <HistoryIcon className="h-5 w-5 text-indigo-600" />
+              Raw Materials Composition Costing — {viewingPrevCostingItem?.compositionNo || "Previous Costing"}
+            </DialogTitle>
+            <DialogDescription>
+              Read-only inspection of saved raw material composition and costing breakdown.
+            </DialogDescription>
+          </DialogHeader>
+
+          {viewingPrevCostingItem && (
+            <div className="space-y-6 mt-4">
+              {/* Order Info Bar */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm">
+                <div>
+                  <span className="text-xs text-slate-500 font-medium block">Order No</span>
+                  <span className="font-semibold text-slate-800">{viewingPrevCostingItem.orderNo || "-"}</span>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-500 font-medium block">Product Name</span>
+                  <span className="font-semibold text-slate-800">{viewingPrevCostingItem.productName || "-"}</span>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-500 font-medium block">Party Name</span>
+                  <span className="font-semibold text-slate-800">{viewingPrevCostingItem.partyName || "-"}</span>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-500 font-medium block">Firm Name</span>
+                  <span className="font-semibold text-slate-800">{viewingPrevCostingItem.firmName || "-"}</span>
+                </div>
+              </div>
+
+              {/* Specs Summary Grid */}
+              <div className="grid grid-cols-4 gap-3 text-center">
+                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100">
+                  <span className="text-xs text-emerald-600 font-medium block">Alumina (AL)</span>
+                  <span className="text-base font-bold text-emerald-800">{viewingPrevCostingItem.alumina ? viewingPrevCostingItem.alumina.toFixed(4) : "-"}%</span>
+                </div>
+                <div className="p-3 bg-blue-50 rounded-xl border border-blue-100">
+                  <span className="text-xs text-blue-600 font-medium block">Iron (FE)</span>
+                  <span className="text-base font-bold text-blue-800">{viewingPrevCostingItem.iron ? viewingPrevCostingItem.iron.toFixed(4) : "-"}%</span>
+                </div>
+                <div className="p-3 bg-purple-50 rounded-xl border border-purple-100">
+                  <span className="text-xs text-purple-600 font-medium block">BD</span>
+                  <span className="text-base font-bold text-purple-800">{viewingPrevCostingItem.bd ? viewingPrevCostingItem.bd.toFixed(4) : "-"}</span>
+                </div>
+                <div className="p-3 bg-amber-50 rounded-xl border border-amber-100">
+                  <span className="text-xs text-amber-600 font-medium block">AP</span>
+                  <span className="text-base font-bold text-amber-800">{viewingPrevCostingItem.ap ? viewingPrevCostingItem.ap.toFixed(4) : "-"}</span>
+                </div>
+              </div>
+
+              {/* Raw Materials Table */}
+              <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                <Table>
+                  <TableHeader className="bg-slate-100">
+                    <TableRow>
+                      <TableHead className="w-12 text-center">#</TableHead>
+                      <TableHead>Raw Material Name</TableHead>
+                      <TableHead className="text-right">Quantity (%)</TableHead>
+                      <TableHead className="text-right">Unit Rate (₹/MT)</TableHead>
+                      <TableHead className="text-right">Calculated Cost (₹/MT)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {viewingPrevCostingItem.rawMaterials.map((matName, idx) => {
+                      const qtyStr = viewingPrevCostingItem.rawMaterialQtys[idx] || "0";
+                      const qtyVal = parseFloat(qtyStr) || 0;
+                      const unitPrice = viewingPrevCostingItem.rawMaterialCosts?.[idx] || 0;
+                      const rowCost = (qtyVal / 100) * unitPrice;
+                      return (
+                        <TableRow key={idx}>
+                          <TableCell className="text-center font-mono text-xs text-slate-500">{idx + 1}</TableCell>
+                          <TableCell className="font-medium text-slate-800">{matName}</TableCell>
+                          <TableCell className="text-right font-semibold text-slate-700">{qtyVal}%</TableCell>
+                          <TableCell className="text-right font-mono text-slate-600">₹{unitPrice.toLocaleString()}</TableCell>
+                          <TableCell className="text-right font-mono font-bold text-slate-900">
+                            ₹{rowCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Cost Summary Box */}
+              <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-2">
+                {(() => {
+                  const rmSubtotal = viewingPrevCostingItem.rawMaterials.reduce((acc, _, idx) => {
+                    const q = parseFloat(viewingPrevCostingItem.rawMaterialQtys[idx] || "0") || 0;
+                    const p = viewingPrevCostingItem.rawMaterialCosts?.[idx] || 0;
+                    return acc + (q / 100) * p;
+                  }, 0);
+                  const mfgCost = viewingPrevCostingItem.manufacturingCost ?? 1500;
+                  const totalCost = rmSubtotal + mfgCost;
+
+                  return (
+                    <>
+                      <div className="flex justify-between text-sm text-slate-300">
+                        <span>Raw Materials Cost Subtotal:</span>
+                        <span className="font-mono">₹{rmSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="flex justify-between text-sm text-slate-300">
+                        <span>+ Manufacturing / Processing Cost:</span>
+                        <span className="font-mono">₹{mfgCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / MT</span>
+                      </div>
+                      <div className="pt-2 border-t border-slate-700 flex justify-between text-base font-bold text-white">
+                        <span>Total Composition Cost:</span>
+                        <span className="font-mono text-emerald-400 text-lg">₹{totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / MT</span>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* ──── Raw Materials Dialog ──── */}
       <Dialog
