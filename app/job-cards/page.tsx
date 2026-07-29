@@ -228,14 +228,18 @@ export default function JobCardsPage() {
           const jcStatus = String(jc["Status"] || "active").toLowerCase()
           return jcDo === normalizedDo && jcProduct === normalizedProduct && (!normalizedParty || jcParty === normalizedParty) && jcStatus !== "cancelled"
         })
-        const totalMadeSum = matchingJobCards.reduce(
+        const rawTotalMadeSum = matchingJobCards.reduce(
           (sum: number, jc: any) => sum + Number(jc["Total Made"] || jc["Quantity"] || 0),
           0
         )
-        const quantitySum = matchingJobCards.reduce(
+        const totalMadeSum = Number(rawTotalMadeSum.toFixed(2))
+
+        const rawQuantitySum = matchingJobCards.reduce(
           (sum: number, jc: any) => sum + Number(jc["Quantity"] || 0),
           0
         )
+        const quantitySum = Number(rawQuantitySum.toFixed(2))
+        const pendingQty = Number((orderQty - quantitySum).toFixed(2))
 
         return {
           key: row.id,
@@ -253,14 +257,18 @@ export default function JobCardsPage() {
           plannedDate: row["Planned 2"] ? format(new Date(row["Planned 2"]), "dd/MM/yy") : "",
           priority: prodRow ? String(prodRow["Priority"] || "") : "",
           totalMade: totalMadeSum,
-          pending: orderQty - quantitySum,
+          pending: pendingQty,
           note: "",
           orderCancel: prodRow ? !!prodRow["Order Cancel"] : false,
         }
-      // Show all Management Approved + Actual 3 empty orders that are not cancelled.
-      // Do NOT filter by pending qty — if prodRow not found, orderQty = 0 → pending = 0
-      // which would incorrectly hide a genuinely pending order like DO-298.
-      }).filter((order) => !order.orderCancel)
+      }).filter((order) => {
+        if (order.orderCancel) return false;
+        // Filter out completed orders where orderQuantity > 0 and totalMade >= orderQuantity (or pending <= 0)
+        if (order.orderQuantity > 0 && (order.totalMade >= order.orderQuantity || order.pending <= 0)) {
+          return false;
+        }
+        return true;
+      })
 
       // Process job cards history
       const processedHistory: JobCard[] = allJobCardsData

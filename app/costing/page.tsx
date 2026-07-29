@@ -16,13 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
 import { Toaster } from "@/components/ui/toaster"
-import { supabase, dispatchSupabase } from "@/lib/supabase"
-import { createClient } from "@supabase/supabase-js"
-
-const purchaseSupabase = createClient(
-  "https://jcgmyvxcamstnhuwmemc.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpjZ215dnhjYW1zdG5odXdtZW1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMDgyODAsImV4cCI6MjA4NTU4NDI4MH0.wMKYEcXGOgrRwy7DKBlBz-a_mWhAuZaknG_iXYvKLLo"
-)
+import { supabase, dispatchSupabase, purchaseSupabase } from "@/lib/supabase"
 
 // --- Configuration ---
 const ACTUAL_PRODUCTION_TABLE = "actual_production"

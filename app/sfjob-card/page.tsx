@@ -192,8 +192,9 @@ export default function SFJobCardPage() {
                     computedTotalMade = actualMadeBysfSrNo.get(`${sfNo}::`)!;
                 }
 
+                computedTotalMade = Number(Number(computedTotalMade || 0).toFixed(2));
                 const cancelledQty = Number(p.cancelOrder) || 0;
-                const computedPending = Math.max(p.qty - computedTotalMade - cancelledQty, 0);
+                const computedPending = Math.max(Number((p.qty - computedTotalMade - cancelledQty).toFixed(2)), 0);
                 return {
                     ...p,
                     totalMade: computedTotalMade,

@@ -13,3 +13,8 @@ const dispatchUrl = (process.env.NEXT_PUBLIC_NEW_ORDER_TO_DISPATCH_SUPABASE_URL 
 const dispatchAnonKey = process.env.NEXT_PUBLIC_NEW_ORDER_TO_DISPATCH_ANON_KEY || ''
 
 export const dispatchSupabase = createClient(dispatchUrl, dispatchAnonKey)
+
+const purchaseUrl = (process.env.NEXT_PUBLIC_PURCHASE_FMS_SUPABASE_URL || '').replace(/\/rest\/v1\/?$/, '')
+const purchaseAnonKey = process.env.NEXT_PUBLIC_PURCHASE_FMS_ANON_KEY || ''
+
+export const purchaseSupabase = createClient(purchaseUrl, purchaseAnonKey)

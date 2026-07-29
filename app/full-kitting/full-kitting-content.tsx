@@ -18,7 +18,7 @@ import {
   ChevronsUpDown,
 } from "lucide-react";
 import { format } from "date-fns";
-import { supabase, dispatchSupabase } from "@/lib/supabase";
+import { supabase, dispatchSupabase, purchaseSupabase } from "@/lib/supabase";
 import { useAuth, FIRM_MAP } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/toaster";
@@ -48,6 +48,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -233,6 +234,7 @@ export default function CheckPage() {
 
   // Dialog state
   const [isKittingDialogOpen, setIsKittingDialogOpen] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [selectedCheck, setSelectedCheck] = useState<ProductionItem | null>(
     null,
   );
@@ -364,20 +366,33 @@ export default function CheckPage() {
     try {
       const [
         { data: orderReceiptData, error: orderReceiptErr },
-        { data: kycData, error: kycErr },
+        { data: liftAccountsData, error: kycErr },
         { data: costData, error: costErr },
         { data: allProdData, error: allProdErr },
+        { data: semiActualData },
+        { data: crushingActualData },
+        { data: sjcData },
+        { data: sfProdData },
+        { data: kycMasterData },
       ] = await Promise.all([
         dispatchSupabase
           .from("ORDER RECEIPT")
           .select("*")
           .eq("check_delivery_in_stock_or_not", "For Production Planning"),
-        supabase.from(KYC_TABLE).select("*").order("id", { ascending: true }),
+        purchaseSupabase
+          .from("LIFT-ACCOUNTS")
+          .select("*")
+          .order("Timestamp", { ascending: false }),
         supabase
           .from(COSTING_RESPONSE_TABLE)
           .select("*")
           .order("id", { ascending: false }),
         supabase.from(PRODUCTION_TABLE).select("*"),
+        supabase.from("semi_actual").select("*").order("id", { ascending: false }),
+        supabase.from("crushing_actual").select("*").order("id", { ascending: false }),
+        supabase.from("semi_job_card").select("*"),
+        supabase.from("semi_production").select("*"),
+        supabase.from("kyc").select("*"),
       ]);
 
       if (orderReceiptErr) throw orderReceiptErr;
@@ -690,18 +705,377 @@ export default function CheckPage() {
 
       const pending = pendingList;
 
-      const products: KycProduct[] = (kycData || [])
-        .filter((row: any) => row["Product name"])
-        .map((row: any) => ({
-          id: row.id,
-          productName: row["Product name"] || "",
-          alumina: Number(row["Alumina"] || 0),
-          iron: Number(row["Iron"] || 0),
-          bd: Number(row["Bd"] || 0),
-          ap: Number(row["Ap"] || 0),
-          price: Number(row["Price"] || 0),
-          firmName: row["Firm Name"] || "",
-        }));
+      const recordMap = new Map<string, {
+        id: number;
+        productName: string;
+        alumina: number | null;
+        iron: number | null;
+        bd: number | null;
+        ap: number | null;
+        price: number | null;
+        baseRate?: number | null;
+        transportRate?: number | null;
+        firmName: string;
+        timestamp?: string;
+      }>();
+
+      let idxCounter = 1;
+
+      const normFirm = (name: any) => {
+        const str = String(name || "").toLowerCase().trim();
+        if (str.includes("purab")) return "purab";
+        if (str.includes("pmmpl")) return "pmmpl";
+        if (str.includes("rkl")) return "rkl";
+        return str;
+      };
+
+      const normProd = (name: any) => String(name || "").toLowerCase().trim();
+
+      const sfFirmMap = new Map<string, string>();
+      (sfProdData || []).forEach((row: any) => {
+        const sfNo = String(row["SF-Sr No."] || "").trim();
+        const pName = normProd(row["Name Of Semi Finished Good"]);
+        const firm = String(row["Firm name"] || row["Firm Name"] || "").trim();
+        if (sfNo && firm) {
+          sfFirmMap.set(sfNo, firm);
+          if (pName) sfFirmMap.set(`${sfNo}::${pName}`, firm);
+        }
+      });
+
+      const sjcFirmMap = new Map<string, string>();
+      (sjcData || []).forEach((row: any) => {
+        const sjcNo = String(row["SJC-Sr No."] || "").trim();
+        const sfNo = String(row["Semi Finished Production No."] || "").trim();
+        const pName = normProd(row["Product Name"]);
+        const firm = String(row["Firm Name"] || row["Firm name"] || "").trim() || sfFirmMap.get(`${sfNo}::${pName}`) || sfFirmMap.get(sfNo) || "";
+        if (sjcNo && firm) {
+          sjcFirmMap.set(sjcNo, firm);
+          if (pName) sjcFirmMap.set(`${sjcNo}::${pName}`, firm);
+        }
+      });
+
+      const procCostMap = new Map<string, number>();
+
+      (semiActualData || []).forEach((row: any) => {
+        const sjcNo = String(row["Semi Finished Job Card No."] || "").trim();
+        const sfNo = String(row["Semi Finished Production No."] || "").trim();
+        const prodName = normProd(row["Product Name"]);
+
+        const fName = normFirm(
+          row["Firm name"] || 
+          row["Firm Name"] || 
+          sjcFirmMap.get(`${sjcNo}::${prodName}`) || 
+          sjcFirmMap.get(sjcNo) || 
+          sfFirmMap.get(`${sfNo}::${prodName}`) || 
+          sfFirmMap.get(sfNo)
+        );
+
+        const mainCost = Number(row["Processing Cost"] || 0);
+
+        if (prodName && mainCost > 0) {
+          if (fName) {
+            const key = `${fName}___${prodName}`;
+            if (!procCostMap.has(key)) procCostMap.set(key, mainCost);
+          }
+          if (!procCostMap.has(prodName)) procCostMap.set(prodName, mainCost);
+        }
+
+        for (let i = 1; i <= 5; i++) {
+          const rmName = normProd(row[`Raw Material Name ${i}`]);
+          const cost = Number(row[`Processing Cost ${i}`] || 0);
+          if (rmName && cost > 0) {
+            if (fName) {
+              const key = `${fName}___${rmName}`;
+              if (!procCostMap.has(key)) procCostMap.set(key, cost);
+            }
+            if (!procCostMap.has(rmName)) procCostMap.set(rmName, cost);
+          }
+        }
+      });
+
+      (crushingActualData || []).forEach((row: any) => {
+        const fName = normFirm(row["Firm Name"] || row["Firm name"]);
+        const mainCost = Number(row["Processing Cost"] || 0);
+
+        const crushProdName = normProd(row["Crushing Product Name"]);
+        if (crushProdName && mainCost > 0) {
+          if (fName) {
+            const key = `${fName}___${crushProdName}`;
+            if (!procCostMap.has(key)) procCostMap.set(key, mainCost);
+          }
+          if (!procCostMap.has(crushProdName)) procCostMap.set(crushProdName, mainCost);
+        }
+
+        for (let i = 1; i <= 4; i++) {
+          const fgName = normProd(row[`Finished Goods Name ${i}`]);
+          const cost = Number(row[`Processing Cost ${i}`] || 0);
+          if (fgName && cost > 0) {
+            if (fName) {
+              const key = `${fName}___${fgName}`;
+              if (!procCostMap.has(key)) procCostMap.set(key, cost);
+            }
+            if (!procCostMap.has(fgName)) procCostMap.set(fgName, cost);
+          }
+        }
+      });
+
+      // Sort liftAccountsData by Actual Receipt Date / Bill Date / Timestamp descending (matching Purchase FMS UI)
+      const getReceiptTime = (row: any) => {
+        const d = row["Date Of Receiving"] || row["ACTUAL RECEIPT DATE"] || row["Date Of Bill"] || row["DATE OF BILL"] || row["Timestamp"];
+        return d ? new Date(d).getTime() : 0;
+      };
+      const sortedLiftAccountsData = (liftAccountsData || []).slice().sort((a: any, b: any) => getReceiptTime(b) - getReceiptTime(a));
+
+      for (const row of sortedLiftAccountsData) {
+        const firmName = String(row["Firm Name"] || "").trim();
+        const productName = String(row["Raw Material Name"] || row["Product Name"] || "").trim();
+
+        if (!firmName || !productName) continue;
+
+        const key = `${firmName.toLowerCase()}___${productName.toLowerCase()}`;
+
+        if (!recordMap.has(key)) {
+          recordMap.set(key, {
+            id: idxCounter++,
+            productName,
+            alumina: null,
+            iron: null,
+            bd: null,
+            ap: null,
+            price: null,
+            baseRate: null,
+            transportRate: null,
+            firmName,
+            timestamp: row["Timestamp"],
+          });
+        }
+
+        const rec = recordMap.get(key)!;
+
+        if (rec.alumina === null && row["Alumina Percent Age %"] !== null && row["Alumina Percent Age %"] !== undefined && !isNaN(Number(row["Alumina Percent Age %"]))) {
+          rec.alumina = parseFloat(row["Alumina Percent Age %"]);
+        }
+        if (rec.iron === null && row["Iron Percent Age %"] !== null && row["Iron Percent Age %"] !== undefined && !isNaN(Number(row["Iron Percent Age %"]))) {
+          rec.iron = parseFloat(row["Iron Percent Age %"]);
+        }
+        if (rec.bd === null && row["BD Percent Age %"] !== null && row["BD Percent Age %"] !== undefined && !isNaN(Number(row["BD Percent Age %"]))) {
+          rec.bd = parseFloat(row["BD Percent Age %"]);
+        }
+        if (rec.ap === null && row["AP Percent Age %"] !== null && row["AP Percent Age %"] !== undefined && !isNaN(Number(row["AP Percent Age %"]))) {
+          rec.ap = parseFloat(row["AP Percent Age %"]);
+        }
+        if (rec.price === null && row["Rate"] !== null && row["Rate"] !== undefined && !isNaN(Number(row["Rate"]))) {
+          const baseRate = parseFloat(row["Rate"]);
+          let transportRate = (row["Transporting Rate"] !== null && row["Transporting Rate"] !== undefined && !isNaN(Number(row["Transporting Rate"])))
+            ? parseFloat(row["Transporting Rate"])
+            : 0;
+
+          const rateType = String(row["Type Of Transporting Rate"] || "").trim().toLowerCase();
+
+          // Fallback: When Rate Type is Fixed and per mt transportation rate column has no value (0/null/undefined),
+          // fetch (Total Transport Amount / Billing Qty)
+          if ((transportRate === 0 || isNaN(transportRate)) && rateType === "fixed") {
+            const totalTransportAmount = Number(row["Transporter Rate"] || 0);
+            const billingQty = Number(row["Lifting Qty"] || row["Total Bill Quantity"] || row["Actual Quantity"] || row["Qty"] || 0);
+            if (totalTransportAmount > 0 && billingQty > 0) {
+              transportRate = totalTransportAmount / billingQty;
+            }
+          }
+
+          rec.price = baseRate + transportRate;
+          rec.baseRate = baseRate;
+          rec.transportRate = transportRate;
+        }
+      }
+
+      // Helper function to find parent raw material record in recordMap for crushed grains
+      const findParentRecord = (fNameRaw: string, parentNameRaw: string, fgNameRaw: string) => {
+        const normF = normFirm(fNameRaw);
+        const normP = normProd(parentNameRaw);
+        const normFg = normProd(fgNameRaw);
+
+        const cleanP = normP.replace(/\s+/g, "").replace("lumps", "").replace("slag", "");
+        const fgBase = normFg.split("(")[0].trim().replace(/\s+/g, "");
+
+        let parentRec = recordMap.get(`${normF}___${normP}`);
+        if (parentRec) return parentRec;
+
+        for (const [k, v] of recordMap.entries()) {
+          if (k.startsWith(`${normF}___`)) {
+            const pNameInMap = k.split("___")[1].replace(/\s+/g, "").replace("lumps", "").replace("slag", "");
+            if (pNameInMap === cleanP || pNameInMap === fgBase) return v;
+          }
+        }
+
+        for (const [k, v] of recordMap.entries()) {
+          const pNameInMap = k.split("___")[1].replace(/\s+/g, "").replace("lumps", "").replace("slag", "");
+          if (pNameInMap === cleanP || pNameInMap === fgBase) {
+            return v;
+          }
+        }
+
+        return null;
+      };
+
+      // Add crushed grains from crushingActualData if not present in recordMap
+      (crushingActualData || []).forEach((row: any) => {
+        const firmName = String(row["Firm Name"] || row["Firm name"] || "").trim();
+        const parentProdName = String(row["Crushing Product Name"] || "").trim();
+        if (!firmName) return;
+
+        for (let i = 1; i <= 4; i++) {
+          const fgName = String(row[`Finished Goods Name ${i}`] || "").trim();
+          const fgCost = Number(row[`Processing Cost ${i}`] || 0);
+          if (!fgName) continue;
+
+          const grainKey = `${firmName.toLowerCase()}___${fgName.toLowerCase()}`;
+          if (!recordMap.has(grainKey)) {
+            const parentRec = findParentRecord(firmName, parentProdName, fgName);
+            const bRate = parentRec ? (parentRec.baseRate ?? null) : null;
+            const tRate = parentRec ? (parentRec.transportRate ?? null) : null;
+            const calcPrice = (bRate || 0) + (tRate || 0) + fgCost;
+
+            recordMap.set(grainKey, {
+              id: idxCounter++,
+              productName: fgName,
+              alumina: parentRec ? parentRec.alumina : null,
+              iron: parentRec ? parentRec.iron : null,
+              price: calcPrice > 0 ? calcPrice : null,
+              firmName,
+              bd: parentRec ? parentRec.bd : null,
+              ap: parentRec ? parentRec.ap : null,
+            });
+          }
+        }
+      });
+
+      // Unique list of firms present in recordMap
+      const knownFirms = Array.from(new Set(Array.from(recordMap.values()).map(r => r.firmName).filter(Boolean)));
+
+      // Helper function to find matching grain rate for semi-finished / fines products ONLY for the target firm
+      const findGrainRateForFines = (targetFirm: string, finesProdName: string) => {
+        const normF = normFirm(targetFirm);
+        if (!normF) return null;
+        const cleanBase = normProd(finesProdName).replace("fines", "").replace("fine", "").replace(/\s+/g, "");
+
+        // Only check exact firm match
+        for (const [k, v] of recordMap.entries()) {
+          if (k.startsWith(`${normF}___`)) {
+            const pNameInMap = k.split("___")[1];
+            const cleanedP = pNameInMap.replace(/\s+/g, "");
+            const isGrain = cleanedP.includes("(0-1)") || 
+                            cleanedP.includes("(1-3)") || 
+                            cleanedP.includes("(3-5)") || 
+                            cleanedP.includes("clinker") || 
+                            cleanedP.includes("lumps") || 
+                            cleanedP.includes("slag");
+
+            if (cleanedP.startsWith(cleanBase) && isGrain) {
+              if (v.price && v.price > 0) return v;
+            }
+          }
+        }
+
+        return null;
+      };
+
+      // Process ALL semi_actual history products with traced firm names
+      (semiActualData || []).forEach((row: any) => {
+        const sjcNo = String(row["Semi Finished Job Card No."] || "").trim();
+        const sfNo = String(row["Semi Finished Production No."] || "").trim();
+        const prodName = String(row["Product Name"] || "").trim();
+        const procCost = Number(row["Processing Cost"] || 0);
+
+        if (!prodName) return;
+
+        const tracedFirmRaw = String(
+          row["Firm name"] || 
+          row["Firm Name"] || 
+          sjcFirmMap.get(`${sjcNo}::${normProd(prodName)}`) || 
+          sjcFirmMap.get(sjcNo) || 
+          sfFirmMap.get(`${sfNo}::${normProd(prodName)}`) || 
+          sfFirmMap.get(sfNo) || 
+          ""
+        ).trim();
+
+        const targetFirms = tracedFirmRaw ? [tracedFirmRaw] : knownFirms;
+
+        targetFirms.forEach((fName) => {
+          const displayFirm = fName || "Pmmpl";
+          const grainKey = `${normFirm(displayFirm)}___${prodName.toLowerCase()}`;
+
+          const grainRec = findGrainRateForFines(displayFirm, prodName);
+
+          // Date comparison: Compare Production Entry date vs Purchase FMS timestamp
+          const semiDateStr = row["Date Of Production"] || row["Timestamp"];
+          const semiTime = semiDateStr ? new Date(semiDateStr).getTime() : 0;
+
+          const existingRec = recordMap.get(grainKey);
+          const purchaseTime = (existingRec && existingRec.timestamp)
+            ? new Date(existingRec.timestamp).getTime()
+            : 0;
+
+          // Option A: If a direct purchase bill for this product exists in Purchase FMS for this firm, preserve it as is.
+          // Only synthesize / add processing cost if NO direct purchase bill exists for this product & firm.
+          if (!recordMap.has(grainKey)) {
+            const grainRec = findGrainRateForFines(displayFirm, prodName);
+            const parentRec = grainRec || findParentRecord(displayFirm, prodName, prodName);
+            const bRate = parentRec ? parentRec.baseRate : null;
+            const tRate = parentRec ? parentRec.transportRate : null;
+            const calcPrice = (bRate || 0) + (tRate || 0) + procCost;
+
+            recordMap.set(grainKey, {
+              id: idxCounter++,
+              productName: prodName,
+              alumina: parentRec ? parentRec.alumina : null,
+              iron: parentRec ? parentRec.iron : null,
+              price: calcPrice > 0 ? calcPrice : (procCost > 0 ? procCost : null),
+              firmName: displayFirm,
+              bd: parentRec ? parentRec.bd : null,
+              ap: parentRec ? parentRec.ap : null,
+              baseRate: bRate,
+              transportRate: tRate,
+            });
+          }
+        });
+      });
+
+      // Fallback: Merge products from Supabase 'kyc' table ONLY IF they are missing from active recordMap
+      (kycMasterData || []).forEach((row: any) => {
+        const pName = String(row["Product name"] || "").trim();
+        const fName = String(row["Firm Name"] || "N/A").trim();
+        if (!pName) return;
+
+        const key = `${normFirm(fName)}___${normProd(pName)}`;
+
+        // ONLY ADD IF NOT ALREADY PRESENT IN KYC PAGE ACTIVE PRODUCTS
+        if (!recordMap.has(key)) {
+          recordMap.set(key, {
+            id: idxCounter++,
+            productName: pName,
+            alumina: row["Alumina"] != null && !isNaN(Number(row["Alumina"])) ? Number(row["Alumina"]) : null,
+            iron: row["Iron"] != null && !isNaN(Number(row["Iron"])) ? Number(row["Iron"]) : null,
+            bd: row["Bd"] != null && !isNaN(Number(row["Bd"])) ? Number(row["Bd"]) : null,
+            ap: row["Ap"] != null && !isNaN(Number(row["Ap"])) ? Number(row["Ap"]) : null,
+            price: row["Price"] != null && !isNaN(Number(row["Price"])) ? Number(row["Price"]) : null,
+            firmName: fName,
+          });
+        }
+      });
+
+      const products: KycProduct[] = [];
+      for (const rec of recordMap.values()) {
+        products.push({
+          id: rec.id,
+          productName: rec.productName,
+          alumina: rec.alumina || 0,
+          iron: rec.iron || 0,
+          bd: rec.bd || 0,
+          ap: rec.ap || 0,
+          price: rec.price || 0,
+          firmName: rec.firmName,
+        });
+      }
 
       const history: CostingHistoryItem[] = (costData || []).map((row: any) => {
         const rawMaterials: string[] = [];
@@ -845,11 +1219,15 @@ export default function CheckPage() {
       if (!normalizedProductName) return null;
 
       const firmMatch = normalizedFirmName
-        ? kycProducts.find(
-            (p) =>
+        ? kycProducts.find((p) => {
+            const pFirm = normalizeLookupValue(p.firmName);
+            return (
               normalizeLookupValue(p.productName) === normalizedProductName &&
-              normalizeLookupValue(p.firmName) === normalizedFirmName,
-          )
+              (pFirm === normalizedFirmName ||
+                pFirm.includes(normalizedFirmName) ||
+                normalizedFirmName.includes(pFirm))
+            );
+          })
         : null;
 
       return (
@@ -2025,18 +2403,36 @@ export default function CheckPage() {
                                   className="h-8 text-xs"
                                   autoFocus
                                 />
-                                <div className="max-h-[200px] overflow-y-auto space-y-0.5">
+                                <div
+                                  className="max-h-[250px] overflow-y-auto overscroll-contain space-y-0.5 touch-pan-y pr-1"
+                                  onWheel={(e) => e.stopPropagation()}
+                                  onTouchMove={(e) => e.stopPropagation()}
+                                >
                                   {(() => {
-                                    const filtered = filteredKycProducts
-                                      .filter(
-                                        (p) =>
-                                          (adminFirmFilter ||
-                                            !selectedCheck?.firmName ||
-                                            p.firmName === selectedCheck.firmName) &&
-                                          String(p.productName || "")
-                                            .toLowerCase()
-                                            .includes(materialSearchQuery.toLowerCase())
-                                      );
+                                    const filtered = filteredKycProducts.filter((p) => {
+                                      const normPFirm = normalizeLookupValue(p.firmName);
+                                      const normSelectedFirm = normalizeLookupValue(selectedCheck?.firmName);
+                                      const normAdminFilter = normalizeLookupValue(adminFirmFilter);
+
+                                      const firmOk =
+                                        !adminFirmFilter ||
+                                        adminFirmFilter === "all" ||
+                                        normPFirm === normAdminFilter ||
+                                        normPFirm.includes(normAdminFilter) ||
+                                        normAdminFilter.includes(normPFirm);
+
+                                      const checkFirmOk =
+                                        !selectedCheck?.firmName ||
+                                        normPFirm === normSelectedFirm ||
+                                        normPFirm.includes(normSelectedFirm) ||
+                                        normSelectedFirm.includes(normPFirm);
+
+                                      const searchOk = String(p.productName || "")
+                                        .toLowerCase()
+                                        .includes(materialSearchQuery.toLowerCase());
+
+                                      return (firmOk || checkFirmOk) && searchOk;
+                                    });
 
                                     if (filtered.length === 0) {
                                       return (
@@ -2301,6 +2697,16 @@ export default function CheckPage() {
               Cancel
             </Button>
             <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setIsPreviewOpen(true)}
+              disabled={isSubmitting}
+              className="bg-amber-100 text-amber-900 hover:bg-amber-200 border border-amber-300 font-medium"
+            >
+              <Eye className="mr-1 h-4 w-4 text-amber-700" />
+              Preview
+            </Button>
+            <Button
               onClick={handleSaveKittingForm}
               disabled={isSubmitting}
               className="bg-olive-600 text-white hover:bg-olive-700"
@@ -2311,6 +2717,129 @@ export default function CheckPage() {
               Save
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ──── Full Kitting Preview Dialog ──── */}
+      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+        <DialogContent className="max-w-5xl w-full max-h-[90vh] overflow-y-auto flex flex-col p-6">
+          <DialogHeader className="pb-3 border-b border-slate-100">
+            <DialogTitle className="flex items-center gap-2 text-xl font-bold text-slate-800">
+              <Eye className="h-5 w-5 text-olive-600" />
+              Full Kitting Details Preview
+              {selectedHistoryItem
+                ? ` (Revision of ${selectedHistoryItem.compositionNo})`
+                : ""}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Raw Materials Composition, calculated parameters, and cost breakdown preview.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 my-2 flex-1">
+            {/* Raw Materials Composition Summary Table (Exact View as in Screenshot) */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-bold text-slate-800">Raw Materials Composition</h3>
+              </div>
+
+              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm bg-white">
+                <Table>
+                  <TableHeader className="bg-slate-50">
+                    <TableRow className="text-xs font-semibold text-slate-600">
+                      <TableHead className="w-8 text-center">#</TableHead>
+                      <TableHead className="min-w-[160px]">Material</TableHead>
+                      <TableHead className="text-center w-16">AL</TableHead>
+                      <TableHead className="text-center w-16">FE</TableHead>
+                      <TableHead className="text-center w-16">BD</TableHead>
+                      <TableHead className="text-center w-16">AP</TableHead>
+                      <TableHead className="text-center w-24 bg-amber-50/60 text-amber-900">% (Input)</TableHead>
+                      <TableHead className="text-right w-24">Price (₹)</TableHead>
+                      <TableHead className="text-center w-20">AL (Calc)</TableHead>
+                      <TableHead className="text-center w-20">FE (Calc)</TableHead>
+                      <TableHead className="text-center w-20">BD (Calc)</TableHead>
+                      <TableHead className="text-center w-20">AP (Calc)</TableHead>
+                      <TableHead className="text-right w-28 bg-emerald-50/60 text-emerald-900 font-bold">Cost (₹)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {kittingFormRows.filter((r) => r.productName).map((row, idx) => (
+                      <TableRow key={row.id} className="text-xs hover:bg-slate-50/80 transition-colors">
+                        <TableCell className="text-center font-medium text-slate-500">{idx + 1}</TableCell>
+                        <TableCell className="font-semibold text-slate-800">{row.productName}</TableCell>
+                        <TableCell className="text-center text-slate-600">{row.baseAlumina.toFixed(2)}</TableCell>
+                        <TableCell className="text-center text-slate-600">{row.baseIron.toFixed(2)}</TableCell>
+                        <TableCell className="text-center text-slate-600">{row.baseBd.toFixed(2)}</TableCell>
+                        <TableCell className="text-center text-slate-600">{row.baseAp.toFixed(2)}</TableCell>
+                        <TableCell className="text-center font-bold text-amber-800 bg-amber-50/40">
+                          {row.percentage}%
+                        </TableCell>
+                        <TableCell className="text-right font-medium text-slate-700">₹{row.basePrice.toFixed(2)}</TableCell>
+                        <TableCell className="text-center text-slate-700">{row.al.toFixed(2)}</TableCell>
+                        <TableCell className="text-center text-slate-700">{row.fe.toFixed(2)}</TableCell>
+                        <TableCell className="text-center text-slate-700">{row.bd.toFixed(2)}</TableCell>
+                        <TableCell className="text-center text-slate-700">{row.ap.toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-bold text-emerald-800 bg-emerald-50/40">
+                          ₹{row.cost.toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                  <TableFooter className="bg-slate-50 border-t border-slate-200">
+                    <TableRow className="font-bold text-xs">
+                      <TableCell colSpan={6} className="text-right font-extrabold text-slate-700">
+                        Raw Material Cost Subtotal
+                      </TableCell>
+                      <TableCell className="text-center font-extrabold text-amber-900 bg-amber-100/60">
+                        {kittingTotals.percentage.toFixed(2)}%
+                      </TableCell>
+                      <TableCell className="text-right text-slate-400">-</TableCell>
+                      <TableCell className="text-center font-bold text-slate-800">{kittingTotals.al.toFixed(4)}</TableCell>
+                      <TableCell className="text-center font-bold text-slate-800">{kittingTotals.fe.toFixed(4)}</TableCell>
+                      <TableCell className="text-center font-bold text-slate-800">{kittingTotals.bd.toFixed(4)}</TableCell>
+                      <TableCell className="text-center font-bold text-slate-800">{kittingTotals.ap.toFixed(4)}</TableCell>
+                      <TableCell className="text-right font-extrabold text-emerald-900 bg-emerald-100/60">
+                        ₹{kittingTotals.variableCost.toFixed(2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="bg-amber-50/80 text-xs font-semibold text-amber-950">
+                      <TableCell colSpan={12} className="text-right font-bold">
+                        + Manufacturing Cost (₹)
+                      </TableCell>
+                      <TableCell className="text-right font-black text-amber-950 bg-amber-100/80">
+                        ₹{(manufacturingCost || 0).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="bg-emerald-100/90 text-sm font-black text-emerald-950">
+                      <TableCell colSpan={12} className="text-right font-black uppercase tracking-wider">
+                        = Total Cost (₹)
+                      </TableCell>
+                      <TableCell className="text-right font-black text-emerald-950 bg-emerald-200/80 text-base">
+                        ₹{(kittingTotals.variableCost + (manufacturingCost || 0)).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
+                  </TableFooter>
+                </Table>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 border-t pt-3 mt-2">
+            <Button variant="outline" onClick={() => setIsPreviewOpen(false)}>
+              Back to Edit
+            </Button>
+            <Button
+              onClick={() => {
+                setIsPreviewOpen(false);
+                handleSaveKittingForm();
+              }}
+              disabled={isSubmitting}
+              className="bg-olive-600 text-white hover:bg-olive-700"
+            >
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Confirm & Save
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
