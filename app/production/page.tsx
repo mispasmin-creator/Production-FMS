@@ -250,14 +250,17 @@ export default function ProductionPage() {
         { data: kycData, error: kycErr },
         { data: actualProductionData, error: actualProdErr },
         { data: productionData, error: prodErr },
-        { data: costingData, error: costingErr }
+        { data: costingData, error: costingErr },
+        masterRes
       ] = await Promise.all([
         supabase.from(JOBCARDS_TABLE).select("*"),
         supabase.from(KYC_TABLE).select("*"),
         supabase.from(ACTUAL_PRODUCTION_TABLE).select("*"),
         supabase.from(PRODUCTION_TABLE).select("*"),
-        supabase.from(COSTING_RESPONSE_TABLE).select("*").order("id", { ascending: false })
+        supabase.from(COSTING_RESPONSE_TABLE).select("*").order("id", { ascending: false }),
+        Promise.resolve(supabase.from("master").select("*")).catch(() => ({ data: [], error: null }))
       ])
+      const masterData = (masterRes as any)?.data || []
 
       if (jobCardsErr) throw jobCardsErr
       if (kycErr) throw kycErr
@@ -412,14 +415,27 @@ export default function ProductionPage() {
       setPendingProductions(filterByFirm(pending))
       setHistoryProductions(filterByFirm(history).sort((a, b) => b._rowIndex - a._rowIndex))
 
-      // 4. Process KYC Materials + build price map
+      // 4. Process Master + KYC Materials + build price map
       const priceMap: Record<string, number> = {}
       ;(kycData || []).forEach((m: any) => {
         const name = String(m["Product name"] || "").trim()
         if (name) priceMap[name] = Number(m["Price"] || 0)
       })
       setKycPriceMap(priceMap)
-      const materials = Object.keys(priceMap)
+
+      const rawMaterialsSet = new Set<string>()
+      // First populate from Supabase master table "Name Of Raw Material" column
+      ;(masterData || []).forEach((m: any) => {
+        const matName = String(
+          m["Name Of Raw Material"] || m["Raw Material Name"] || m["Material Name"] || m["Product name"] || ""
+        ).trim()
+        if (matName) rawMaterialsSet.add(matName)
+      })
+
+      // Also include kyc table materials
+      Object.keys(priceMap).forEach((name) => rawMaterialsSet.add(name))
+
+      const materials = Array.from(rawMaterialsSet).sort()
       setMaterialsList(materials)
 
       // 5. Process Compositions (with cost fields)
