@@ -204,7 +204,7 @@ export default function CostingPage() {
   const parseDateToTimestamp = useCallback((dateVal: any): number | null => {
     if (!dateVal) return null
     const str = String(dateVal).trim()
-    if (!str || str === "N/A") return null
+    if (!str || str === "N/A") return null 
 
     if (str.includes("/")) {
       const parts = str.split(" ")
