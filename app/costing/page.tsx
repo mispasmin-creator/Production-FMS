@@ -197,29 +197,153 @@ export default function CostingPage() {
     return orderRates[doNo] || orderRates[doNo.toLowerCase()] || 0
   }, [orderRates])
 
+  const [fromDate, setFromDate] = useState("")
+  const [toDate, setToDate] = useState("")
+  const [selectedFirm, setSelectedFirm] = useState("ALL")
+
+  const parseDateToTimestamp = useCallback((dateVal: any): number | null => {
+    if (!dateVal) return null
+    const str = String(dateVal).trim()
+    if (!str || str === "N/A") return null
+
+    if (str.includes("/")) {
+      const parts = str.split(" ")
+      const dParts = parts[0].split("/")
+      if (dParts.length === 3) {
+        const day = parseInt(dParts[0], 10)
+        const month = parseInt(dParts[1], 10) - 1
+        let year = parseInt(dParts[2], 10)
+        if (year < 100) year += 2000
+
+        let hours = 0, minutes = 0
+        if (parts[1] && parts[1].includes(":")) {
+          const tParts = parts[1].split(":")
+          hours = parseInt(tParts[0], 10) || 0
+          minutes = parseInt(tParts[1], 10) || 0
+        }
+        const dt = new Date(year, month, day, hours, minutes)
+        if (!isNaN(dt.getTime())) return dt.getTime()
+      }
+    }
+
+    const d = new Date(str)
+    return isNaN(d.getTime()) ? null : d.getTime()
+  }, [])
+
+  const isDateInRange = useCallback(
+    (itemDateStr: any, fromDateStr: string, toDateStr: string, fallbackDateStr?: any): boolean => {
+      if (!fromDateStr && !toDateStr) return true
+
+      let itemTime = parseDateToTimestamp(itemDateStr)
+      if (!itemTime && fallbackDateStr) {
+        itemTime = parseDateToTimestamp(fallbackDateStr)
+      }
+
+      if (!itemTime) return true
+
+      if (fromDateStr) {
+        const fromTime = new Date(`${fromDateStr}T00:00:00`).getTime()
+        if (!isNaN(fromTime) && itemTime < fromTime) return false
+      }
+
+      if (toDateStr) {
+        const toTime = new Date(`${toDateStr}T23:59:59.999`).getTime()
+        if (!isNaN(toTime) && itemTime > toTime) return false
+      }
+
+      return true
+    },
+    [parseDateToTimestamp]
+  )
+
+  const matchFirm = useCallback((itemFirm: string, firmFilter: string) => {
+    if (!firmFilter || firmFilter === "ALL") return true
+    const f1 = (itemFirm || "").toLowerCase().trim()
+    const f2 = firmFilter.toLowerCase().trim()
+    return f1.includes(f2) || f2.includes(f1)
+  }, [])
+
+  const uniqueFirms = useMemo(() => {
+    const set = new Set<string>()
+    pendingCosting.forEach((item) => {
+      if (item.firmName) set.add(item.firmName.trim())
+    })
+    historyCosting.forEach((item) => {
+      if (item.firmName) set.add(item.firmName.trim())
+    })
+    return Array.from(set).filter(Boolean).sort()
+  }, [pendingCosting, historyCosting])
+
   const filteredPending = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim()
-    if (!q) return pendingCosting
-    return pendingCosting.filter(item =>
-      (item.jobCardNo || "").toLowerCase().includes(q) ||
-      (item.deliveryOrderNo || "").toLowerCase().includes(q) ||
-      (item.productName || "").toLowerCase().includes(q) ||
-      (item.partyName || "").toLowerCase().includes(q) ||
-      (item.firmName || "").toLowerCase().includes(q)
-    )
-  }, [pendingCosting, searchQuery])
+    return pendingCosting.filter((item) => {
+      const q = searchQuery.toLowerCase().trim()
+      if (q) {
+        const matchesSearch =
+          (item.jobCardNo || "").toLowerCase().includes(q) ||
+          (item.deliveryOrderNo || "").toLowerCase().includes(q) ||
+          (item.productName || "").toLowerCase().includes(q) ||
+          (item.partyName || "").toLowerCase().includes(q) ||
+          (item.firmName || "").toLowerCase().includes(q)
+        if (!matchesSearch) return false
+      }
+
+      if (!matchFirm(item.firmName, selectedFirm)) return false
+
+      if (
+        !isDateInRange(
+          item.planned3,
+          fromDate,
+          toDate,
+          item.completeDetails?.dateOfProduction || item.completeDetails?.timestamp
+        )
+      ) {
+        return false
+      }
+
+      return true
+    })
+  }, [pendingCosting, searchQuery, selectedFirm, fromDate, toDate, matchFirm, isDateInRange])
 
   const filteredHistory = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim()
-    if (!q) return historyCosting
-    return historyCosting.filter(item =>
-      (item.jobCardNo || "").toLowerCase().includes(q) ||
-      (item.deliveryOrderNo || "").toLowerCase().includes(q) ||
-      (item.productName || "").toLowerCase().includes(q) ||
-      (item.partyName || "").toLowerCase().includes(q) ||
-      (item.firmName || "").toLowerCase().includes(q)
-    )
-  }, [historyCosting, searchQuery])
+    return historyCosting.filter((item) => {
+      const q = searchQuery.toLowerCase().trim()
+      if (q) {
+        const matchesSearch =
+          (item.jobCardNo || "").toLowerCase().includes(q) ||
+          (item.deliveryOrderNo || "").toLowerCase().includes(q) ||
+          (item.productName || "").toLowerCase().includes(q) ||
+          (item.partyName || "").toLowerCase().includes(q) ||
+          (item.firmName || "").toLowerCase().includes(q)
+        if (!matchesSearch) return false
+      }
+
+      if (!matchFirm(item.firmName, selectedFirm)) return false
+
+      if (
+        !isDateInRange(
+          item.costingDate,
+          fromDate,
+          toDate,
+          item.completeDetails?.dateOfProduction || item.completeDetails?.timestamp
+        )
+      ) {
+        return false
+      }
+
+      return true
+    })
+  }, [historyCosting, searchQuery, selectedFirm, fromDate, toDate, matchFirm, isDateInRange])
+
+  const totalHistoryCostingAmount = useMemo(() => {
+    return filteredHistory.reduce((sum, item) => sum + (Number(item.costingAmount) || 0), 0)
+  }, [filteredHistory])
+
+  const totalPendingCostingAmount = useMemo(() => {
+    return filteredPending.reduce((sum, item) => {
+      const amt = Number(item.completeDetails?.costingAmount) || 0
+      return sum + amt
+    }, 0)
+  }, [filteredPending])
 
   useEffect(() => {
     const initializeVisibility = (columnsMeta: any[]) => {
@@ -801,6 +925,85 @@ export default function CostingPage() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9 focus-visible:ring-olive-500"
                 />
+              </div>
+            </div>
+
+            {/* Filter Toolbar & Total Costing Amount Summary */}
+            <div className="bg-slate-100/90 p-3.5 rounded-xl border border-slate-200/80 mb-6 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Firm Name Filter */}
+                <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
+                  <Building className="h-4 w-4 text-olive-600" />
+                  <span className="text-xs font-semibold text-slate-600">Firm:</span>
+                  <select
+                    value={selectedFirm}
+                    onChange={(e) => setSelectedFirm(e.target.value)}
+                    className="text-xs bg-transparent font-medium text-slate-800 focus:outline-none cursor-pointer pr-1"
+                  >
+                    <option value="ALL">All Firms</option>
+                    {uniqueFirms.map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* From Date Filter */}
+                <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
+                  <Calendar className="h-4 w-4 text-olive-600" />
+                  <span className="text-xs font-semibold text-slate-600">From:</span>
+                  <input
+                    type="date"
+                    value={fromDate}
+                    onChange={(e) => setFromDate(e.target.value)}
+                    className="text-xs bg-transparent font-medium text-slate-800 focus:outline-none cursor-pointer"
+                  />
+                </div>
+
+                {/* To Date Filter */}
+                <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
+                  <Calendar className="h-4 w-4 text-olive-600" />
+                  <span className="text-xs font-semibold text-slate-600">To:</span>
+                  <input
+                    type="date"
+                    value={toDate}
+                    onChange={(e) => setToDate(e.target.value)}
+                    className="text-xs bg-transparent font-medium text-slate-800 focus:outline-none cursor-pointer"
+                  />
+                </div>
+
+                {/* Reset Filters Button */}
+                {(fromDate || toDate || selectedFirm !== "ALL" || searchQuery) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setFromDate("")
+                      setToDate("")
+                      setSelectedFirm("ALL")
+                      setSearchQuery("")
+                    }}
+                    className="h-8 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2.5 font-medium"
+                  >
+                    Reset Filters
+                  </Button>
+                )}
+              </div>
+
+              {/* Total Costing Amount Display */}
+              <div className="flex items-center gap-2 bg-emerald-700 text-white px-4 py-2 rounded-xl shadow-sm font-medium text-sm ml-auto">
+                <DollarSign className="h-5 w-5 text-emerald-200" />
+                <span>
+                  Total Costing Amount:{" "}
+                  <strong className="text-base text-amber-300 font-bold ml-1">
+                    ₹
+                    {(activeTab === "pending"
+                      ? totalPendingCostingAmount
+                      : totalHistoryCostingAmount
+                    ).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </strong>
+                </span>
               </div>
             </div>
 
