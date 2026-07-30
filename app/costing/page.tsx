@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Loader2, AlertTriangle, DollarSign, History, Settings, Package, Building, User, Calendar, Clock, Hash, FileText, CheckCircle, Search } from "lucide-react"
+import { Loader2, AlertTriangle, DollarSign, History, Settings, Package, Building, User, Calendar, Clock, Hash, FileText, CheckCircle, Search, Eye } from "lucide-react"
 import { format } from "date-fns"
 // Shadcn UI components
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -131,6 +131,7 @@ const HISTORY_COLUMNS_META = [
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Costing Amount", dataKey: "costingAmount", toggleable: true },
   { header: "Costing Date", dataKey: "costingDate", toggleable: true },
+  { header: "Action", dataKey: "actionColumn", alwaysVisible: true },
 ]
 
 function hasValue(value: any): boolean {
@@ -163,6 +164,8 @@ export default function CostingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [selectedCosting, setSelectedCosting] = useState<PendingCostingItem | null>(null)
+  const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryCostingItem | null>(null)
+  const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false)
   const [formData, setFormData] = useState(initialFormState)
   const [costingResponses, setCostingResponses] = useState<CostingResponseRecord[]>([])
   const [formErrors, setFormErrors] = useState<Record<string, string | null>>({})
@@ -1097,7 +1100,20 @@ export default function CostingPage() {
                             <TableRow key={`${item.jobCardNo}-${index}`} className="hover:bg-olive-50/50">
                               {visibleHistoryColumnsMeta.map((col) => (
                                 <TableCell key={col.dataKey} className="whitespace-nowrap text-sm">
-                                  {col.dataKey === "costingAmount" ? (
+                                  {col.dataKey === "actionColumn" ? (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => {
+                                        setSelectedHistoryItem(item)
+                                        setIsHistoryDialogOpen(true)
+                                      }}
+                                      className="border-slate-300 text-slate-700 hover:bg-slate-100 h-8 text-xs font-medium"
+                                    >
+                                      <Eye className="mr-1.5 h-3.5 w-3.5 text-slate-600" />
+                                      View
+                                    </Button>
+                                  ) : col.dataKey === "costingAmount" ? (
                                     <span className="font-medium text-green-600">
                                       ₹{Number(item.costingAmount).toLocaleString('en-IN')}
                                     </span>
@@ -1453,6 +1469,154 @@ export default function CostingPage() {
                 </Button>
               </div>
             </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* History Details Report Dialog */}
+      <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl border-b pb-2">
+              <Eye className="h-5 w-5 text-olive-700" />
+              Complete Production & Costing Details - Job Card: {selectedHistoryItem?.jobCardNo}
+            </DialogTitle>
+            <DialogDescription>
+              Complete details and raw material composition breakdown for this costing entry
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedHistoryItem && (
+            <div className="space-y-6 pt-2">
+              {/* Costing Summary Header Banner */}
+              <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+                <div>
+                  <span className="text-xs font-semibold text-emerald-800 uppercase tracking-wider block">Total Costing Amount</span>
+                  <span className="text-2xl font-extrabold text-emerald-700">
+                    ₹{Number(selectedHistoryItem.costingAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Badge className="bg-emerald-600 text-white font-medium px-3 py-1 text-xs">
+                    <CheckCircle className="h-3.5 w-3.5 mr-1" /> Costing Completed
+                  </Badge>
+                  <span className="text-xs text-slate-500 font-medium">
+                    Date: {selectedHistoryItem.costingDate || "N/A"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Section 1: Basic Information */}
+              <div className="space-y-3">
+                <h3 className="text-md font-semibold flex items-center gap-2 text-olive-700 bg-olive-50 p-2 rounded">
+                  <Building className="h-4 w-4" /> Basic Information
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Hash className="h-3 w-3" /> Job Card Number
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.jobCardNo || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <FileText className="h-3 w-3" /> Delivery Order No.
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.deliveryOrderNo || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Building className="h-3 w-3" /> Firm Name
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.firmName || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <User className="h-3 w-3" /> Party Name
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.partyName || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Package className="h-3 w-3" /> Product Name
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.productName || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Hash className="h-3 w-3" /> Quantity (FG)
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.quantityOfFG || 0} MT</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 2: Raw Materials Composition Details */}
+              <div className="space-y-3">
+                <h3 className="text-md font-semibold flex items-center gap-2 text-olive-700 bg-olive-50 p-2 rounded">
+                  <Package className="h-4 w-4" /> Raw Materials Composition Breakdown
+                </h3>
+                {selectedHistoryItem.completeDetails?.rawMaterials && selectedHistoryItem.completeDetails.rawMaterials.length > 0 ? (
+                  <div className="border rounded-lg overflow-hidden">
+                    <Table>
+                      <TableHeader className="bg-slate-100">
+                        <TableRow>
+                          <TableHead className="w-12 text-xs">#</TableHead>
+                          <TableHead className="text-xs">Raw Material Name</TableHead>
+                          <TableHead className="text-xs text-right">Quantity / Share</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedHistoryItem.completeDetails.rawMaterials.map((rm, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell className="text-xs font-medium">{idx + 1}</TableCell>
+                            <TableCell className="text-xs font-semibold text-slate-800">{rm.name}</TableCell>
+                            <TableCell className="text-xs text-right font-medium">{rm.quantity}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 italic p-3 border rounded-lg bg-slate-50">
+                    No detailed raw material composition record found for this production entry.
+                  </p>
+                )}
+              </div>
+
+              {/* Section 3: Additional Production Information */}
+              {selectedHistoryItem.completeDetails && (
+                <div className="space-y-3">
+                  <h3 className="text-md font-semibold flex items-center gap-2 text-olive-700 bg-olive-50 p-2 rounded">
+                    <Clock className="h-4 w-4" /> Production Details & Supervisor Remarks
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border rounded-lg">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Date of Production</Label>
+                      <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.dateOfProduction || "N/A"}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Supervisor Name</Label>
+                      <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.nameOfSupervisor || "N/A"}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Machine Running Hours</Label>
+                      <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.machineRunningHour || "N/A"}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Remarks</Label>
+                      <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.remarks1 || selectedHistoryItem.completeDetails.remarks || "N/A"}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end pt-2 border-t">
+                <Button variant="outline" onClick={() => setIsHistoryDialogOpen(false)}>
+                  Close Report
+                </Button>
+              </div>
+            </div>
           )}
         </DialogContent>
       </Dialog>
