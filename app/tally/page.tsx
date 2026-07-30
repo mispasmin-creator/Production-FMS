@@ -678,7 +678,7 @@ export default function TallyPage() {
                   </div>
                   <div className="space-y-2">
                     <Label className="text-xs font-semibold text-gray-600">Status</Label>
-                    <p className="text-sm"><Badge>{selectedTally.status || "N/A"}</Badge></p>
+                    <div className="text-sm"><Badge>{selectedTally.status || "N/A"}</Badge></div>
                   </div>
                   <div className="space-y-2">
                     <Label className="text-xs font-semibold text-gray-600">Actual Qty 1</Label>
