@@ -2364,22 +2364,6 @@ export default function CheckPage() {
                     </div>
 
                     <div className="flex items-center gap-3 w-full sm:w-auto">
-                      {/* Firm Filter Dropdown */}
-                      <Select
-                        value={preCostingFirmFilter}
-                        onValueChange={setPreCostingFirmFilter}
-                      >
-                        <SelectTrigger className="w-[150px] h-8 text-xs bg-white border-slate-200">
-                          <SelectValue placeholder="Select Firm" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Firms</SelectItem>
-                          <SelectItem value="pmmpl">PMMPL</SelectItem>
-                          <SelectItem value="purab">Purab</SelectItem>
-                          <SelectItem value="rkl">RKL</SelectItem>
-                        </SelectContent>
-                      </Select>
-
                       <Button
                         variant="outline"
                         size="sm"
@@ -2468,22 +2452,11 @@ export default function CheckPage() {
                                     onTouchMove={(e) => e.stopPropagation()}
                                   >
                                     {(() => {
-                                      const filtered = filteredKycProducts.filter((p) => {
-                                        const normPFirm = normalizeLookupValue(p.firmName);
-                                        const normFilter = normalizeLookupValue(preCostingFirmFilter);
-                                        const firmOk =
-                                          !preCostingFirmFilter ||
-                                          preCostingFirmFilter === "all" ||
-                                          normPFirm === normFilter ||
-                                          normPFirm.includes(normFilter) ||
-                                          normFilter.includes(normPFirm);
-
-                                        const searchOk = String(p.productName || "")
+                                      const filtered = filteredKycProducts.filter((p) =>
+                                        String(p.productName || "")
                                           .toLowerCase()
-                                          .includes(preCostingMaterialSearchQuery.toLowerCase());
-
-                                        return firmOk && searchOk;
-                                      });
+                                          .includes(preCostingMaterialSearchQuery.toLowerCase())
+                                      );
 
                                       if (filtered.length === 0) {
                                         return (
