@@ -986,6 +986,8 @@ export default function CheckPage() {
                             cleanedP.includes("(3-5)") || 
                             cleanedP.includes("clinker") || 
                             cleanedP.includes("lumps") || 
+                            cleanedP.includes("fired") || 
+                            cleanedP.includes("green") || 
                             cleanedP.includes("slag");
 
             if (cleanedP.startsWith(cleanBase) && isGrain) {
