@@ -2738,35 +2738,6 @@ export default function CheckPage() {
               </div>
             </div>
 
-            {/* Admin Firm Filter */}
-            {user?.role?.toLowerCase() === "admin" && (
-              <div className="flex items-center gap-3 px-1">
-                <Label className="text-xs font-semibold text-gray-600 whitespace-nowrap">
-                  Filter by Firm:
-                </Label>
-                <Select
-                  value={adminFirmFilter}
-                  onValueChange={handleAdminFirmFilterChange}
-                >
-                  <SelectTrigger className="h-8 w-56 text-xs">
-                    <SelectValue placeholder="All Firms" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Firms</SelectItem>
-                    {[
-                      ...new Set(
-                        kycProducts.map((p) => p.firmName).filter(Boolean),
-                      ),
-                    ].map((f) => (
-                      <SelectItem key={f} value={f}>
-                        {f}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
             {/* Raw Materials Composition Table */}
             <div>
               <div className="flex justify-between items-center mb-2">
