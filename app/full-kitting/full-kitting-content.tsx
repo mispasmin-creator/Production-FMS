@@ -2837,14 +2837,6 @@ export default function CheckPage() {
                                     const filtered = filteredKycProducts.filter((p) => {
                                       const normPFirm = normalizeLookupValue(p.firmName);
                                       const normSelectedFirm = normalizeLookupValue(selectedCheck?.firmName);
-                                      const normAdminFilter = normalizeLookupValue(adminFirmFilter);
-
-                                      const firmOk =
-                                        !adminFirmFilter ||
-                                        adminFirmFilter === "all" ||
-                                        normPFirm === normAdminFilter ||
-                                        normPFirm.includes(normAdminFilter) ||
-                                        normAdminFilter.includes(normPFirm);
 
                                       const checkFirmOk =
                                         !selectedCheck?.firmName ||
@@ -2856,7 +2848,7 @@ export default function CheckPage() {
                                         .toLowerCase()
                                         .includes(materialSearchQuery.toLowerCase());
 
-                                      return (firmOk || checkFirmOk) && searchOk;
+                                      return checkFirmOk && searchOk;
                                     });
 
                                     if (filtered.length === 0) {
