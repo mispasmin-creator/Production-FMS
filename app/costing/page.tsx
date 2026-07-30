@@ -993,7 +993,7 @@ export default function CostingPage() {
 
               {/* Total Costing Amount Display */}
               <div className="flex items-center gap-2 bg-white border border-slate-200 shadow-2xs px-4 py-1.5 rounded-lg text-slate-700 font-medium text-sm ml-auto">
-                <DollarSign className="h-4 w-4 text-emerald-600" />
+              
                 <span>
                   Total Costing Amount:{" "}
                   <strong className="text-base text-emerald-700 font-bold ml-1">
