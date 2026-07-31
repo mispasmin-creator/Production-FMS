@@ -28,7 +28,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 
-import { supabase as prodSupabase, purchaseSupabase as supabase } from "@/lib/supabase";
+import { supabase as prodSupabase, purchaseSupabase as supabase, inventorySupabase } from "@/lib/supabase";
 
 function normFirm(name: any): string {
   const str = String(name || "").toLowerCase().trim();
@@ -109,7 +109,7 @@ export default function KycProductTable() {
         prodSupabase.from("semi_job_card").select("*"),
         prodSupabase.from("semi_production").select("*"),
         Promise.resolve(
-          prodSupabase
+          inventorySupabase
             .from("inventory_master_history")
             .select("*")
             .order("snapshot_date", { ascending: false })

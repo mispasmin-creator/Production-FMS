@@ -20,7 +20,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { format } from "date-fns";
-import { supabase, dispatchSupabase, purchaseSupabase } from "@/lib/supabase";
+import { supabase, dispatchSupabase, purchaseSupabase, inventorySupabase } from "@/lib/supabase";
 import { useAuth, FIRM_MAP } from "@/lib/auth";
 import { cn } from "@/lib/utils"; 
 import { Toaster } from "@/components/ui/toaster";
@@ -420,7 +420,7 @@ export default function CheckPage() {
         supabase.from("semi_production").select("*"),
         supabase.from("kyc").select("*"),
         Promise.resolve(
-          supabase
+          inventorySupabase
             .from("inventory_master_history")
             .select("*")
             .order("snapshot_date", { ascending: false })

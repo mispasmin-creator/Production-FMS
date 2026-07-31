@@ -26,3 +26,12 @@ const purchaseAnonKey = process.env.NEXT_PUBLIC_PURCHASE_FMS_ANON_KEY || DEFAULT
 
 export const purchaseSupabase = createClient(purchaseUrl, purchaseAnonKey)
 
+const DEFAULT_INVENTORY_URL = 'https://ozrgaddkpixwvcyypqid.supabase.co'
+const DEFAULT_INVENTORY_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im96cmdhZGRrcGl4d3ZjeXlwcWlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3NzQ1MDgsImV4cCI6MjA5NTM1MDUwOH0.Z4B9J0xIPHxYFQsmj7lO2ygEcPGg5jFKvEHQMbzFoPg'
+
+const rawInventoryUrl = process.env.INVENTORY_SUPABASE_URL || process.env.NEXT_PUBLIC_INVENTORY_SUPABASE_URL || DEFAULT_INVENTORY_URL
+const inventoryUrl = rawInventoryUrl.replace(/\/rest\/v1\/?$/, '')
+const inventoryAnonKey = process.env.INVENTORY_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_INVENTORY_SUPABASE_ANON_KEY || DEFAULT_INVENTORY_ANON_KEY
+
+export const inventorySupabase = createClient(inventoryUrl, inventoryAnonKey)
+
