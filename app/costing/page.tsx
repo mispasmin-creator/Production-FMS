@@ -22,6 +22,74 @@ import { cn } from "@/lib/utils"
 // --- Configuration ---
 const ACTUAL_PRODUCTION_TABLE = "actual_production"
 const JOBCARDS_TABLE = "jobcards"
+const JC_MATERIALS_TABLE = "job_card_materials"
+
+interface ColumnTogglerProps {
+  tab: string
+  columnsMeta: any[]
+  visibleColumns: Record<string, boolean>
+  onToggleColumn: (tab: string, dataKey: string, checked: boolean) => void
+  onSelectAllColumns: (tab: string, columnsMeta: any[], checked: boolean) => void
+}
+
+function ColumnToggler({
+  tab,
+  columnsMeta,
+  visibleColumns,
+  onToggleColumn,
+  onSelectAllColumns,
+}: ColumnTogglerProps) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="h-8 text-xs bg-transparent ml-auto">
+          <Settings className="mr-1.5 h-3.5 w-3.5" />
+          View Columns
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[220px] p-3" align="end">
+        <div className="grid gap-2">
+          <p className="text-sm font-medium">Toggle Columns</p>
+          <div className="flex items-center justify-between mt-1 mb-2">
+            <Button
+              variant="link"
+              size="sm"
+              className="p-0 h-auto text-xs text-olive-700 font-medium"
+              onClick={() => onSelectAllColumns(tab, columnsMeta, true)}
+            >
+              Select All
+            </Button>
+            <span className="text-gray-300 mx-1">|</span>
+            <Button
+              variant="link"
+              size="sm"
+              className="p-0 h-auto text-xs text-rose-600 font-medium"
+              onClick={() => onSelectAllColumns(tab, columnsMeta, false)}
+            >
+              Deselect All
+            </Button>
+          </div>
+          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+            {columnsMeta
+              .filter((col) => col.toggleable)
+              .map((col) => (
+                <div key={`toggle-${tab}-${col.dataKey}`} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`toggle-${tab}-${col.dataKey}`}
+                    checked={!!visibleColumns[col.dataKey]}
+                    onCheckedChange={(checked) => onToggleColumn(tab, col.dataKey, Boolean(checked))}
+                  />
+                  <Label htmlFor={`toggle-${tab}-${col.dataKey}`} className="text-xs font-normal cursor-pointer">
+                    {col.header}
+                  </Label>
+                </div>
+              ))}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
 const COSTING_RESPONSE_TABLE = "costing_response"
 
 // --- Type Definitions ---
@@ -969,58 +1037,7 @@ export default function CostingPage() {
     [visibleHistoryColumns],
   )
 
-  const ColumnToggler = ({ tab, columnsMeta }: { tab: string; columnsMeta: any[] }) => (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 text-xs bg-transparent ml-auto">
-          <Settings className="mr-1.5 h-3.5 w-3.5" />
-          View Columns
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[220px] p-3">
-        <div className="grid gap-2">
-          <p className="text-sm font-medium">Toggle Columns</p>
-          <div className="flex items-center justify-between mt-1 mb-2">
-            <Button
-              variant="link"
-              size="sm"
-              className="p-0 h-auto text-xs"
-              onClick={() => handleSelectAllColumns(tab, columnsMeta, true)}
-            >
-              Select All
-            </Button>
-            <span className="text-gray-300 mx-1">|</span>
-            <Button
-              variant="link"
-              size="sm"
-              className="p-0 h-auto text-xs"
-              onClick={() => handleSelectAllColumns(tab, columnsMeta, false)}
-            >
-              Deselect All
-            </Button>
-          </div>
-          <div className="space-y-1.5 max-h-48 overflow-y-auto">
-            {columnsMeta
-              .filter((col) => col.toggleable)
-              .map((col) => (
-                <div key={`toggle-${tab}-${col.dataKey}`} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`toggle-${tab}-${col.dataKey}`}
-                    checked={
-                      tab === "pending" ? !!visiblePendingColumns[col.dataKey] : !!visibleHistoryColumns[col.dataKey]
-                    }
-                    onCheckedChange={(checked) => handleToggleColumn(tab, col.dataKey, Boolean(checked))}
-                  />
-                  <Label htmlFor={`toggle-${tab}-${col.dataKey}`} className="text-xs font-normal cursor-pointer">
-                    {col.header}
-                  </Label>
-                </div>
-              ))}
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
-  )
+
 
   if (loading)
     return (
@@ -1221,7 +1238,13 @@ export default function CostingPage() {
                       <DollarSign className="h-5 w-5 text-olive-700 mr-2" />
                       Pending Items ({filteredPending.length})
                     </CardTitle>
-                    <ColumnToggler tab="pending" columnsMeta={PENDING_COLUMNS_META} />
+                    <ColumnToggler
+                      tab="pending"
+                      columnsMeta={PENDING_COLUMNS_META}
+                      visibleColumns={visiblePendingColumns}
+                      onToggleColumn={handleToggleColumn}
+                      onSelectAllColumns={handleSelectAllColumns}
+                    />
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -1336,7 +1359,13 @@ export default function CostingPage() {
                         <Download className="h-3.5 w-3.5" />
                         Export CSV
                       </Button>
-                      <ColumnToggler tab="history" columnsMeta={HISTORY_COLUMNS_META} />
+                      <ColumnToggler
+                        tab="history"
+                        columnsMeta={HISTORY_COLUMNS_META}
+                        visibleColumns={visibleHistoryColumns}
+                        onToggleColumn={handleToggleColumn}
+                        onSelectAllColumns={handleSelectAllColumns}
+                      />
                     </div>
                   </div>
                 </CardHeader>
