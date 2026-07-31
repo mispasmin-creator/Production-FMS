@@ -766,6 +766,12 @@ export default function CostingPage() {
     fetchMaterialRates(item)
   }
 
+  const handleViewHistory = (item: HistoryCostingItem) => {
+    setSelectedHistoryItem(item)
+    setIsHistoryDialogOpen(true)
+    fetchMaterialRates(item as any)
+  }
+
   const handleSaveCosting = async () => {
     if (!validateForm() || !selectedCosting) return
     setIsSubmitting(true)
@@ -1104,10 +1110,7 @@ export default function CostingPage() {
                                     <Button
                                       size="sm"
                                       variant="outline"
-                                      onClick={() => {
-                                        setSelectedHistoryItem(item)
-                                        setIsHistoryDialogOpen(true)
-                                      }}
+                                      onClick={() => handleViewHistory(item)}
                                       className="border-slate-300 text-slate-700 hover:bg-slate-100 h-8 text-xs font-medium"
                                     >
                                       <Eye className="mr-1.5 h-3.5 w-3.5 text-slate-600" />
@@ -1478,37 +1481,19 @@ export default function CostingPage() {
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl border-b pb-2">
-              <Eye className="h-5 w-5 text-olive-700" />
-              Complete Production & Costing Details - Job Card: {selectedHistoryItem?.jobCardNo}
+              <Package className="h-5 w-5 text-green-600" />
+              Complete Production Details - Job Card: {selectedHistoryItem?.jobCardNo}
             </DialogTitle>
             <DialogDescription>
-              Complete details and raw material composition breakdown for this costing entry
+              All information from the actual production record for this job card
             </DialogDescription>
           </DialogHeader>
 
-          {selectedHistoryItem && (
+          {selectedHistoryItem?.completeDetails && (
             <div className="space-y-6 pt-2">
-              {/* Costing Summary Header Banner */}
-              <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
-                <div>
-                  <span className="text-xs font-semibold text-emerald-800 uppercase tracking-wider block">Total Costing Amount</span>
-                  <span className="text-2xl font-extrabold text-emerald-700">
-                    ₹{Number(selectedHistoryItem.costingAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Badge className="bg-emerald-600 text-white font-medium px-3 py-1 text-xs">
-                    <CheckCircle className="h-3.5 w-3.5 mr-1" /> Costing Completed
-                  </Badge>
-                  <span className="text-xs text-slate-500 font-medium">
-                    Date: {selectedHistoryItem.costingDate || "N/A"}
-                  </span>
-                </div>
-              </div>
-
               {/* Section 1: Basic Information */}
               <div className="space-y-3">
-                <h3 className="text-md font-semibold flex items-center gap-2 text-olive-700 bg-olive-50 p-2 rounded">
+                <h3 className="text-md font-semibold flex items-center gap-2 text-green-700 bg-green-50 p-2 rounded">
                   <Building className="h-4 w-4" /> Basic Information
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg">
@@ -1516,7 +1501,49 @@ export default function CostingPage() {
                     <Label className="text-xs text-gray-500 flex items-center gap-1">
                       <Hash className="h-3 w-3" /> Job Card Number
                     </Label>
-                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.jobCardNo || "N/A"}</p>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.jobCardNo || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Building className="h-3 w-3" /> Firm Name
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.firmName || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Calendar className="h-3 w-3" /> Date of Production
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.dateOfProduction || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <User className="h-3 w-3" /> Name of Supervisor
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.nameOfSupervisor || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Package className="h-3 w-3" /> Product Name
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.productName || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Package className="h-3 w-3" /> Quantity of FG
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.quantityOfFG || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Hash className="h-3 w-3" /> Serial Number
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.serialNumber || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <Clock className="h-3 w-3" /> Machine Running Hour
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.machineRunningHour || "N/A"}</p>
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs text-gray-500 flex items-center gap-1">
@@ -1524,96 +1551,225 @@ export default function CostingPage() {
                     </Label>
                     <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.deliveryOrderNo || "N/A"}</p>
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-gray-500 flex items-center gap-1">
-                      <Building className="h-3 w-3" /> Firm Name
-                    </Label>
-                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.firmName || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-gray-500 flex items-center gap-1">
-                      <User className="h-3 w-3" /> Party Name
-                    </Label>
-                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.partyName || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-gray-500 flex items-center gap-1">
-                      <Package className="h-3 w-3" /> Product Name
-                    </Label>
-                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.productName || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-gray-500 flex items-center gap-1">
-                      <Hash className="h-3 w-3" /> Quantity (FG)
-                    </Label>
-                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.quantityOfFG || 0} MT</p>
-                  </div>
                 </div>
               </div>
 
-              {/* Section 2: Raw Materials Composition Details */}
-              <div className="space-y-3">
-                <h3 className="text-md font-semibold flex items-center gap-2 text-olive-700 bg-olive-50 p-2 rounded">
-                  <Package className="h-4 w-4" /> Raw Materials Composition Breakdown
-                </h3>
-                {selectedHistoryItem.completeDetails?.rawMaterials && selectedHistoryItem.completeDetails.rawMaterials.length > 0 ? (
+              {/* Section 2: Raw Materials & Rates (LIFT-ACCOUNTS) */}
+              {selectedHistoryItem.completeDetails.rawMaterials.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-md font-semibold flex items-center gap-2 text-blue-700 bg-blue-50 p-2 rounded">
+                    <Package className="h-4 w-4" /> Raw Materials & Rates (LIFT-ACCOUNTS)
+                  </h3>
                   <div className="border rounded-lg overflow-hidden">
                     <Table>
-                      <TableHeader className="bg-slate-100">
+                      <TableHeader className="bg-blue-50">
                         <TableRow>
-                          <TableHead className="w-12 text-xs">#</TableHead>
-                          <TableHead className="text-xs">Raw Material Name</TableHead>
-                          <TableHead className="text-xs text-right">Quantity / Share</TableHead>
+                          <TableHead className="w-12">#</TableHead>
+                          <TableHead>Raw Material Name</TableHead>
+                          <TableHead className="text-right">Quantity</TableHead>
+                          <TableHead className="text-right">Rate (₹/MT)</TableHead>
+                          <TableHead className="text-right">Trans. Rate (₹/MT)</TableHead>
+                          <TableHead className="text-right">Total Cost (₹)</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {selectedHistoryItem.completeDetails.rawMaterials.map((rm, idx) => (
-                          <TableRow key={idx}>
-                            <TableCell className="text-xs font-medium">{idx + 1}</TableCell>
-                            <TableCell className="text-xs font-semibold text-slate-800">{rm.name}</TableCell>
-                            <TableCell className="text-xs text-right font-medium">{rm.quantity}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-500 italic p-3 border rounded-lg bg-slate-50">
-                    No detailed raw material composition record found for this production entry.
-                  </p>
-                )}
-              </div>
+                        {selectedHistoryItem.completeDetails.rawMaterials.map((material, idx) => {
+                          const rmName = material.name ? material.name.trim() : ""
+                          const editedRate = editedRates[rmName]?.rate
+                          const editedTransRate = editedRates[rmName]?.transportRate
+                          const rateInfo = liftRates[rmName]
+                          const rate = editedRate !== undefined && editedRate !== "" ? parseFloat(editedRate) || 0 : (rateInfo?.rate || 0)
+                          const transRate = editedTransRate !== undefined && editedTransRate !== "" ? parseFloat(editedTransRate) || 0 : (rateInfo?.transportRate || 0)
+                          const qty = Number(material.quantity || 0)
+                          const totalCost = qty * (rate + transRate)
 
-              {/* Section 3: Additional Production Information */}
-              {selectedHistoryItem.completeDetails && (
-                <div className="space-y-3">
-                  <h3 className="text-md font-semibold flex items-center gap-2 text-olive-700 bg-olive-50 p-2 rounded">
-                    <Clock className="h-4 w-4" /> Production Details & Supervisor Remarks
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border rounded-lg">
-                    <div className="space-y-1">
-                      <Label className="text-xs text-gray-500">Date of Production</Label>
-                      <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.dateOfProduction || "N/A"}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-gray-500">Supervisor Name</Label>
-                      <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.nameOfSupervisor || "N/A"}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-gray-500">Machine Running Hours</Label>
-                      <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.machineRunningHour || "N/A"}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-gray-500">Remarks</Label>
-                      <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.remarks1 || selectedHistoryItem.completeDetails.remarks || "N/A"}</p>
-                    </div>
+                          return (
+                            <TableRow key={idx}>
+                              <TableCell className="font-medium">{idx + 1}</TableCell>
+                              <TableCell>{material.name}</TableCell>
+                              <TableCell className="text-right">{material.quantity}</TableCell>
+                              <TableCell className="text-right text-olive-700 font-semibold">
+                                {loadingRates ? (
+                                  <span className="text-slate-400">Loading...</span>
+                                ) : (
+                                  <div className="flex items-center justify-end gap-1">
+                                    <span className="text-gray-400">₹</span>
+                                    <span className="inline-block px-3 py-1 bg-gray-50 border border-gray-200 rounded text-xs font-semibold text-olive-700">
+                                      {rate > 0 ? rate : "-"}
+                                    </span>
+                                  </div>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right text-blue-700 font-semibold">
+                                {loadingRates ? (
+                                  <span className="text-slate-400">Loading...</span>
+                                ) : (
+                                  <div className="flex items-center justify-end gap-1">
+                                    <span className="text-gray-400">₹</span>
+                                    <span className="inline-block px-3 py-1 bg-gray-50 border border-gray-200 rounded text-xs font-semibold text-blue-700">
+                                      {transRate > 0 ? transRate : "-"}
+                                    </span>
+                                  </div>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right text-emerald-700 font-bold">
+                                {loadingRates ? (
+                                  <span className="text-slate-400">Calculating...</span>
+                                ) : totalCost > 0 ? (
+                                  `₹${totalCost.toFixed(2)}`
+                                ) : (
+                                  "₹0.00"
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                      <TableFooter className="bg-slate-50 font-bold">
+                        {(() => {
+                          let totalMaterialCost = 0
+                          selectedHistoryItem.completeDetails.rawMaterials.forEach((rm) => {
+                            const rmName = rm.name ? rm.name.trim() : ""
+                            const editedRate = editedRates[rmName]?.rate
+                            const editedTransRate = editedRates[rmName]?.transportRate
+                            const rateInfo = liftRates[rmName]
+                            const rate = editedRate !== undefined && editedRate !== "" ? parseFloat(editedRate) || 0 : (rateInfo?.rate || 0)
+                            const transRate = editedTransRate !== undefined && editedTransRate !== "" ? parseFloat(editedTransRate) || 0 : (rateInfo?.transportRate || 0)
+                            const qty = Number(rm.quantity || 0)
+                            totalMaterialCost += qty * (rate + transRate)
+                          })
+
+                          const fgQty = Number(selectedHistoryItem.completeDetails.quantityOfFG || selectedHistoryItem.quantityOfFG || 0)
+                          const perMtCost = fgQty > 0 ? totalMaterialCost / fgQty : 0
+
+                          const response = costingResponses.find(r => r.orderNo === selectedHistoryItem?.deliveryOrderNo)
+                          const manufacturingCost = response ? parseFloat(response.manufacturingCost) || 0 : 0
+                          const totalProductionCost = perMtCost + manufacturingCost
+
+                          return (
+                            <>
+                              <TableRow>
+                                <TableCell colSpan={5} className="text-right text-slate-600">
+                                  Total Material Cost:
+                                </TableCell>
+                                <TableCell className="text-right text-emerald-700 text-sm">
+                                  ₹{totalMaterialCost.toFixed(2)}
+                                </TableCell>
+                              </TableRow>
+                              <TableRow>
+                                <TableCell colSpan={5} className="text-right text-slate-600">
+                                  FG Quantity:
+                                </TableCell>
+                                <TableCell className="text-right text-slate-700 text-sm">
+                                  {fgQty} MT
+                                </TableCell>
+                              </TableRow>
+                              <TableRow>
+                                <TableCell colSpan={5} className="text-right text-slate-600">
+                                  Calculated Per MT Cost:
+                                </TableCell>
+                                <TableCell className="text-right text-olive-700 text-sm">
+                                  ₹{perMtCost.toFixed(2)} / MT
+                                </TableCell>
+                              </TableRow>
+                              <TableRow>
+                                <TableCell colSpan={5} className="text-right text-slate-600">
+                                  Manufacturing Cost:
+                                </TableCell>
+                                <TableCell className="text-right text-slate-700 text-sm">
+                                  ₹{manufacturingCost.toFixed(2)} / MT
+                                </TableCell>
+                              </TableRow>
+                              <TableRow className="bg-olive-50">
+                                <TableCell colSpan={5} className="text-right text-olive-800 font-extrabold text-sm">
+                                  Total Production Cost / MT:
+                                </TableCell>
+                                <TableCell className="text-right text-olive-800 font-extrabold text-md">
+                                  ₹{totalProductionCost.toFixed(2)} / MT
+                                </TableCell>
+                              </TableRow>
+                            </>
+                          )
+                        })()}
+                      </TableFooter>
+                    </Table>
                   </div>
                 </div>
               )}
 
-              <div className="flex justify-end pt-2 border-t">
+              {/* Section 3: Costing response data */}
+              {(() => {
+                const response = costingResponses.find(r => r.orderNo === selectedHistoryItem?.deliveryOrderNo);
+                if (response) {
+                  return (
+                    <div className="space-y-3">
+                      <h3 className="text-md font-semibold flex items-center gap-2 text-violet-700 bg-violet-50 p-2 rounded">
+                        <DollarSign className="h-4 w-4" /> Costing Details from Analysis
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border border-violet-100 rounded-lg">
+                        <div className="space-y-1 text-blue-700">
+                          <Label className="text-xs text-blue-700 font-bold">ACTUAL ORDER RATE</Label>
+                          <p className="text-lg font-black">
+                            {getActualOrderRate(selectedHistoryItem as any) > 0 
+                              ? `₹${getActualOrderRate(selectedHistoryItem as any).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` 
+                              : "-"}
+                          </p>
+                        </div>
+                        <div className="space-y-1 text-blue-700">
+                          <Label className="text-xs text-blue-700 font-bold">PRODUCTION COST %</Label>
+                          <p className="text-lg font-black">
+                            {(() => {
+                              const actualOrderRate = getActualOrderRate(selectedHistoryItem as any);
+                              
+                              let totalMaterialCost = 0;
+                              if (selectedHistoryItem?.completeDetails?.rawMaterials) {
+                                selectedHistoryItem.completeDetails.rawMaterials.forEach((rm) => {
+                                  const rmName = rm.name ? rm.name.trim() : "";
+                                  const editedRate = editedRates[rmName]?.rate;
+                                  const editedTransRate = editedRates[rmName]?.transportRate;
+                                  const rateInfo = liftRates[rmName];
+                                  const rate = editedRate !== undefined && editedRate !== "" ? parseFloat(editedRate) || 0 : (rateInfo?.rate || 0);
+                                  const transRate = editedTransRate !== undefined && editedTransRate !== "" ? parseFloat(editedTransRate) || 0 : (rateInfo?.transportRate || 0);
+                                  const qty = Number(rm.quantity || 0); 
+                                  totalMaterialCost += qty * (rate + transRate);
+                                });
+                              }
+                              const fgQty = Number(selectedHistoryItem?.completeDetails?.quantityOfFG || selectedHistoryItem?.quantityOfFG || 0);
+                              const perMtCost = fgQty > 0 ? totalMaterialCost / fgQty : 0;
+                              const manufacturingCost = response ? parseFloat(response.manufacturingCost) || 0 : 0;
+                              const productionCost = perMtCost + manufacturingCost;
+
+                              if (actualOrderRate > 0) {
+                                return ((productionCost / actualOrderRate) * 100).toFixed(2) + "%";
+                              }
+                              return "-";
+                            })()}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+              {/* Saved Costing Amount Display */}
+              <div className="flex items-center justify-between p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+                <div>
+                  <span className="text-xs font-semibold text-emerald-800 uppercase tracking-wider block">Costing Amount</span>
+                  <span className="text-2xl font-extrabold text-emerald-700">
+                    ₹{Number(selectedHistoryItem.costingAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <Badge className="bg-emerald-600 text-white font-medium px-3 py-1.5 text-xs">
+                  <CheckCircle className="h-4 w-4 mr-1.5" /> Costing Saved
+                </Badge>
+              </div>
+
+              {/* Close Button Only */}
+              <div className="flex justify-end pt-4 border-t">
                 <Button variant="outline" onClick={() => setIsHistoryDialogOpen(false)}>
-                  Close Report
+                  Close
                 </Button>
               </div>
             </div>
