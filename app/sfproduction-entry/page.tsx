@@ -8,7 +8,7 @@ import { format } from 'date-fns';
 import {
     Loader2, AlertTriangle, RefreshCw, ClipboardList, History,
     FileCheck, Clock, Zap, Camera, Upload, Save, Eye, X, Plus,
-    Pencil, Target, Settings, Search
+    Pencil, Target, Settings, Search, Package, Calendar, ChevronDown, Check, Building
 } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabase";
 import {
@@ -164,6 +165,11 @@ export default function SemiActualProductionPage() {
     const [successMessage, setSuccessMessage] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [firmFilter, setFirmFilter] = useState<string[]>([]);
+    const [selectedHistoryProduct, setSelectedHistoryProduct] = useState<string>('ALL');
+    const [historyFromDate, setHistoryFromDate] = useState<string>('');
+    const [historyToDate, setHistoryToDate] = useState<string>('');
+    const [isProductPopoverOpen, setIsProductPopoverOpen] = useState<boolean>(false);
+    const [productSearchInput, setProductSearchInput] = useState<string>('');
     const isAdmin = user?.role?.toLowerCase() === 'admin';
 
     const [isEditingProcessingCost, setIsEditingProcessingCost] = useState(false);
@@ -503,11 +509,56 @@ export default function SemiActualProductionPage() {
         );
     }, [jobCardData, searchQuery, firmFilter]);
 
+    const uniqueHistoryProducts = useMemo(() => {
+        const set = new Set<string>();
+        semiActualData.forEach(item => {
+            if (item.productName) set.add(item.productName.trim());
+        });
+        return Array.from(set).filter(Boolean).sort();
+    }, [semiActualData]);
+
+    const isDateInRange = (dateVal: any, fromDate: string, toDate: string): boolean => {
+        if (!fromDate && !toDate) return true;
+        if (!dateVal) return false;
+        let d: Date | null = null;
+        const str = String(dateVal).trim();
+        if (str.includes('/')) {
+            const parts = str.split(' ')[0].split('/');
+            if (parts.length === 3) {
+                const day = parseInt(parts[0], 10);
+                const month = parseInt(parts[1], 10) - 1;
+                let year = parseInt(parts[2], 10);
+                if (year < 100) year += 2000;
+                d = new Date(year, month, day);
+            }
+        } else {
+            d = new Date(str);
+        }
+        if (!d || isNaN(d.getTime())) return false;
+        if (fromDate) {
+            const from = new Date(fromDate);
+            from.setHours(0, 0, 0, 0);
+            if (d < from) return false;
+        }
+        if (toDate) {
+            const to = new Date(toDate);
+            to.setHours(23, 59, 59, 999);
+            if (d > to) return false;
+        }
+        return true;
+    };
+
     const filteredHistory = useMemo(() => {
         const q = searchQuery.toLowerCase().trim();
         let history = semiActualData;
         if (firmFilter.length > 0) {
             history = history.filter(item => firmFilter.includes(String(item.firmName || "")));
+        }
+        if (selectedHistoryProduct !== 'ALL') {
+            history = history.filter(item => (item.productName || "").trim() === selectedHistoryProduct);
+        }
+        if (historyFromDate || historyToDate) {
+            history = history.filter(item => isDateInRange(item.dateOfProduction || item.timestamp, historyFromDate, historyToDate));
         }
         if (!q) return history;
         return history.filter(item =>
@@ -519,7 +570,15 @@ export default function SemiActualProductionPage() {
             (item.supervisorName || "").toLowerCase().includes(q) ||
             (item.status || "").toLowerCase().includes(q)
         );
-    }, [semiActualData, searchQuery, firmFilter]);
+    }, [semiActualData, searchQuery, firmFilter, selectedHistoryProduct, historyFromDate, historyToDate]);
+
+    const totalHistoryQty = useMemo(() => {
+        return filteredHistory.reduce((sum, item) => sum + (Number(item.qtyOfSemiFinishedGood) || 0), 0);
+    }, [filteredHistory]);
+
+    const totalMachineHours = useMemo(() => {
+        return filteredHistory.reduce((sum, item) => sum + (Number(item.machineRunningHour || item.machineRunning) || 0), 0);
+    }, [filteredHistory]);
 
     const pendingJobCards = filteredPending;
     const historyEntries = filteredHistory;
@@ -572,7 +631,7 @@ export default function SemiActualProductionPage() {
                 </Button>
             </div>
 
-            {/* ── Tabs & Search ── */}
+            {/* ── Tabs & Search Bar ── */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div className="bg-slate-100 rounded-xl p-1 flex gap-1 w-fit">
                     <button
@@ -602,37 +661,41 @@ export default function SemiActualProductionPage() {
                         </span>
                     </button>
                 </div>
-                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                    
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="w-full sm:w-[150px] bg-white border-slate-200 text-xs h-9 rounded-lg justify-between font-normal hover:bg-transparent">
-                      {firmFilter.length === 0 ? "All Firms" : `${firmFilter.length} Firm${firmFilter.length > 1 ? 's' : ''} Selected`}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-[150px] rounded-lg">
-                    <DropdownMenuLabel className="text-xs">Filter by Firm</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {uniqueFirmsForFilter.map((firm) => (
-                      <DropdownMenuCheckboxItem
-                        key={firm}
-                        checked={firmFilter.includes(firm)}
-                        className="text-xs"
-                        onCheckedChange={(checked: boolean) => {
-                          if (checked) {
-                            setFirmFilter([...firmFilter, firm])
-                          } else {
-                            setFirmFilter(firmFilter.filter((f) => f !== firm))
-                          }
-                        }}
-                      >
-                        {firm}
-                      </DropdownMenuCheckboxItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
 
-                    <div className="relative w-full sm:w-[250px]">
+                <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+                    {/* Firm Filter for Pending tab */}
+                    {activeTab === 'pending' && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" className="w-full sm:w-[150px] bg-white border-slate-200 text-xs h-9 rounded-lg justify-between font-normal hover:bg-transparent">
+                              {firmFilter.length === 0 ? "All Firms" : `${firmFilter.length} Firm${firmFilter.length > 1 ? 's' : ''} Selected`}
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent className="w-[150px] rounded-lg">
+                            <DropdownMenuLabel className="text-xs">Filter by Firm</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {uniqueFirmsForFilter.map((firm) => (
+                              <DropdownMenuCheckboxItem
+                                key={firm}
+                                checked={firmFilter.includes(firm)}
+                                className="text-xs"
+                                onCheckedChange={(checked: boolean) => {
+                                  if (checked) {
+                                    setFirmFilter([...firmFilter, firm])
+                                  } else {
+                                    setFirmFilter(firmFilter.filter((f) => f !== firm))
+                                  }
+                                }}
+                              >
+                                {firm}
+                              </DropdownMenuCheckboxItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                    )}
+
+                    {/* Search Input */}
+                    <div className="relative w-full sm:w-[280px]">
                         <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
                             placeholder="Search entries..."
@@ -643,6 +706,183 @@ export default function SemiActualProductionPage() {
                     </div>
                 </div>
             </div>
+
+            {/* ── Dedicated Filter Toolbar & Summary Bar (History Tab) ── */}
+            {activeTab === 'history' && (
+                <div className="bg-slate-100/90 px-4 py-3 rounded-xl border border-slate-200/80 mb-4 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+                    {/* Filters (Left) */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        {/* Firm Filter Dropdown */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" className="h-8 text-xs bg-white border-slate-200 justify-between font-medium">
+                              <Building className="h-3.5 w-3.5 text-olive-600 shrink-0 mr-1.5" />
+                              {firmFilter.length === 0 ? "All Firms" : `${firmFilter.length} Selected`}
+                              <ChevronDown className="h-3 w-3 text-slate-400 shrink-0 ml-1.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent className="w-[150px] rounded-lg">
+                            <DropdownMenuLabel className="text-xs">Filter by Firm</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {uniqueFirmsForFilter.map((firm) => (
+                              <DropdownMenuCheckboxItem
+                                key={firm}
+                                checked={firmFilter.includes(firm)}
+                                className="text-xs"
+                                onCheckedChange={(checked: boolean) => {
+                                  if (checked) {
+                                    setFirmFilter([...firmFilter, firm])
+                                  } else {
+                                    setFirmFilter(firmFilter.filter((f) => f !== firm))
+                                  }
+                                }}
+                              >
+                                {firm}
+                              </DropdownMenuCheckboxItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        {/* Searchable Product Filter */}
+                        <Popover open={isProductPopoverOpen} onOpenChange={setIsProductPopoverOpen}>
+                            <PopoverTrigger asChild>
+                                <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs cursor-pointer hover:bg-slate-50 transition-colors h-8 text-xs">
+                                    <Package className="h-3.5 w-3.5 text-olive-600 shrink-0" />
+                                    <span className="font-semibold text-slate-500 whitespace-nowrap">Product:</span>
+                                    <span className="font-medium text-slate-800 truncate max-w-[150px]">
+                                        {selectedHistoryProduct === 'ALL' ? 'All Products' : selectedHistoryProduct}
+                                    </span>
+                                    <ChevronDown className="h-3 w-3 text-slate-400 shrink-0 ml-0.5" />
+                                </div>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[240px] p-2 bg-white rounded-xl border border-slate-200 shadow-lg" align="start">
+                                <div className="space-y-2">
+                                    <div className="relative">
+                                        <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                                        <Input
+                                            placeholder="Search product..."
+                                            value={productSearchInput}
+                                            onChange={(e) => setProductSearchInput(e.target.value)}
+                                            className="h-8 text-xs pl-8 bg-slate-50 border-slate-200 focus-visible:ring-olive-500"
+                                            autoFocus
+                                        />
+                                    </div>
+                                    <div className="max-h-[200px] overflow-y-auto space-y-0.5 pr-1">
+                                        <button
+                                            type="button"
+                                            className={`w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors flex items-center justify-between ${
+                                                selectedHistoryProduct === 'ALL'
+                                                    ? 'bg-olive-50 text-olive-800 font-bold'
+                                                    : 'hover:bg-slate-100 text-slate-700'
+                                            }`}
+                                            onClick={() => {
+                                                setSelectedHistoryProduct('ALL');
+                                                setIsProductPopoverOpen(false);
+                                                setProductSearchInput('');
+                                            }}
+                                        >
+                                            <span>All Products</span>
+                                            {selectedHistoryProduct === 'ALL' && <Check className="h-3.5 w-3.5 text-olive-600 shrink-0" />}
+                                        </button>
+                                        {(() => {
+                                            const filtered = uniqueHistoryProducts.filter(p =>
+                                                p.toLowerCase().includes(productSearchInput.toLowerCase().trim())
+                                            );
+                                            if (filtered.length === 0) {
+                                                return (
+                                                    <p className="text-xs text-slate-400 text-center py-2 italic">
+                                                        No products found
+                                                    </p>
+                                                );
+                                            }
+                                            return filtered.map(p => (
+                                                <button
+                                                    key={p}
+                                                    type="button"
+                                                    className={`w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors flex items-center justify-between ${
+                                                        selectedHistoryProduct === p
+                                                            ? 'bg-olive-50 text-olive-800 font-bold'
+                                                            : 'hover:bg-slate-100 text-slate-700'
+                                                    }`}
+                                                    onClick={() => {
+                                                        setSelectedHistoryProduct(p);
+                                                        setIsProductPopoverOpen(false);
+                                                        setProductSearchInput('');
+                                                    }}
+                                                >
+                                                    <span className="truncate">{p}</span>
+                                                    {selectedHistoryProduct === p && <Check className="h-3.5 w-3.5 text-olive-600 shrink-0 ml-1" />}
+                                                </button>
+                                            ));
+                                        })()}
+                                    </div>
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+
+                        {/* Divider */}
+                        <div className="h-4.5 w-px bg-slate-300 mx-1 hidden sm:block" />
+
+                        {/* From Date Filter */}
+                        <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs h-8 text-xs">
+                            <Calendar className="h-3.5 w-3.5 text-olive-600 shrink-0" />
+                            <span className="font-semibold text-slate-500 whitespace-nowrap">From:</span>
+                            <input
+                                type="date"
+                                value={historyFromDate}
+                                onChange={(e) => setHistoryFromDate(e.target.value)}
+                                className="bg-transparent font-medium text-slate-800 focus:outline-none cursor-pointer text-xs"
+                            />
+                        </div>
+
+                        {/* To Date Filter */}
+                        <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs h-8 text-xs">
+                            <Calendar className="h-3.5 w-3.5 text-olive-600 shrink-0" />
+                            <span className="font-semibold text-slate-500 whitespace-nowrap">To:</span>
+                            <input
+                                type="date"
+                                value={historyToDate}
+                                onChange={(e) => setHistoryToDate(e.target.value)}
+                                className="bg-transparent font-medium text-slate-800 focus:outline-none cursor-pointer text-xs"
+                            />
+                        </div>
+
+                        {/* Reset Button */}
+                        {(selectedHistoryProduct !== 'ALL' || historyFromDate || historyToDate || firmFilter.length > 0 || searchQuery) && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                    setSelectedHistoryProduct('ALL');
+                                    setHistoryFromDate('');
+                                    setHistoryToDate('');
+                                    setFirmFilter([]);
+                                    setSearchQuery('');
+                                }}
+                                className="h-8 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 font-medium"
+                            >
+                                Reset Filters
+                            </Button>
+                        )}
+                    </div>
+
+                    {/* Summary Badges (Right - Single Line Layout) */}
+                    <div className="flex flex-wrap items-center gap-2.5 sm:ml-auto">
+                        <div className="flex items-center gap-1.5 bg-white border border-amber-200 shadow-2xs px-3 py-1 rounded-lg text-slate-700 font-medium text-xs h-8">
+                            <span className="text-slate-500 font-semibold">Total Machine Hours:</span>
+                            <strong className="text-amber-700 font-bold text-xs">
+                                {totalMachineHours.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} Hrs
+                            </strong>
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-white border border-blue-200 shadow-2xs px-3 py-1 rounded-lg text-slate-700 font-medium text-xs h-8">
+                            <span className="text-slate-500 font-semibold">Total Qty:</span>
+                            <strong className="text-blue-700 font-bold text-xs">
+                                {totalHistoryQty.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 3 })} MT
+                            </strong>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ── Pending Tab ── */}
             {activeTab === 'pending' && (

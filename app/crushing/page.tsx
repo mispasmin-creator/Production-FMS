@@ -23,8 +23,12 @@ import {
     FileText,
     Search,
     BadgeCheck,
-    Edit2
+    Edit2,
+    Building,
+    ChevronDown,
+    Check
 } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 // Shadcn UI components
 import { Button } from "@/components/ui/button";
@@ -191,6 +195,11 @@ export default function Step5List() {
     const [checkingSubmitted, setCheckingSubmitted] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [firmFilter, setFirmFilter] = useState<string[]>([]);
+    const [selectedHistoryProduct, setSelectedHistoryProduct] = useState<string>('ALL');
+    const [historyFromDate, setHistoryFromDate] = useState<string>('');
+    const [historyToDate, setHistoryToDate] = useState<string>('');
+    const [isProductPopoverOpen, setIsProductPopoverOpen] = useState<boolean>(false);
+    const [productSearchInput, setProductSearchInput] = useState<string>('');
     const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
     const [submittedIds, setSubmittedIds] = useState<Set<number>>(new Set());
     
@@ -367,9 +376,95 @@ export default function Step5List() {
         return filteredRecords.filter(item => !submittedIds.has(item._rowIndex));
     }, [filteredRecords, submittedIds]);
 
+    const uniqueHistoryProducts = useMemo(() => {
+        const set = new Set<string>();
+        crushingRecords.forEach((item) => {
+            if (submittedIds.has(item._rowIndex)) {
+                if (item.crushingProductName) set.add(item.crushingProductName.trim());
+                if (item.fg1Name) set.add(item.fg1Name.trim());
+                if (item.fg2Name) set.add(item.fg2Name.trim());
+                if (item.fg3Name) set.add(item.fg3Name.trim());
+                if (item.fg4Name) set.add(item.fg4Name.trim());
+            }
+        });
+        return Array.from(set).filter(Boolean).sort();
+    }, [crushingRecords, submittedIds]);
+
+    const isDateInRange = (dateVal: any, fromDate: string, toDate: string): boolean => {
+        if (!fromDate && !toDate) return true;
+        if (!dateVal) return false;
+        let d: Date | null = null;
+        const str = String(dateVal).trim();
+        if (str.includes('/')) {
+            const parts = str.split(' ')[0].split('/');
+            if (parts.length === 3) {
+                const day = parseInt(parts[0], 10);
+                const month = parseInt(parts[1], 10) - 1;
+                let year = parseInt(parts[2], 10);
+                if (year < 100) year += 2000;
+                d = new Date(year, month, day);
+            }
+        } else {
+            d = new Date(str);
+        }
+        if (!d || isNaN(d.getTime())) return false;
+        if (fromDate) {
+            const from = new Date(fromDate);
+            from.setHours(0, 0, 0, 0);
+            if (d < from) return false;
+        }
+        if (toDate) {
+            const to = new Date(toDate);
+            to.setHours(23, 59, 59, 999);
+            if (d > to) return false;
+        }
+        return true;
+    };
+
     const historyRecords = useMemo(() => {
-        return filteredRecords.filter(item => submittedIds.has(item._rowIndex));
-    }, [filteredRecords, submittedIds]);
+        let data = crushingRecords.filter(item => submittedIds.has(item._rowIndex));
+        if (firmFilter.length > 0) {
+            data = data.filter((item) => firmFilter.includes(String(item.firmName || "")));
+        }
+        if (selectedHistoryProduct !== 'ALL') {
+            const targetProd = selectedHistoryProduct.toLowerCase().trim();
+            data = data.filter((item) =>
+                (item.crushingProductName || "").toLowerCase().trim() === targetProd ||
+                (item.fg1Name || "").toLowerCase().trim() === targetProd ||
+                (item.fg2Name || "").toLowerCase().trim() === targetProd ||
+                (item.fg3Name || "").toLowerCase().trim() === targetProd ||
+                (item.fg4Name || "").toLowerCase().trim() === targetProd
+            );
+        }
+        if (historyFromDate || historyToDate) {
+            data = data.filter((item) => isDateInRange(item.dateOfProduction || item.timestamp, historyFromDate, historyToDate));
+        }
+        const q = searchQuery.toLowerCase().trim();
+        if (!q) return data;
+        return data.filter(record => 
+            (record.crushingProductName || "").toLowerCase().includes(q) ||
+            (record.remarks || "").toLowerCase().includes(q) ||
+            (record.firmName || "").toLowerCase().includes(q) ||
+            (record.fg1Name || "").toLowerCase().includes(q) ||
+            (record.fg2Name || "").toLowerCase().includes(q) ||
+            (record.fg3Name || "").toLowerCase().includes(q) ||
+            (record.fg4Name || "").toLowerCase().includes(q) ||
+            (record.dateOfProduction || "").toLowerCase().includes(q)
+        );
+    }, [crushingRecords, submittedIds, searchQuery, firmFilter, selectedHistoryProduct, historyFromDate, historyToDate]);
+
+    const totalHistoryInputQty = useMemo(() => {
+        return historyRecords.reduce((sum, item) => sum + (Number(item.inputQty) || 0), 0);
+    }, [historyRecords]);
+
+    const totalHistoryOutputQty = useMemo(() => {
+        return historyRecords.reduce((sum, item) => 
+            sum + (Number(item.fg1Qty) || 0) + (Number(item.fg2Qty) || 0) + (Number(item.fg3Qty) || 0) + (Number(item.fg4Qty) || 0), 0);
+    }, [historyRecords]);
+
+    const totalHistoryMachineHours = useMemo(() => {
+        return historyRecords.reduce((sum, item) => sum + (Number(item.machineHours) || 0), 0);
+    }, [historyRecords]);
 
     const displayRecords = useMemo(() => {
         return activeTab === 'pending' ? pendingRecords : historyRecords;
@@ -709,7 +804,7 @@ export default function Step5List() {
                     </div>
  
                     {/* Tabs */}
-                    <div className="flex gap-2 mb-6">
+                    <div className="flex gap-2 mb-4">
                         <button
                             type="button"
                             onClick={() => setActiveTab('pending')}
@@ -735,6 +830,189 @@ export default function Step5List() {
                             History ({historyRecords.length})
                         </button>
                     </div>
+
+                    {/* Dedicated History Filter Toolbar & Summary Bar */}
+                    {activeTab === 'history' && (
+                        <div className="bg-slate-100/90 px-4 py-3 rounded-xl border border-slate-200/80 mb-4 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+                            {/* Filters (Left) */}
+                            <div className="flex flex-wrap items-center gap-2">
+                                {/* Firm Filter Dropdown */}
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" className="h-8 text-xs bg-white border-slate-200 justify-between font-medium">
+                                      <Building className="h-3.5 w-3.5 text-olive-600 shrink-0 mr-1.5" />
+                                      {firmFilter.length === 0 ? "All Firms" : `${firmFilter.length} Selected`}
+                                      <ChevronDown className="h-3 w-3 text-slate-400 shrink-0 ml-1.5" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent className="w-[150px] rounded-lg">
+                                    <DropdownMenuLabel className="text-xs">Filter by Firm</DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    {uniqueFirmsForFilter.map((firm) => (
+                                      <DropdownMenuCheckboxItem
+                                        key={firm}
+                                        checked={firmFilter.includes(firm)}
+                                        className="text-xs"
+                                        onCheckedChange={(checked: boolean) => {
+                                          if (checked) {
+                                            setFirmFilter([...firmFilter, firm])
+                                          } else {
+                                            setFirmFilter(firmFilter.filter((f) => f !== firm))
+                                          }
+                                        }}
+                                      >
+                                        {firm}
+                                      </DropdownMenuCheckboxItem>
+                                    ))}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+
+                                {/* Searchable Product Filter */}
+                                <Popover open={isProductPopoverOpen} onOpenChange={setIsProductPopoverOpen}>
+                                    <PopoverTrigger asChild>
+                                        <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs cursor-pointer hover:bg-slate-50 transition-colors h-8 text-xs">
+                                            <Package className="h-3.5 w-3.5 text-olive-600 shrink-0" />
+                                            <span className="font-semibold text-slate-500 whitespace-nowrap">Product:</span>
+                                            <span className="font-medium text-slate-800 truncate max-w-[150px]">
+                                                {selectedHistoryProduct === 'ALL' ? 'All Products' : selectedHistoryProduct}
+                                            </span>
+                                            <ChevronDown className="h-3 w-3 text-slate-400 shrink-0 ml-0.5" />
+                                        </div>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[240px] p-2 bg-white rounded-xl border border-slate-200 shadow-lg" align="start">
+                                        <div className="space-y-2">
+                                            <div className="relative">
+                                                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                                                <Input
+                                                    placeholder="Search product..."
+                                                    value={productSearchInput}
+                                                    onChange={(e) => setProductSearchInput(e.target.value)}
+                                                    className="h-8 text-xs pl-8 bg-slate-50 border-slate-200 focus-visible:ring-olive-500"
+                                                    autoFocus
+                                                />
+                                            </div>
+                                            <div className="max-h-[200px] overflow-y-auto space-y-0.5 pr-1">
+                                                <button
+                                                    type="button"
+                                                    className={`w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors flex items-center justify-between ${
+                                                        selectedHistoryProduct === 'ALL'
+                                                            ? 'bg-olive-50 text-olive-800 font-bold'
+                                                            : 'hover:bg-slate-100 text-slate-700'
+                                                    }`}
+                                                    onClick={() => {
+                                                        setSelectedHistoryProduct('ALL');
+                                                        setIsProductPopoverOpen(false);
+                                                        setProductSearchInput('');
+                                                    }}
+                                                >
+                                                    <span>All Products</span>
+                                                    {selectedHistoryProduct === 'ALL' && <Check className="h-3.5 w-3.5 text-olive-600 shrink-0" />}
+                                                </button>
+                                                {(() => {
+                                                    const filtered = uniqueHistoryProducts.filter(p =>
+                                                        p.toLowerCase().includes(productSearchInput.toLowerCase().trim())
+                                                    );
+                                                    if (filtered.length === 0) {
+                                                        return (
+                                                            <p className="text-xs text-slate-400 text-center py-2 italic">
+                                                                No products found
+                                                            </p>
+                                                        );
+                                                    }
+                                                    return filtered.map(p => (
+                                                        <button
+                                                            key={p}
+                                                            type="button"
+                                                            className={`w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors flex items-center justify-between ${
+                                                                selectedHistoryProduct === p
+                                                                    ? 'bg-olive-50 text-olive-800 font-bold'
+                                                                    : 'hover:bg-slate-100 text-slate-700'
+                                                            }`}
+                                                            onClick={() => {
+                                                                setSelectedHistoryProduct(p);
+                                                                setIsProductPopoverOpen(false);
+                                                                setProductSearchInput('');
+                                                            }}
+                                                        >
+                                                            <span className="truncate">{p}</span>
+                                                            {selectedHistoryProduct === p && <Check className="h-3.5 w-3.5 text-olive-600 shrink-0 ml-1" />}
+                                                        </button>
+                                                    ));
+                                                })()}
+                                            </div>
+                                        </div>
+                                    </PopoverContent>
+                                </Popover>
+
+                                {/* Divider */}
+                                <div className="h-4.5 w-px bg-slate-300 mx-1 hidden sm:block" />
+
+                                {/* From Date Filter */}
+                                <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs h-8 text-xs">
+                                    <Calendar className="h-3.5 w-3.5 text-olive-600 shrink-0" />
+                                    <span className="font-semibold text-slate-500 whitespace-nowrap">From:</span>
+                                    <input
+                                        type="date"
+                                        value={historyFromDate}
+                                        onChange={(e) => setHistoryFromDate(e.target.value)}
+                                        className="bg-transparent font-medium text-slate-800 focus:outline-none cursor-pointer text-xs"
+                                    />
+                                </div>
+
+                                {/* To Date Filter */}
+                                <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs h-8 text-xs">
+                                    <Calendar className="h-3.5 w-3.5 text-olive-600 shrink-0" />
+                                    <span className="font-semibold text-slate-500 whitespace-nowrap">To:</span>
+                                    <input
+                                        type="date"
+                                        value={historyToDate}
+                                        onChange={(e) => setHistoryToDate(e.target.value)}
+                                        className="bg-transparent font-medium text-slate-800 focus:outline-none cursor-pointer text-xs"
+                                    />
+                                </div>
+
+                                {/* Reset Button */}
+                                {(selectedHistoryProduct !== 'ALL' || historyFromDate || historyToDate || firmFilter.length > 0 || searchQuery) && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                            setSelectedHistoryProduct('ALL');
+                                            setHistoryFromDate('');
+                                            setHistoryToDate('');
+                                            setFirmFilter([]);
+                                            setSearchQuery('');
+                                        }}
+                                        className="h-8 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 font-medium"
+                                    >
+                                        Reset Filters
+                                    </Button>
+                                )}
+                            </div>
+
+                            {/* Summary Badges (Right - Single Line Layout) */}
+                            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+                                <div className="flex items-center gap-1.5 bg-white border border-amber-200 shadow-2xs px-3 py-1 rounded-lg text-slate-700 font-medium text-xs h-8">
+                                    <span className="text-slate-500 font-semibold">Total Machine Hours:</span>
+                                    <strong className="text-amber-700 font-bold text-xs">
+                                        {totalHistoryMachineHours.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} Hrs
+                                    </strong>
+                                </div>
+                                <div className="flex items-center gap-1.5 bg-white border border-blue-200 shadow-2xs px-3 py-1 rounded-lg text-slate-700 font-medium text-xs h-8">
+                                    <span className="text-slate-500 font-semibold">Total Input Qty:</span>
+                                    <strong className="text-blue-700 font-bold text-xs">
+                                        {totalHistoryInputQty.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 3 })} MT
+                                    </strong>
+                                </div>
+                                <div className="flex items-center gap-1.5 bg-white border border-emerald-200 shadow-2xs px-3 py-1 rounded-lg text-slate-700 font-medium text-xs h-8">
+                                    <span className="text-slate-500 font-semibold">Total Output Qty:</span>
+                                    <strong className="text-emerald-700 font-bold text-xs">
+                                        {totalHistoryOutputQty.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 3 })} MT
+                                    </strong>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Table */}
                     <div className="overflow-x-auto rounded-lg border">

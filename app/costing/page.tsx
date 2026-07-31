@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Loader2, AlertTriangle, DollarSign, History, Settings, Package, Building, User, Calendar, Clock, Hash, FileText, CheckCircle, Search, Eye } from "lucide-react"
+import { Loader2, AlertTriangle, DollarSign, History, Settings, Package, Building, User, Calendar, Clock, Hash, FileText, CheckCircle, Search, Download } from "lucide-react"
 import { format } from "date-fns"
 // Shadcn UI components
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -17,6 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Separator } from "@/components/ui/separator"
 import { Toaster } from "@/components/ui/toaster"
 import { supabase, dispatchSupabase, purchaseSupabase, inventorySupabase } from "@/lib/supabase"
+import { cn } from "@/lib/utils"
 
 // --- Configuration ---
 const ACTUAL_PRODUCTION_TABLE = "actual_production"
@@ -122,6 +123,10 @@ const PENDING_COLUMNS_META = [
   { header: "Planned 3", dataKey: "planned3", toggleable: true },
 ]
 
+const HISTORY_RAW_MATERIAL_COLUMNS = Array.from({ length: 20 }, (_, i) => (
+  { header: `Raw Material ${i + 1}`, dataKey: `rm_${i + 1}`, toggleable: true }
+))
+
 const HISTORY_COLUMNS_META = [
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
@@ -129,13 +134,22 @@ const HISTORY_COLUMNS_META = [
   { header: "Quantity", dataKey: "quantityOfFG", toggleable: true },
   { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
-  { header: "Costing Amount", dataKey: "costingAmount", toggleable: true },
+  ...HISTORY_RAW_MATERIAL_COLUMNS,
   { header: "Costing Date", dataKey: "costingDate", toggleable: true },
-  { header: "Cost Report", dataKey: "costReport", alwaysVisible: true },
+  { header: "Costing Amount", dataKey: "costingAmount", toggleable: true, alwaysVisible: true },
 ]
 
 function hasValue(value: any): boolean {
   return value !== null && value !== undefined && String(value).trim() !== "" && String(value).trim().toLowerCase() !== "null"
+}
+
+function getManufacturingCost(firmName?: string, rawCost?: any): number {
+  const f = String(firmName || "").toLowerCase().trim()
+  if (f.includes("rkl") || f.includes("purab")) return 2000
+  if (f.includes("pmmpl")) return 1500
+  const num = Number(rawCost)
+  if (!isNaN(num) && num > 0) return Math.round(num)
+  return 1500
 }
 
 // Helper function to format date values in dd/mm/yy format
@@ -201,6 +215,8 @@ export default function CostingPage() {
   const [fromDate, setFromDate] = useState("")
   const [toDate, setToDate] = useState("")
   const [selectedFirm, setSelectedFirm] = useState("ALL")
+  const [selectedProduct, setSelectedProduct] = useState("ALL")
+  const [selectedParty, setSelectedParty] = useState("ALL")
 
   const parseDateToTimestamp = useCallback((dateVal: any): number | null => {
     if (!dateVal) return null
@@ -275,6 +291,22 @@ export default function CostingPage() {
     return Array.from(set).filter(Boolean).sort()
   }, [pendingCosting, historyCosting])
 
+  const uniqueHistoryProducts = useMemo(() => {
+    const set = new Set<string>()
+    historyCosting.forEach((item) => {
+      if (item.productName) set.add(item.productName.trim())
+    })
+    return Array.from(set).filter(Boolean).sort()
+  }, [historyCosting])
+
+  const uniqueHistoryParties = useMemo(() => {
+    const set = new Set<string>()
+    historyCosting.forEach((item) => {
+      if (item.partyName) set.add(item.partyName.trim())
+    })
+    return Array.from(set).filter(Boolean).sort()
+  }, [historyCosting])
+
   const filteredPending = useMemo(() => {
     return pendingCosting.filter((item) => {
       const q = searchQuery.toLowerCase().trim()
@@ -320,6 +352,10 @@ export default function CostingPage() {
 
       if (!matchFirm(item.firmName, selectedFirm)) return false
 
+      if (selectedProduct !== "ALL" && (item.productName || "").trim() !== selectedProduct) return false
+
+      if (selectedParty !== "ALL" && (item.partyName || "").trim() !== selectedParty) return false
+
       if (
         !isDateInRange(
           item.costingDate,
@@ -333,10 +369,14 @@ export default function CostingPage() {
 
       return true
     })
-  }, [historyCosting, searchQuery, selectedFirm, fromDate, toDate, matchFirm, isDateInRange])
+  }, [historyCosting, searchQuery, selectedFirm, selectedProduct, selectedParty, fromDate, toDate, matchFirm, isDateInRange])
 
   const totalHistoryCostingAmount = useMemo(() => {
     return filteredHistory.reduce((sum, item) => sum + (Number(item.costingAmount) || 0), 0)
+  }, [filteredHistory])
+
+  const totalHistoryQuantity = useMemo(() => {
+    return filteredHistory.reduce((sum, item) => sum + (Number(item.quantityOfFG) || 0), 0)
   }, [filteredHistory])
 
   const totalPendingCostingAmount = useMemo(() => {
@@ -428,6 +468,8 @@ export default function CostingPage() {
         { data: jobCardsRows, error: jobCardsErr },
         { data: costingResponseRows, error: costingErr },
         orderReceiptRes,
+        liftAccountsRes,
+        invHistoryRes,
       ] = await Promise.all([
         supabase.from(ACTUAL_PRODUCTION_TABLE).select("*"),
         supabase.from(JOBCARDS_TABLE).select("*"),
@@ -435,11 +477,54 @@ export default function CostingPage() {
         Promise.resolve(
           dispatchSupabase.from("ORDER RECEIPT").select('"DO-Delivery Order No.", "Rate Of Material", "Product Name", "Firm Name"')
         ).catch((err: any) => ({ data: null, error: err })),
+        Promise.resolve(
+          purchaseSupabase.from("LIFT-ACCOUNTS").select("*").order("Timestamp", { ascending: false })
+        ).catch(() => ({ data: [], error: null })),
+        Promise.resolve(
+          inventorySupabase.from("inventory_master_history").select("*").order("snapshot_date", { ascending: false })
+        ).catch(() => ({ data: [], error: null })),
       ])
 
       if (actualErr) throw actualErr
       if (jobCardsErr) throw jobCardsErr
       if (costingErr) throw costingErr
+
+      // Build raw material rate lookup map from LIFT-ACCOUNTS & inventory_master_history
+      const rawMaterialRatesMap = new Map<string, number>()
+      const normF = (name: any) => {
+        const str = String(name || "").toLowerCase().trim();
+        if (str.includes("purab")) return "purab";
+        if (str.includes("pmmpl")) return "pmmpl";
+        if (str.includes("rkl")) return "rkl";
+        return str;
+      }
+      const normP = (name: any) => String(name || "").toLowerCase().trim()
+
+      const liftAccountsRows = (liftAccountsRes as any)?.data || []
+      ;(liftAccountsRows || []).forEach((row: any) => {
+        const f = normF(row["Firm Name"])
+        const item = normP(row["Raw Material Name"] || row["Product Name"])
+        if (!f || !item) return
+        const key = `${f}___${item}`
+        if (!rawMaterialRatesMap.has(key)) {
+          const baseRate = Number(row["Rate"] || 0)
+          const transportRate = Number(row["Transporting Rate"] || 0)
+          rawMaterialRatesMap.set(key, baseRate + transportRate)
+        }
+      })
+
+      const inventoryHistoryRows = (invHistoryRes as any)?.data || []
+      ;(inventoryHistoryRows || []).forEach((row: any) => {
+        const f = normF(row["firm_name"])
+        const item = normP(row["item_name"])
+        const rate = row["product_rate"] !== null && row["product_rate"] !== undefined ? Number(row["product_rate"]) : null
+        if (f && item && rate !== null && !isNaN(rate) && rate > 0) {
+          const key = `${f}___${item}`
+          if (!rawMaterialRatesMap.has(key)) {
+            rawMaterialRatesMap.set(key, rate)
+          }
+        }
+      })
 
       // The same job card number is reused across several DOs, so a lookup on
       // the number alone resolves to whichever row happened to be last and
@@ -480,17 +565,86 @@ export default function CostingPage() {
         }
       }
 
+      // Build map of submitted costing_response records by DO + Product + Party
+      const costingResponseMap = new Map<string, any>()
+      ;(costingResponseRows || []).forEach((cRow: any) => {
+        const doNo = String(cRow["Order No."] || "").trim().toLowerCase()
+        const prod = String(cRow["product name"] || "").trim().toLowerCase()
+        const party = String(cRow["Party Name"] || "").trim().toLowerCase()
+        if (doNo) {
+          costingResponseMap.set(`${doNo}::${prod}::${party}`, cRow)
+          costingResponseMap.set(`${doNo}::${prod}`, cRow)
+          if (!costingResponseMap.has(doNo)) {
+            costingResponseMap.set(doNo, cRow)
+          }
+        }
+      })
+
       const pendingData: PendingCostingItem[] = (actualProductionRows || [])
         .filter((row: any) => hasValue(row["Job Card No."]) && hasValue(row["Planned8"]) && !hasValue(row["Actual8"]))
         .map(buildItem)
 
       const historyData: HistoryCostingItem[] = (actualProductionRows || [])
         .filter((row: any) => hasValue(row["Job Card No."]) && hasValue(row["Planned8"]) && hasValue(row["Actual8"]))
-        .map((row: any) => ({
-          ...buildItem(row),
-          costingAmount: Number(row["Costing Amount"] || 0),
-          costingDate: formatDateTimeValue(row["Actual8"]),
-        }))
+        .map((row: any) => {
+          const item = buildItem(row)
+          const firm = item.firmName || ""
+          const doNoNorm = normalizeKey(item.deliveryOrderNo)
+          const prodNorm = normalizeKey(item.productName)
+          const partyNorm = normalizeKey(item.partyName)
+
+          const matchedCosting =
+            costingResponseMap.get(`${doNoNorm}::${prodNorm}::${partyNorm}`) ||
+            costingResponseMap.get(`${doNoNorm}::${prodNorm}`) ||
+            costingResponseMap.get(doNoNorm)
+
+          const rmFields: Record<string, any> = {}
+          const rms = item.completeDetails?.rawMaterials || []
+
+          for (let i = 1; i <= 20; i++) {
+            const rmFromProd = rms[i - 1]
+            const rmNameFromCosting = matchedCosting ? matchedCosting[`RM${i}`] : null
+            const name = rmFromProd?.name?.trim() || (rmNameFromCosting ? String(rmNameFromCosting).trim() : "")
+
+            if (name) {
+              const qty = rmFromProd?.quantity != null ? String(rmFromProd.quantity) : (matchedCosting?.[`QTY${i}`] != null ? String(matchedCosting[`QTY${i}`]) : "-")
+              
+              // Priority 1: Use submitted COSTi from costing_response table
+              let submittedCost = matchedCosting ? matchedCosting[`COST${i}`] : null
+              let rateStr = "-"
+
+              if (submittedCost !== null && submittedCost !== undefined && !isNaN(Number(submittedCost)) && Number(submittedCost) > 0) {
+                const numCost = Number(submittedCost)
+                rateStr = `₹${numCost.toLocaleString("en-IN")}`
+              } else {
+                // Priority 2: Fallback to live rates map if submitted cost not found
+                const key = `${normF(firm)}___${normP(name)}`
+                let rate = rawMaterialRatesMap.get(key)
+                if (rate === undefined) {
+                  rate = rawMaterialRatesMap.get(`purab___${normP(name)}`) ?? rawMaterialRatesMap.get(`pmmpl___${normP(name)}`) ?? rawMaterialRatesMap.get(`rkl___${normP(name)}`)
+                }
+                if (rate && rate > 0) {
+                  rateStr = `₹${rate.toLocaleString("en-IN")}`
+                }
+              }
+
+              rmFields[`rm_name_${i}`] = name
+              rmFields[`rm_qty_${i}`] = qty
+              rmFields[`rm_rate_${i}`] = rateStr
+            } else {
+              rmFields[`rm_name_${i}`] = "-"
+              rmFields[`rm_qty_${i}`] = "-"
+              rmFields[`rm_rate_${i}`] = "-"
+            }
+          }
+
+          return {
+            ...item,
+            ...rmFields,
+            costingAmount: Number(row["Costing Amount"] || 0),
+            costingDate: formatDateTimeValue(row["Actual8"]),
+          }
+        })
         .sort((a: any, b: any) => new Date(b.costingDate).getTime() - new Date(a.costingDate).getTime())
 
       const responses: CostingResponseRecord[] = (costingResponseRows || [])
@@ -649,56 +803,8 @@ export default function CostingPage() {
               billingQty: liftQty,
             }
           } else {
+            console.log(`[PP BAG CALC NO ROW] ${rmName} in LIFT-ACCOUNTS`)
             ratesMap[rmName] = { rate: 0, type: "", transportRate: 0, totalBagsQty: 0, billingQty: 0 }
-          }
-
-          // Fallback 1: inventory_master_history if rate is 0
-          if (!ratesMap[rmName] || ratesMap[rmName].rate === 0) {
-            try {
-              const { data: invData } = await inventorySupabase
-                .from("inventory_master_history")
-                .select("product_rate")
-                .ilike("firm_name", firmName)
-                .ilike("item_name", rmName)
-                .not("product_rate", "is", null)
-                .order("snapshot_date", { ascending: false })
-                .limit(1)
-
-              if (invData && invData.length > 0 && Number(invData[0].product_rate) > 0) {
-                const invRate = Number(invData[0].product_rate)
-                ratesMap[rmName] = {
-                  rate: invRate,
-                  type: "",
-                  transportRate: ratesMap[rmName]?.transportRate || 0,
-                  totalBagsQty: 0,
-                  billingQty: 0,
-                }
-              }
-            } catch (e) {}
-          }
-
-          // Fallback 2: KYC Table if rate is still 0
-          if (!ratesMap[rmName] || ratesMap[rmName].rate === 0) {
-            try {
-              const { data: kycData } = await supabase
-                .from("kyc")
-                .select('"Price"')
-                .ilike("Firm Name", `%${firmName}%`)
-                .ilike("Product name", rmName)
-                .not("Price", "is", null)
-                .limit(1)
-
-              if (kycData && kycData.length > 0 && Number(kycData[0].Price) > 0) {
-                const kycPrice = Number(kycData[0].Price)
-                ratesMap[rmName] = {
-                  rate: kycPrice,
-                  type: "",
-                  transportRate: ratesMap[rmName]?.transportRate || 0,
-                  totalBagsQty: 0,
-                  billingQty: 0,
-                }
-              }
-            } catch (e) {}
           }
         })
       )
@@ -737,9 +843,10 @@ export default function CostingPage() {
       const fgQty = Number(item.completeDetails.quantityOfFG || item.quantityOfFG || 0)
       const perMtCost = fgQty > 0 ? totalMaterialCost / fgQty : 0
 
-      // Get Manufacturing Cost from costingResponses
+      // Get Manufacturing Cost from costingResponses with firm-based standard fallback (RKL/PURAB = 2000, PMMPL = 1500)
       const response = costingResponses.find(r => r.orderNo === item.deliveryOrderNo)
-      const manufacturingCost = response ? parseFloat(response.manufacturingCost) || 0 : 0
+      const targetFirm = item.firmName || item.completeDetails?.firmName
+      const manufacturingCost = getManufacturingCost(targetFirm, response?.manufacturingCost)
       const totalProductionCost = perMtCost + manufacturingCost
 
       // Pre-fill the costingAmount input box with Total Production Cost
@@ -788,7 +895,8 @@ export default function CostingPage() {
           const fgQty = Number(selectedCosting.completeDetails.quantityOfFG || selectedCosting.quantityOfFG || 0)
           const perMtCost = fgQty > 0 ? totalMaterialCost / fgQty : 0
           const response = costingResponses.find(r => r.orderNo === selectedCosting.deliveryOrderNo)
-          const manufacturingCost = response ? parseFloat(response.manufacturingCost) || 0 : 0
+          const targetFirm = selectedCosting.firmName || selectedCosting.completeDetails?.firmName
+          const manufacturingCost = getManufacturingCost(targetFirm, response?.manufacturingCost)
           const totalProductionCost = perMtCost + manufacturingCost
 
           setFormData((prevForm) => ({
@@ -804,37 +912,12 @@ export default function CostingPage() {
     })
   }
 
-  const [isViewOnlyModal, setIsViewOnlyModal] = useState(false)
-
   const handleCosting = (item: PendingCostingItem) => {
     setSelectedCosting(item)
     setFormData(initialFormState)
     setFormErrors({})
-    setIsViewOnlyModal(false)
     setIsDialogOpen(true)
     fetchMaterialRates(item)
-  }
-
-  const handleViewCostReport = (item: HistoryCostingItem) => {
-    const pendingItem: PendingCostingItem = {
-      id: item.id,
-      jobCardNo: item.jobCardNo,
-      deliveryOrderNo: item.deliveryOrderNo,
-      productName: item.productName,
-      firmName: item.firmName,
-      partyName: item.partyName,
-      quantityOfFG: item.quantityOfFG,
-      planned3: item.completeDetails?.planned3 || "",
-      completeDetails: item.completeDetails,
-    }
-    setSelectedCosting(pendingItem)
-    setFormData({
-      costingAmount: item.costingAmount ? String(item.costingAmount) : "",
-    })
-    setFormErrors({})
-    setIsViewOnlyModal(true)
-    setIsDialogOpen(true)
-    fetchMaterialRates(pendingItem)
   }
 
   const handleSaveCosting = async () => {
@@ -1003,30 +1086,70 @@ export default function CostingPage() {
             </div>
 
             {/* Filter Toolbar & Total Costing Amount Summary */}
-            <div className="bg-slate-100/90 p-3.5 rounded-xl border border-slate-200/80 mb-6 flex flex-wrap items-center justify-between gap-3 shadow-xs">
-              <div className="flex flex-wrap items-center gap-3">
+            <div className="bg-slate-100/90 px-4 pt-3 pb-3 rounded-xl border border-slate-200/80 mb-6 shadow-xs space-y-2.5">
+
+              {/* Row 1: All Filters */}
+              <div className="flex flex-wrap items-center gap-2">
+
                 {/* Firm Name Filter */}
                 <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
-                  <Building className="h-4 w-4 text-olive-600" />
-                  <span className="text-xs font-semibold text-slate-600">Firm:</span>
+                  <Building className="h-3.5 w-3.5 text-olive-600 shrink-0" />
+                  <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Firm:</span>
                   <select
                     value={selectedFirm}
                     onChange={(e) => setSelectedFirm(e.target.value)}
-                    className="text-xs bg-transparent font-medium text-slate-800 focus:outline-none cursor-pointer pr-1"
+                    className="text-xs bg-transparent font-medium text-slate-800 focus:outline-none cursor-pointer"
                   >
                     <option value="ALL">All Firms</option>
                     {uniqueFirms.map((f) => (
-                      <option key={f} value={f}>
-                        {f}
-                      </option>
+                      <option key={f} value={f}>{f}</option>
                     ))}
                   </select>
                 </div>
 
+                {/* Product Name Filter (History only) */}
+                {activeTab === "history" && (
+                  <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
+                    <Package className="h-3.5 w-3.5 text-olive-600 shrink-0" />
+                    <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Product:</span>
+                    <select
+                      value={selectedProduct}
+                      onChange={(e) => setSelectedProduct(e.target.value)}
+                      className="text-xs bg-transparent font-medium text-slate-800 focus:outline-none cursor-pointer max-w-[140px]"
+                    >
+                      <option value="ALL">All Products</option>
+                      {uniqueHistoryProducts.map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Party Name Filter (History only) */}
+                {activeTab === "history" && (
+                  <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
+                    <User className="h-3.5 w-3.5 text-olive-600 shrink-0" />
+                    <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Party:</span>
+                    <select
+                      value={selectedParty}
+                      onChange={(e) => setSelectedParty(e.target.value)}
+                      className="text-xs bg-transparent font-medium text-slate-800 focus:outline-none cursor-pointer max-w-[170px]"
+                    >
+                      <option value="ALL">All Parties</option>
+                      {uniqueHistoryParties.map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Divider */}
+                <div className="h-5 w-px bg-slate-300 mx-1 hidden sm:block" />
+
                 {/* From Date Filter */}
                 <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
-                  <Calendar className="h-4 w-4 text-olive-600" />
-                  <span className="text-xs font-semibold text-slate-600">From:</span>
+                  <Calendar className="h-3.5 w-3.5 text-olive-600 shrink-0" />
+                  <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">From:</span>
                   <input
                     type="date"
                     value={fromDate}
@@ -1037,8 +1160,8 @@ export default function CostingPage() {
 
                 {/* To Date Filter */}
                 <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
-                  <Calendar className="h-4 w-4 text-olive-600" />
-                  <span className="text-xs font-semibold text-slate-600">To:</span>
+                  <Calendar className="h-3.5 w-3.5 text-olive-600 shrink-0" />
+                  <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">To:</span>
                   <input
                     type="date"
                     value={toDate}
@@ -1048,7 +1171,7 @@ export default function CostingPage() {
                 </div>
 
                 {/* Reset Filters Button */}
-                {(fromDate || toDate || selectedFirm !== "ALL" || searchQuery) && (
+                {(fromDate || toDate || selectedFirm !== "ALL" || selectedProduct !== "ALL" || selectedParty !== "ALL" || searchQuery) && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -1056,6 +1179,8 @@ export default function CostingPage() {
                       setFromDate("")
                       setToDate("")
                       setSelectedFirm("ALL")
+                      setSelectedProduct("ALL")
+                      setSelectedParty("ALL")
                       setSearchQuery("")
                     }}
                     className="h-8 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2.5 font-medium"
@@ -1065,20 +1190,27 @@ export default function CostingPage() {
                 )}
               </div>
 
-              {/* Total Costing Amount Display */}
-              <div className="flex items-center gap-2 bg-white border border-slate-200 shadow-2xs px-4 py-1.5 rounded-lg text-slate-700 font-medium text-sm ml-auto">
-              
-                <span>
-                  Total Costing Amount:{" "}
-                  <strong className="text-base text-emerald-700 font-bold ml-1">
-                    ₹
-                    {(activeTab === "pending"
+              {/* Row 2: Totals aligned right */}
+              <div className="flex items-center justify-end gap-3 border-t border-slate-200/80 pt-2.5">
+                {activeTab === "history" && (
+                  <div className="flex items-center gap-2 bg-white border border-blue-100 shadow-2xs px-4 py-1.5 rounded-lg text-slate-700 font-medium text-sm">
+                    <span className="text-xs text-slate-500 font-semibold">Total Qty:</span>
+                    <strong className="text-blue-700 font-bold">
+                      {totalHistoryQuantity.toLocaleString("en-IN", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                    </strong>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 bg-white border border-emerald-100 shadow-2xs px-4 py-1.5 rounded-lg text-slate-700 font-medium text-sm">
+                  <span className="text-xs text-slate-500 font-semibold">Total Costing Amount:</span>
+                  <strong className="text-emerald-700 font-bold">
+                    ₹{(activeTab === "pending"
                       ? totalPendingCostingAmount
                       : totalHistoryCostingAmount
                     ).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </strong>
-                </span>
+                </div>
               </div>
+
             </div>
 
             <TabsContent value="pending">
@@ -1147,49 +1279,130 @@ export default function CostingPage() {
             <TabsContent value="history">
               <Card className="shadow-sm border border-border">
                 <CardHeader className="py-3 px-4 bg-olive-50/70 rounded-t-lg">
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center gap-2">
                     <CardTitle className="text-md font-semibold text-foreground">
                       <History className="h-5 w-5 text-olive-700 mr-2" />
                       History Items ({filteredHistory.length})
                     </CardTitle>
-                    <ColumnToggler tab="history" columnsMeta={HISTORY_COLUMNS_META} />
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (!filteredHistory.length) return
+                          const maxRm = 20
+                          const rmHeaders: string[] = []
+                          for (let i = 1; i <= maxRm; i++) {
+                            rmHeaders.push(`Raw Material ${i}`, `Qty ${i}`, `Rate ${i}`)
+                          }
+                          const headers = [
+                            "Job Card No.", "Delivery Order No.", "Product Name", "Quantity (FG)",
+                            "Firm Name", "Party Name",
+                            ...rmHeaders,
+                            "Costing Date", "Costing Amount"
+                          ]
+                          const rows = filteredHistory.map((item: any) => {
+                            const rmCells: string[] = []
+                            for (let i = 1; i <= maxRm; i++) {
+                              rmCells.push(
+                                item[`rm_name_${i}`] && item[`rm_name_${i}`] !== "-" ? item[`rm_name_${i}`] : "",
+                                item[`rm_qty_${i}`] && item[`rm_qty_${i}`] !== "-" ? item[`rm_qty_${i}`] : "",
+                                item[`rm_rate_${i}`] && item[`rm_rate_${i}`] !== "-" ? item[`rm_rate_${i}`].replace(/₹/g, "") : ""
+                              )
+                            }
+                            return [
+                              item.jobCardNo || "",
+                              item.deliveryOrderNo || "",
+                              item.productName || "",
+                              item.quantityOfFG || "",
+                              item.firmName || "",
+                              item.partyName || "",
+                              ...rmCells,
+                              item.costingDate || "",
+                              item.costingAmount || ""
+                            ].map((v: any) => `"${String(v).replace(/"/g, '""')}"`).join(",")
+                          })
+                          const csv = [headers.map((h: string) => `"${h}"`).join(","), ...rows].join("\n")
+                          const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement("a")
+                          a.href = url
+                          a.download = `costing-history-${format(new Date(), "yyyy-MM-dd")}.csv`
+                          a.click()
+                          URL.revokeObjectURL(url)
+                        }}
+                        className="h-8 text-xs gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        Export CSV
+                      </Button>
+                      <ColumnToggler tab="history" columnsMeta={HISTORY_COLUMNS_META} />
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader className="bg-muted/50">
+                      <TableHeader className="bg-slate-100 dark:bg-slate-800 border-b">
                         <TableRow>
                           {visibleHistoryColumnsMeta.map((col) => (
-                            <TableHead key={col.dataKey}>{col.header}</TableHead>
+                            <TableHead
+                              key={col.dataKey}
+                              className={cn(
+                                "whitespace-nowrap px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200",
+                                col.dataKey === "costingAmount" && "text-right font-bold text-emerald-800 bg-emerald-50/80",
+                                col.dataKey === "quantityOfFG" && "text-right"
+                              )}
+                            >
+                              {col.header}
+                            </TableHead>
                           ))}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredHistory.length > 0 ? (
                           filteredHistory.map((item, index) => (
-                            <TableRow key={`${item.jobCardNo}-${index}`} className="hover:bg-olive-50/50">
-                              {visibleHistoryColumnsMeta.map((col) => (
-                                <TableCell key={col.dataKey} className="whitespace-nowrap text-sm">
-                                  {col.dataKey === "costingAmount" ? (
-                                    <span className="font-medium text-green-600">
-                                      ₹{Number(item.costingAmount).toLocaleString('en-IN')}
-                                    </span>
-                                  ) : col.dataKey === "costReport" ? (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => handleViewCostReport(item)}
-                                      className="h-8 text-xs gap-1.5 border-slate-300 text-slate-700 hover:bg-slate-100 font-medium px-2.5"
-                                    >
-                                      <Eye className="h-3.5 w-3.5 text-slate-500" />
-                                      View
-                                    </Button>
-                                  ) : (
-                                    (item as any)[col.dataKey] || "-"
-                                  )}
-                                </TableCell>
-                              ))}
+                            <TableRow key={`${item.jobCardNo}-${index}`} className="hover:bg-olive-50/50 transition-colors">
+                              {visibleHistoryColumnsMeta.map((col) => {
+                                // Check if this is a combined raw material column (rm_1, rm_2, ...)
+                                const rmMatch = col.dataKey.match(/^rm_(\d+)$/)
+                                const isRmCol = !!rmMatch
+                                const rmIdx = rmMatch ? rmMatch[1] : null
+
+                                return (
+                                  <TableCell
+                                    key={col.dataKey}
+                                    className={cn(
+                                      "px-3 py-2 text-xs text-slate-800",
+                                      col.dataKey === "costingAmount" && "bg-emerald-50/40 text-right",
+                                      col.dataKey === "quantityOfFG" && "text-right font-medium",
+                                      isRmCol && "min-w-[180px]"
+                                    )}
+                                  >
+                                    {col.dataKey === "costingAmount" ? (
+                                      <span className="font-bold text-emerald-700 text-sm">
+                                        ₹{Number(item.costingAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      </span>
+                                    ) : isRmCol && rmIdx ? (() => {
+                                      const name = (item as any)[`rm_name_${rmIdx}`]
+                                      const qty  = (item as any)[`rm_qty_${rmIdx}`]
+                                      const rate = (item as any)[`rm_rate_${rmIdx}`]
+                                      if (!name || name === "-") return <span className="text-slate-400">-</span>
+                                      return (
+                                        <div className="flex flex-col gap-0.5">
+                                          <span className="font-medium text-slate-800 whitespace-nowrap">{name}</span>
+                                          <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                                            <span className="bg-slate-100 rounded px-1 py-0.5 whitespace-nowrap">Qty: {qty ?? "-"}</span>
+                                            <span className="bg-emerald-50 text-emerald-700 rounded px-1 py-0.5 font-semibold whitespace-nowrap">{rate ?? "-"}</span>
+                                          </div>
+                                        </div>
+                                      )
+                                    })() : (
+                                      <span className="whitespace-nowrap">{(item as any)[col.dataKey] || "-"}</span>
+                                    )}
+                                  </TableCell>
+                                );
+                              })}
                             </TableRow>
                           ))
                         ) : (
@@ -1311,9 +1524,7 @@ export default function CostingPage() {
                           <TableHead className="w-12">#</TableHead>
                           <TableHead>Raw Material Name</TableHead>
                           <TableHead className="text-right">Quantity</TableHead>
-                          <TableHead className="text-right">
-                            {isViewOnlyModal ? "Rate (₹/MT)" : "Live Rate (₹/MT)"}
-                          </TableHead>
+                          <TableHead className="text-right">Live Rate (₹/MT)</TableHead>
                           <TableHead className="text-right">Trans. Rate (₹/MT)</TableHead>
                           <TableHead className="text-right">Total Cost (₹)</TableHead>
                         </TableRow>
@@ -1341,9 +1552,7 @@ export default function CostingPage() {
                                       type="number"
                                       step="0.01"
                                       min="0"
-                                      disabled={isViewOnlyModal}
-                                      readOnly={isViewOnlyModal}
-                                      className={`w-24 text-right h-8 text-xs font-semibold text-olive-700 ${isViewOnlyModal ? "bg-slate-100 border-slate-200 cursor-not-allowed opacity-90 text-slate-800 font-bold" : "bg-white"}`}
+                                      className="w-24 text-right h-8 text-xs font-semibold text-olive-700 bg-white"
                                       value={editedRates[material.name ? material.name.trim() : ""]?.rate ?? ""}
                                       onChange={(e) => handleRateChange(material.name ? material.name.trim() : "", 'rate', e.target.value)}
                                     />
@@ -1360,9 +1569,7 @@ export default function CostingPage() {
                                       type="number"
                                       step="0.01"
                                       min="0"
-                                      disabled={isViewOnlyModal}
-                                      readOnly={isViewOnlyModal}
-                                      className={`w-24 text-right h-8 text-xs font-semibold text-blue-700 ${isViewOnlyModal ? "bg-slate-100 border-slate-200 cursor-not-allowed opacity-90 text-slate-800 font-bold" : "bg-white"}`}
+                                      className="w-24 text-right h-8 text-xs font-semibold text-blue-700 bg-white"
                                       value={editedRates[material.name ? material.name.trim() : ""]?.transportRate ?? ""}
                                       onChange={(e) => handleRateChange(material.name ? material.name.trim() : "", 'transportRate', e.target.value)}
                                     />
@@ -1398,7 +1605,8 @@ export default function CostingPage() {
                           const perMtCost = fgQty > 0 ? totalMaterialCost / fgQty : 0
 
                           const response = costingResponses.find(r => r.orderNo === selectedCosting?.deliveryOrderNo)
-                          const manufacturingCost = response ? parseFloat(response.manufacturingCost) || 0 : 0
+                          const targetFirm = selectedCosting?.firmName || selectedCosting?.completeDetails?.firmName
+                          const manufacturingCost = getManufacturingCost(targetFirm, response?.manufacturingCost)
                           const totalProductionCost = perMtCost + manufacturingCost
 
                           return (
@@ -1483,14 +1691,17 @@ export default function CostingPage() {
                                   const rmName = rm.name ? rm.name.trim() : "";
                                   const rateInfo = liftRates[rmName];
                                   if (rateInfo) {
+                                    const rate = Number(editedRates[rmName]?.rate ?? liftRates[rmName]?.rate ?? 0);
+                                    const transRate = Number(editedRates[rmName]?.transportRate ?? liftRates[rmName]?.transportRate ?? 0);
                                     const qty = Number(rm.quantity || 0); 
-                                    totalMaterialCost += qty * (rateInfo.rate + rateInfo.transportRate);
+                                    totalMaterialCost += qty * (rate + transRate);
                                   }
                                 });
                               }
                               const fgQty = Number(selectedCosting?.completeDetails?.quantityOfFG || 0);
                               const perMtCost = fgQty > 0 ? totalMaterialCost / fgQty : 0;
-                              const manufacturingCost = response ? parseFloat(response.manufacturingCost) || 0 : 0;
+                              const targetFirm = selectedCosting?.firmName || selectedCosting?.completeDetails?.firmName;
+                              const manufacturingCost = getManufacturingCost(targetFirm, response?.manufacturingCost);
                               const productionCost = perMtCost + manufacturingCost;
 
                               if (actualOrderRate > 0) {
@@ -1512,45 +1723,35 @@ export default function CostingPage() {
               <Separator />
 
               {/* Costing Amount Input Section */}
-              {!isViewOnlyModal && (
-                <div className="space-y-4">
-                  <h3 className="text-md font-semibold flex items-center gap-2 text-green-700">
-                    <DollarSign className="h-4 w-4" /> Costing Amount
-                  </h3>
-                  <div className="space-y-2">
-                    <Label htmlFor="costingAmount">Costing Amount (₹) *</Label>
-                    <Input
-                      id="costingAmount"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="Enter costing amount"
-                      value={formData.costingAmount}
-                      onChange={(e) => handleFormChange("costingAmount", e.target.value)}
-                      className={formErrors.costingAmount ? "border-red-500" : ""}
-                    />
-                    {formErrors.costingAmount && <p className="text-xs text-red-600 mt-1">{formErrors.costingAmount}</p>}
-                  </div>
+              <div className="space-y-4">
+                <h3 className="text-md font-semibold flex items-center gap-2 text-green-700">
+                  <DollarSign className="h-4 w-4" /> Costing Amount
+                </h3>
+                <div className="space-y-2">
+                  <Label htmlFor="costingAmount">Costing Amount (₹) *</Label>
+                  <Input
+                    id="costingAmount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Enter costing amount"
+                    value={formData.costingAmount}
+                    onChange={(e) => handleFormChange("costingAmount", e.target.value)}
+                    className={formErrors.costingAmount ? "border-red-500" : ""}
+                  />
+                  {formErrors.costingAmount && <p className="text-xs text-red-600 mt-1">{formErrors.costingAmount}</p>}
                 </div>
-              )}
+              </div>
 
               {/* Action Buttons */}
               <div className="flex justify-end gap-3 pt-4 border-t">
-                {isViewOnlyModal ? (
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                    Close
-                  </Button>
-                ) : (
-                  <>
-                    <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
-                      Cancel
-                    </Button>
-                    <Button type="submit" disabled={isSubmitting} className="bg-olive-600 hover:bg-olive-700">
-                      {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Save Costing Amount
-                    </Button>
-                  </>
-                )}
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmitting} className="bg-olive-600 hover:bg-olive-700">
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save Costing Amount
+                </Button>
               </div>
             </form>
           )}

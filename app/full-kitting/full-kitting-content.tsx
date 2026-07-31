@@ -1474,7 +1474,9 @@ export default function CheckPage() {
     setExpectedValues(
       DEFAULT_EXPECTED_PROPERTIES.map((r) => ({ ...r, value: "" })),
     );
-    setManufacturingCost(item.manufacturingCost !== undefined ? item.manufacturingCost : 1500);
+    const firmLower = String(item.firmName || "").toLowerCase();
+    const firmDefaultMfgCost = (firmLower.includes("rkl") || firmLower.includes("purab")) ? 2000 : 1500;
+    setManufacturingCost(item.manufacturingCost !== undefined && item.manufacturingCost > 0 ? item.manufacturingCost : firmDefaultMfgCost);
     setIsKittingDialogOpen(true);
   };
 
