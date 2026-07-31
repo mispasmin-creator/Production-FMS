@@ -91,7 +91,8 @@ export default function KycProductTable() {
         { data: semiActualData },
         { data: crushingActualData },
         { data: sjcData },
-        { data: sfProdData }
+        { data: sfProdData },
+        invHistoryRes
       ] = await Promise.all([
         supabase
           .from("LIFT-ACCOUNTS")
@@ -107,7 +108,15 @@ export default function KycProductTable() {
           .order("id", { ascending: false }),
         prodSupabase.from("semi_job_card").select("*"),
         prodSupabase.from("semi_production").select("*"),
+        Promise.resolve(
+          prodSupabase
+            .from("inventory_master_history")
+            .select("*")
+            .order("snapshot_date", { ascending: false })
+        ).catch(() => ({ data: [], error: null }))
       ]);
+
+      const inventoryHistoryData = (invHistoryRes as any)?.data || [];
 
       if (error) throw error;
 
@@ -492,11 +501,28 @@ export default function KycProductTable() {
         console.error("Error reading custom_kyc_products from localStorage:", e);
       }
 
+      // Build inventory_master_history rate map (latest snapshot_date per firm_name & item_name)
+      const inventoryRateMap = new Map<string, number>();
+      (inventoryHistoryData || []).forEach((row: any) => {
+        const f = normFirm(row["firm_name"]);
+        const item = normProd(row["item_name"]);
+        const rate = row["product_rate"] !== null && row["product_rate"] !== undefined ? Number(row["product_rate"]) : null;
+        if (f && item && rate !== null && !isNaN(rate) && rate > 0) {
+          const key = `${f}___${item}`;
+          if (!inventoryRateMap.has(key)) {
+            inventoryRateMap.set(key, rate);
+          }
+        }
+      });
+
       const latestRecords: FormattedProductRecord[] = [];
       for (const rec of recordMap.values()) {
+        const key = `${normFirm(rec.firmName)}___${normProd(rec.productName)}`;
+        const invRate = inventoryRateMap.get(key);
+        const price = invRate !== undefined && invRate > 0 ? invRate : (rec.price || 0);
+
         const alumina = rec.alumina || 0;
         const iron = rec.iron || 0;
-        const price = rec.price || 0;
         const bd = rec.bd || 0;
         const ap = rec.ap || 0;
 

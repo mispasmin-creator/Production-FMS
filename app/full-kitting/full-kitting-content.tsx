@@ -399,6 +399,7 @@ export default function CheckPage() {
         { data: sjcData },
         { data: sfProdData },
         { data: kycMasterData },
+        invHistoryRes
       ] = await Promise.all([
         dispatchSupabase
           .from("ORDER RECEIPT")
@@ -418,7 +419,15 @@ export default function CheckPage() {
         supabase.from("semi_job_card").select("*"),
         supabase.from("semi_production").select("*"),
         supabase.from("kyc").select("*"),
+        Promise.resolve(
+          supabase
+            .from("inventory_master_history")
+            .select("*")
+            .order("snapshot_date", { ascending: false })
+        ).catch(() => ({ data: [], error: null }))
       ]);
+
+      const inventoryHistoryData = (invHistoryRes as any)?.data || [];
 
       if (orderReceiptErr) throw orderReceiptErr;
       if (kycErr) throw kycErr;
@@ -1116,8 +1125,26 @@ export default function CheckPage() {
         }
       } catch (e) {}
 
+      // Build inventory_master_history rate map (latest snapshot_date per firm_name & item_name)
+      const inventoryRateMap = new Map<string, number>();
+      (inventoryHistoryData || []).forEach((row: any) => {
+        const f = normFirm(row["firm_name"]);
+        const item = normProd(row["item_name"]);
+        const rate = row["product_rate"] !== null && row["product_rate"] !== undefined ? Number(row["product_rate"]) : null;
+        if (f && item && rate !== null && !isNaN(rate) && rate > 0) {
+          const key = `${f}___${item}`;
+          if (!inventoryRateMap.has(key)) {
+            inventoryRateMap.set(key, rate);
+          }
+        }
+      });
+
       const products: KycProduct[] = [];
       for (const rec of recordMap.values()) {
+        const key = `${normFirm(rec.firmName)}___${normProd(rec.productName)}`;
+        const invRate = inventoryRateMap.get(key);
+        const price = invRate !== undefined && invRate > 0 ? invRate : (rec.price || 0);
+
         products.push({
           id: rec.id,
           productName: rec.productName,
@@ -1125,7 +1152,7 @@ export default function CheckPage() {
           iron: rec.iron || 0,
           bd: rec.bd || 0,
           ap: rec.ap || 0,
-          price: rec.price || 0,
+          price,
           firmName: rec.firmName,
         });
       }
