@@ -131,7 +131,7 @@ const HISTORY_COLUMNS_META = [
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Costing Amount", dataKey: "costingAmount", toggleable: true },
   { header: "Costing Date", dataKey: "costingDate", toggleable: true },
-  { header: "Action", dataKey: "actionColumn", alwaysVisible: true },
+  { header: "Cost Report", dataKey: "costReport", alwaysVisible: true },
 ]
 
 function hasValue(value: any): boolean {
@@ -164,8 +164,6 @@ export default function CostingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [selectedCosting, setSelectedCosting] = useState<PendingCostingItem | null>(null)
-  const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryCostingItem | null>(null)
-  const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false)
   const [formData, setFormData] = useState(initialFormState)
   const [costingResponses, setCostingResponses] = useState<CostingResponseRecord[]>([])
   const [formErrors, setFormErrors] = useState<Record<string, string | null>>({})
@@ -758,18 +756,37 @@ export default function CostingPage() {
     })
   }
 
+  const [isViewOnlyModal, setIsViewOnlyModal] = useState(false)
+
   const handleCosting = (item: PendingCostingItem) => {
     setSelectedCosting(item)
     setFormData(initialFormState)
     setFormErrors({})
+    setIsViewOnlyModal(false)
     setIsDialogOpen(true)
     fetchMaterialRates(item)
   }
 
-  const handleViewHistory = (item: HistoryCostingItem) => {
-    setSelectedHistoryItem(item)
-    setIsHistoryDialogOpen(true)
-    fetchMaterialRates(item as any)
+  const handleViewCostReport = (item: HistoryCostingItem) => {
+    const pendingItem: PendingCostingItem = {
+      id: item.id,
+      jobCardNo: item.jobCardNo,
+      deliveryOrderNo: item.deliveryOrderNo,
+      productName: item.productName,
+      firmName: item.firmName,
+      partyName: item.partyName,
+      quantityOfFG: item.quantityOfFG,
+      planned3: item.completeDetails?.planned3 || "",
+      completeDetails: item.completeDetails,
+    }
+    setSelectedCosting(pendingItem)
+    setFormData({
+      costingAmount: item.costingAmount ? String(item.costingAmount) : "",
+    })
+    setFormErrors({})
+    setIsViewOnlyModal(true)
+    setIsDialogOpen(true)
+    fetchMaterialRates(pendingItem)
   }
 
   const handleSaveCosting = async () => {
@@ -1106,20 +1123,20 @@ export default function CostingPage() {
                             <TableRow key={`${item.jobCardNo}-${index}`} className="hover:bg-olive-50/50">
                               {visibleHistoryColumnsMeta.map((col) => (
                                 <TableCell key={col.dataKey} className="whitespace-nowrap text-sm">
-                                  {col.dataKey === "actionColumn" ? (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => handleViewHistory(item)}
-                                      className="border-slate-300 text-slate-700 hover:bg-slate-100 h-8 text-xs font-medium"
-                                    >
-                                      <Eye className="mr-1.5 h-3.5 w-3.5 text-slate-600" />
-                                      View
-                                    </Button>
-                                  ) : col.dataKey === "costingAmount" ? (
+                                  {col.dataKey === "costingAmount" ? (
                                     <span className="font-medium text-green-600">
                                       ₹{Number(item.costingAmount).toLocaleString('en-IN')}
                                     </span>
+                                  ) : col.dataKey === "costReport" ? (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleViewCostReport(item)}
+                                      className="h-8 text-xs gap-1.5 border-slate-300 text-slate-700 hover:bg-slate-100 font-medium px-2.5"
+                                    >
+                                      <Eye className="h-3.5 w-3.5 text-slate-500" />
+                                      View
+                                    </Button>
                                   ) : (
                                     (item as any)[col.dataKey] || "-"
                                   )}
@@ -1246,7 +1263,9 @@ export default function CostingPage() {
                           <TableHead className="w-12">#</TableHead>
                           <TableHead>Raw Material Name</TableHead>
                           <TableHead className="text-right">Quantity</TableHead>
-                          <TableHead className="text-right">Live Rate (₹/MT)</TableHead>
+                          <TableHead className="text-right">
+                            {isViewOnlyModal ? "Rate (₹/MT)" : "Live Rate (₹/MT)"}
+                          </TableHead>
                           <TableHead className="text-right">Trans. Rate (₹/MT)</TableHead>
                           <TableHead className="text-right">Total Cost (₹)</TableHead>
                         </TableRow>
@@ -1441,338 +1460,47 @@ export default function CostingPage() {
               <Separator />
 
               {/* Costing Amount Input Section */}
-              <div className="space-y-4">
-                <h3 className="text-md font-semibold flex items-center gap-2 text-green-700">
-                  <DollarSign className="h-4 w-4" /> Costing Amount
-                </h3>
-                <div className="space-y-2">
-                  <Label htmlFor="costingAmount">Costing Amount (₹) *</Label>
-                  <Input
-                    id="costingAmount"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="Enter costing amount"
-                    value={formData.costingAmount}
-                    onChange={(e) => handleFormChange("costingAmount", e.target.value)}
-                    className={formErrors.costingAmount ? "border-red-500" : ""}
-                  />
-                  {formErrors.costingAmount && <p className="text-xs text-red-600 mt-1">{formErrors.costingAmount}</p>}
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex justify-end gap-3 pt-4 border-t">
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={isSubmitting} className="bg-olive-600 hover:bg-olive-700">
-                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Save Costing Amount
-                </Button>
-              </div>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* History Details Report Dialog */}
-      <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-xl border-b pb-2">
-              <Package className="h-5 w-5 text-green-600" />
-              Complete Production Details - Job Card: {selectedHistoryItem?.jobCardNo}
-            </DialogTitle>
-            <DialogDescription>
-              All information from the actual production record for this job card
-            </DialogDescription>
-          </DialogHeader>
-
-          {selectedHistoryItem?.completeDetails && (
-            <div className="space-y-6 pt-2">
-              {/* Section 1: Basic Information */}
-              <div className="space-y-3">
-                <h3 className="text-md font-semibold flex items-center gap-2 text-green-700 bg-green-50 p-2 rounded">
-                  <Building className="h-4 w-4" /> Basic Information
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 border rounded-lg">
-                  <div className="space-y-1">
-                    <Label className="text-xs text-gray-500 flex items-center gap-1">
-                      <Hash className="h-3 w-3" /> Job Card Number
-                    </Label>
-                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.jobCardNo || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-gray-500 flex items-center gap-1">
-                      <Building className="h-3 w-3" /> Firm Name
-                    </Label>
-                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.firmName || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-gray-500 flex items-center gap-1">
-                      <Calendar className="h-3 w-3" /> Date of Production
-                    </Label>
-                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.dateOfProduction || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-gray-500 flex items-center gap-1">
-                      <User className="h-3 w-3" /> Name of Supervisor
-                    </Label>
-                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.nameOfSupervisor || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-gray-500 flex items-center gap-1">
-                      <Package className="h-3 w-3" /> Product Name
-                    </Label>
-                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.productName || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-gray-500 flex items-center gap-1">
-                      <Package className="h-3 w-3" /> Quantity of FG
-                    </Label>
-                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.quantityOfFG || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-gray-500 flex items-center gap-1">
-                      <Hash className="h-3 w-3" /> Serial Number
-                    </Label>
-                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.serialNumber || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-gray-500 flex items-center gap-1">
-                      <Clock className="h-3 w-3" /> Machine Running Hour
-                    </Label>
-                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.completeDetails.machineRunningHour || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-gray-500 flex items-center gap-1">
-                      <FileText className="h-3 w-3" /> Delivery Order No.
-                    </Label>
-                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedHistoryItem.deliveryOrderNo || "N/A"}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 2: Raw Materials & Rates (LIFT-ACCOUNTS) */}
-              {selectedHistoryItem.completeDetails.rawMaterials.length > 0 && (
-                <div className="space-y-3">
-                  <h3 className="text-md font-semibold flex items-center gap-2 text-blue-700 bg-blue-50 p-2 rounded">
-                    <Package className="h-4 w-4" /> Raw Materials & Rates (LIFT-ACCOUNTS)
+              {!isViewOnlyModal && (
+                <div className="space-y-4">
+                  <h3 className="text-md font-semibold flex items-center gap-2 text-green-700">
+                    <DollarSign className="h-4 w-4" /> Costing Amount
                   </h3>
-                  <div className="border rounded-lg overflow-hidden">
-                    <Table>
-                      <TableHeader className="bg-blue-50">
-                        <TableRow>
-                          <TableHead className="w-12">#</TableHead>
-                          <TableHead>Raw Material Name</TableHead>
-                          <TableHead className="text-right">Quantity</TableHead>
-                          <TableHead className="text-right">Rate (₹/MT)</TableHead>
-                          <TableHead className="text-right">Trans. Rate (₹/MT)</TableHead>
-                          <TableHead className="text-right">Total Cost (₹)</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {selectedHistoryItem.completeDetails.rawMaterials.map((material, idx) => {
-                          const rmName = material.name ? material.name.trim() : ""
-                          const editedRate = editedRates[rmName]?.rate
-                          const editedTransRate = editedRates[rmName]?.transportRate
-                          const rateInfo = liftRates[rmName]
-                          const rate = editedRate !== undefined && editedRate !== "" ? parseFloat(editedRate) || 0 : (rateInfo?.rate || 0)
-                          const transRate = editedTransRate !== undefined && editedTransRate !== "" ? parseFloat(editedTransRate) || 0 : (rateInfo?.transportRate || 0)
-                          const qty = Number(material.quantity || 0)
-                          const totalCost = qty * (rate + transRate)
-
-                          return (
-                            <TableRow key={idx}>
-                              <TableCell className="font-medium">{idx + 1}</TableCell>
-                              <TableCell>{material.name}</TableCell>
-                              <TableCell className="text-right">{material.quantity}</TableCell>
-                              <TableCell className="text-right text-olive-700 font-semibold">
-                                {loadingRates ? (
-                                  <span className="text-slate-400">Loading...</span>
-                                ) : (
-                                  <div className="flex items-center justify-end gap-1">
-                                    <span className="text-gray-400">₹</span>
-                                    <span className="inline-block px-3 py-1 bg-gray-50 border border-gray-200 rounded text-xs font-semibold text-olive-700">
-                                      {rate > 0 ? rate : "-"}
-                                    </span>
-                                  </div>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-right text-blue-700 font-semibold">
-                                {loadingRates ? (
-                                  <span className="text-slate-400">Loading...</span>
-                                ) : (
-                                  <div className="flex items-center justify-end gap-1">
-                                    <span className="text-gray-400">₹</span>
-                                    <span className="inline-block px-3 py-1 bg-gray-50 border border-gray-200 rounded text-xs font-semibold text-blue-700">
-                                      {transRate > 0 ? transRate : "-"}
-                                    </span>
-                                  </div>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-right text-emerald-700 font-bold">
-                                {loadingRates ? (
-                                  <span className="text-slate-400">Calculating...</span>
-                                ) : totalCost > 0 ? (
-                                  `₹${totalCost.toFixed(2)}`
-                                ) : (
-                                  "₹0.00"
-                                )}
-                              </TableCell>
-                            </TableRow>
-                          )
-                        })}
-                      </TableBody>
-                      <TableFooter className="bg-slate-50 font-bold">
-                        {(() => {
-                          let totalMaterialCost = 0
-                          selectedHistoryItem.completeDetails.rawMaterials.forEach((rm) => {
-                            const rmName = rm.name ? rm.name.trim() : ""
-                            const editedRate = editedRates[rmName]?.rate
-                            const editedTransRate = editedRates[rmName]?.transportRate
-                            const rateInfo = liftRates[rmName]
-                            const rate = editedRate !== undefined && editedRate !== "" ? parseFloat(editedRate) || 0 : (rateInfo?.rate || 0)
-                            const transRate = editedTransRate !== undefined && editedTransRate !== "" ? parseFloat(editedTransRate) || 0 : (rateInfo?.transportRate || 0)
-                            const qty = Number(rm.quantity || 0)
-                            totalMaterialCost += qty * (rate + transRate)
-                          })
-
-                          const fgQty = Number(selectedHistoryItem.completeDetails.quantityOfFG || selectedHistoryItem.quantityOfFG || 0)
-                          const perMtCost = fgQty > 0 ? totalMaterialCost / fgQty : 0
-
-                          const response = costingResponses.find(r => r.orderNo === selectedHistoryItem?.deliveryOrderNo)
-                          const manufacturingCost = response ? parseFloat(response.manufacturingCost) || 0 : 0
-                          const totalProductionCost = perMtCost + manufacturingCost
-
-                          return (
-                            <>
-                              <TableRow>
-                                <TableCell colSpan={5} className="text-right text-slate-600">
-                                  Total Material Cost:
-                                </TableCell>
-                                <TableCell className="text-right text-emerald-700 text-sm">
-                                  ₹{totalMaterialCost.toFixed(2)}
-                                </TableCell>
-                              </TableRow>
-                              <TableRow>
-                                <TableCell colSpan={5} className="text-right text-slate-600">
-                                  FG Quantity:
-                                </TableCell>
-                                <TableCell className="text-right text-slate-700 text-sm">
-                                  {fgQty} MT
-                                </TableCell>
-                              </TableRow>
-                              <TableRow>
-                                <TableCell colSpan={5} className="text-right text-slate-600">
-                                  Calculated Per MT Cost:
-                                </TableCell>
-                                <TableCell className="text-right text-olive-700 text-sm">
-                                  ₹{perMtCost.toFixed(2)} / MT
-                                </TableCell>
-                              </TableRow>
-                              <TableRow>
-                                <TableCell colSpan={5} className="text-right text-slate-600">
-                                  Manufacturing Cost:
-                                </TableCell>
-                                <TableCell className="text-right text-slate-700 text-sm">
-                                  ₹{manufacturingCost.toFixed(2)} / MT
-                                </TableCell>
-                              </TableRow>
-                              <TableRow className="bg-olive-50">
-                                <TableCell colSpan={5} className="text-right text-olive-800 font-extrabold text-sm">
-                                  Total Production Cost / MT:
-                                </TableCell>
-                                <TableCell className="text-right text-olive-800 font-extrabold text-md">
-                                  ₹{totalProductionCost.toFixed(2)} / MT
-                                </TableCell>
-                              </TableRow>
-                            </>
-                          )
-                        })()}
-                      </TableFooter>
-                    </Table>
+                  <div className="space-y-2">
+                    <Label htmlFor="costingAmount">Costing Amount (₹) *</Label>
+                    <Input
+                      id="costingAmount"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="Enter costing amount"
+                      value={formData.costingAmount}
+                      onChange={(e) => handleFormChange("costingAmount", e.target.value)}
+                      className={formErrors.costingAmount ? "border-red-500" : ""}
+                    />
+                    {formErrors.costingAmount && <p className="text-xs text-red-600 mt-1">{formErrors.costingAmount}</p>}
                   </div>
                 </div>
               )}
 
-              {/* Section 3: Costing response data */}
-              {(() => {
-                const response = costingResponses.find(r => r.orderNo === selectedHistoryItem?.deliveryOrderNo);
-                if (response) {
-                  return (
-                    <div className="space-y-3">
-                      <h3 className="text-md font-semibold flex items-center gap-2 text-violet-700 bg-violet-50 p-2 rounded">
-                        <DollarSign className="h-4 w-4" /> Costing Details from Analysis
-                      </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border border-violet-100 rounded-lg">
-                        <div className="space-y-1 text-blue-700">
-                          <Label className="text-xs text-blue-700 font-bold">ACTUAL ORDER RATE</Label>
-                          <p className="text-lg font-black">
-                            {getActualOrderRate(selectedHistoryItem as any) > 0 
-                              ? `₹${getActualOrderRate(selectedHistoryItem as any).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` 
-                              : "-"}
-                          </p>
-                        </div>
-                        <div className="space-y-1 text-blue-700">
-                          <Label className="text-xs text-blue-700 font-bold">PRODUCTION COST %</Label>
-                          <p className="text-lg font-black">
-                            {(() => {
-                              const actualOrderRate = getActualOrderRate(selectedHistoryItem as any);
-                              
-                              let totalMaterialCost = 0;
-                              if (selectedHistoryItem?.completeDetails?.rawMaterials) {
-                                selectedHistoryItem.completeDetails.rawMaterials.forEach((rm) => {
-                                  const rmName = rm.name ? rm.name.trim() : "";
-                                  const editedRate = editedRates[rmName]?.rate;
-                                  const editedTransRate = editedRates[rmName]?.transportRate;
-                                  const rateInfo = liftRates[rmName];
-                                  const rate = editedRate !== undefined && editedRate !== "" ? parseFloat(editedRate) || 0 : (rateInfo?.rate || 0);
-                                  const transRate = editedTransRate !== undefined && editedTransRate !== "" ? parseFloat(editedTransRate) || 0 : (rateInfo?.transportRate || 0);
-                                  const qty = Number(rm.quantity || 0); 
-                                  totalMaterialCost += qty * (rate + transRate);
-                                });
-                              }
-                              const fgQty = Number(selectedHistoryItem?.completeDetails?.quantityOfFG || selectedHistoryItem?.quantityOfFG || 0);
-                              const perMtCost = fgQty > 0 ? totalMaterialCost / fgQty : 0;
-                              const manufacturingCost = response ? parseFloat(response.manufacturingCost) || 0 : 0;
-                              const productionCost = perMtCost + manufacturingCost;
-
-                              if (actualOrderRate > 0) {
-                                return ((productionCost / actualOrderRate) * 100).toFixed(2) + "%";
-                              }
-                              return "-";
-                            })()}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-
-              {/* Saved Costing Amount Display */}
-              <div className="flex items-center justify-between p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
-                <div>
-                  <span className="text-xs font-semibold text-emerald-800 uppercase tracking-wider block">Costing Amount</span>
-                  <span className="text-2xl font-extrabold text-emerald-700">
-                    ₹{Number(selectedHistoryItem.costingAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <Badge className="bg-emerald-600 text-white font-medium px-3 py-1.5 text-xs">
-                  <CheckCircle className="h-4 w-4 mr-1.5" /> Costing Saved
-                </Badge>
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                {isViewOnlyModal ? (
+                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                    Close
+                  </Button>
+                ) : (
+                  <>
+                    <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={isSubmitting} className="bg-olive-600 hover:bg-olive-700">
+                      {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Save Costing Amount
+                    </Button>
+                  </>
+                )}
               </div>
-
-              {/* Close Button Only */}
-              <div className="flex justify-end pt-4 border-t">
-                <Button variant="outline" onClick={() => setIsHistoryDialogOpen(false)}>
-                  Close
-                </Button>
-              </div>
-            </div>
+            </form>
           )}
         </DialogContent>
       </Dialog>
