@@ -652,7 +652,7 @@ export default function CostingPage() {
             ratesMap[rmName] = { rate: 0, type: "", transportRate: 0, totalBagsQty: 0, billingQty: 0 }
           }
 
-          // Fallback to inventory_master_history if rate is 0
+          // Fallback 1: inventory_master_history if rate is 0
           if (!ratesMap[rmName] || ratesMap[rmName].rate === 0) {
             try {
               const { data: invData } = await inventorySupabase
@@ -668,6 +668,30 @@ export default function CostingPage() {
                 const invRate = Number(invData[0].product_rate)
                 ratesMap[rmName] = {
                   rate: invRate,
+                  type: "",
+                  transportRate: ratesMap[rmName]?.transportRate || 0,
+                  totalBagsQty: 0,
+                  billingQty: 0,
+                }
+              }
+            } catch (e) {}
+          }
+
+          // Fallback 2: KYC Table if rate is still 0
+          if (!ratesMap[rmName] || ratesMap[rmName].rate === 0) {
+            try {
+              const { data: kycData } = await supabase
+                .from("kyc")
+                .select('"Price"')
+                .ilike("Firm Name", `%${firmName}%`)
+                .ilike("Product name", rmName)
+                .not("Price", "is", null)
+                .limit(1)
+
+              if (kycData && kycData.length > 0 && Number(kycData[0].Price) > 0) {
+                const kycPrice = Number(kycData[0].Price)
+                ratesMap[rmName] = {
+                  rate: kycPrice,
                   type: "",
                   transportRate: ratesMap[rmName]?.transportRate || 0,
                   totalBagsQty: 0,
@@ -1317,7 +1341,9 @@ export default function CostingPage() {
                                       type="number"
                                       step="0.01"
                                       min="0"
-                                      className="w-24 text-right h-8 text-xs font-semibold text-olive-700 bg-white"
+                                      disabled={isViewOnlyModal}
+                                      readOnly={isViewOnlyModal}
+                                      className={`w-24 text-right h-8 text-xs font-semibold text-olive-700 ${isViewOnlyModal ? "bg-slate-100 border-slate-200 cursor-not-allowed opacity-90 text-slate-800 font-bold" : "bg-white"}`}
                                       value={editedRates[material.name ? material.name.trim() : ""]?.rate ?? ""}
                                       onChange={(e) => handleRateChange(material.name ? material.name.trim() : "", 'rate', e.target.value)}
                                     />
@@ -1334,7 +1360,9 @@ export default function CostingPage() {
                                       type="number"
                                       step="0.01"
                                       min="0"
-                                      className="w-24 text-right h-8 text-xs font-semibold text-blue-700 bg-white"
+                                      disabled={isViewOnlyModal}
+                                      readOnly={isViewOnlyModal}
+                                      className={`w-24 text-right h-8 text-xs font-semibold text-blue-700 ${isViewOnlyModal ? "bg-slate-100 border-slate-200 cursor-not-allowed opacity-90 text-slate-800 font-bold" : "bg-white"}`}
                                       value={editedRates[material.name ? material.name.trim() : ""]?.transportRate ?? ""}
                                       onChange={(e) => handleRateChange(material.name ? material.name.trim() : "", 'transportRate', e.target.value)}
                                     />
