@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
 import { Toaster } from "@/components/ui/toaster"
-import { supabase, dispatchSupabase, purchaseSupabase } from "@/lib/supabase"
+import { supabase, dispatchSupabase, purchaseSupabase, inventorySupabase } from "@/lib/supabase"
 
 // --- Configuration ---
 const ACTUAL_PRODUCTION_TABLE = "actual_production"
@@ -649,8 +649,32 @@ export default function CostingPage() {
               billingQty: liftQty,
             }
           } else {
-            console.log(`[PP BAG CALC NO ROW] ${rmName} in LIFT-ACCOUNTS`)
             ratesMap[rmName] = { rate: 0, type: "", transportRate: 0, totalBagsQty: 0, billingQty: 0 }
+          }
+
+          // Fallback to inventory_master_history if rate is 0
+          if (!ratesMap[rmName] || ratesMap[rmName].rate === 0) {
+            try {
+              const { data: invData } = await inventorySupabase
+                .from("inventory_master_history")
+                .select("product_rate")
+                .ilike("firm_name", firmName)
+                .ilike("item_name", rmName)
+                .not("product_rate", "is", null)
+                .order("snapshot_date", { ascending: false })
+                .limit(1)
+
+              if (invData && invData.length > 0 && Number(invData[0].product_rate) > 0) {
+                const invRate = Number(invData[0].product_rate)
+                ratesMap[rmName] = {
+                  rate: invRate,
+                  type: "",
+                  transportRate: ratesMap[rmName]?.transportRate || 0,
+                  totalBagsQty: 0,
+                  billingQty: 0,
+                }
+              }
+            } catch (e) {}
           }
         })
       )
