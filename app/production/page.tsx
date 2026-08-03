@@ -1704,6 +1704,7 @@ export default function ProductionPage() {
               if (
                 nameLower === "shmp" ||
                 nameLower === "ppf" ||
+                nameLower === "ffb flow 796" ||
                 nameLower === "ssf 304" ||
                 nameLower === "ssf 310" ||
                 nameLower === "pp bag (25 kgs)" ||
@@ -1737,12 +1738,14 @@ export default function ProductionPage() {
             });
             const shmp = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "shmp");
             const ppf = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "ppf");
+            const ffbFlow = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "ffb flow 796");
 
             const pp25Qty = pp25 ? (Number(pp25.quantity) || 0) : 0;
             const pp50Qty = pp50 ? (Number(pp50.quantity) || 0) : 0;
             const pp25kgQty = pp25kg ? (Number(pp25kg.quantity) || 0) : 0;
             const shmpQty = shmp ? (Number(shmp.quantity) || 0) : 0;
             const ppfQty = ppf ? (Number(ppf.quantity) || 0) : 0;
+            const ffbFlowQty = ffbFlow ? (Number(ffbFlow.quantity) || 0) : 0;
 
             return (
               <div className="mt-4 pt-4 border-t space-y-2 text-sm font-semibold text-slate-800">
@@ -1773,7 +1776,7 @@ export default function ProductionPage() {
                     )}
                   </div>
                 )}
-                {(shmpQty > 0 || ppfQty > 0) && (
+                {(shmpQty > 0 || ppfQty > 0 || ffbFlowQty > 0) && (
                   <div className="space-y-1 pt-1 border-t border-dashed mt-1">
                     <div className="text-xs text-slate-400 uppercase tracking-wider font-bold">Excluded Additives</div>
                     {shmpQty > 0 && (
@@ -1786,6 +1789,12 @@ export default function ProductionPage() {
                       <div className="flex justify-between text-slate-600 font-medium pl-2">
                         <span>PPF:</span>
                         <span>{ppfQty}</span>
+                      </div>
+                    )}
+                    {ffbFlowQty > 0 && (
+                      <div className="flex justify-between text-slate-600 font-medium pl-2">
+                        <span>FFB Flow 796:</span>
+                        <span>{ffbFlowQty}</span>
                       </div>
                     )}
                   </div>
@@ -2044,6 +2053,7 @@ export default function ProductionPage() {
                           if (
                             nameLower === "shmp" ||
                             nameLower === "ppf" ||
+                            nameLower === "ffb flow 796" ||
                             nameLower === "ssf 304" ||
                             nameLower === "ssf 310" ||
                             nameLower === "pp bag (25 kgs)" ||
@@ -2074,12 +2084,14 @@ export default function ProductionPage() {
                         });
                         const shmp = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "shmp");
                         const ppf = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "ppf");
+                        const ffbFlow = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "ffb flow 796");
 
                         const pp25Qty = pp25 ? (Number(pp25.quantity) || 0) : 0;
                         const pp50Qty = pp50 ? (Number(pp50.quantity) || 0) : 0;
                         const pp25kgQty = pp25kg ? (Number(pp25kg.quantity) || 0) : 0;
                         const shmpQty = shmp ? (Number(shmp.quantity) || 0) : 0;
                         const ppfQty = ppf ? (Number(ppf.quantity) || 0) : 0;
+                        const ffbFlowQty = ffbFlow ? (Number(ffbFlow.quantity) || 0) : 0;
 
                         return (
                           <div className="mt-4 pt-4 border-t space-y-2 text-sm font-semibold text-slate-800">
@@ -2110,7 +2122,7 @@ export default function ProductionPage() {
                                 )}
                               </div>
                             )}
-                            {(shmpQty > 0 || ppfQty > 0) && (
+                            {(shmpQty > 0 || ppfQty > 0 || ffbFlowQty > 0) && (
                               <div className="space-y-1 pt-1 border-t border-dashed mt-1">
                                 <div className="text-xs text-slate-400 uppercase tracking-wider font-bold">Excluded Additives</div>
                                 {shmpQty > 0 && (
@@ -2123,6 +2135,12 @@ export default function ProductionPage() {
                                   <div className="flex justify-between text-slate-600 font-medium pl-2">
                                     <span>PPF:</span>
                                     <span>{ppfQty}</span>
+                                  </div>
+                                )}
+                                {ffbFlowQty > 0 && (
+                                  <div className="flex justify-between text-slate-600 font-medium pl-2">
+                                    <span>FFB Flow 796:</span>
+                                    <span>{ffbFlowQty}</span>
                                   </div>
                                 )}
                               </div>
