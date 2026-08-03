@@ -152,7 +152,7 @@ const uploadImageToStorage = async (file: File, fileName: string): Promise<strin
 // ==================== MAIN COMPONENT ====================
 export default function SemiActualProductionPage() {
     const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
+    const [activeTab, setActiveTab] = useState<'pending' | 'history' | 'summary'>('pending');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
     const [selectedSjc, setSelectedSjc] = useState<SemiJobCardRecord | null>(null);
@@ -170,6 +170,10 @@ export default function SemiActualProductionPage() {
     const [historyToDate, setHistoryToDate] = useState<string>('');
     const [isProductPopoverOpen, setIsProductPopoverOpen] = useState<boolean>(false);
     const [productSearchInput, setProductSearchInput] = useState<string>('');
+    const [summaryStartDate, setSummaryStartDate] = useState('');
+    const [summaryEndDate, setSummaryEndDate] = useState('');
+    const [summaryProduct, setSummaryProduct] = useState('ALL');
+    const [summaryMaterial, setSummaryMaterial] = useState('ALL');
     const isAdmin = user?.role?.toLowerCase() === 'admin';
 
     const [isEditingProcessingCost, setIsEditingProcessingCost] = useState(false);
@@ -580,6 +584,102 @@ export default function SemiActualProductionPage() {
         return filteredHistory.reduce((sum, item) => sum + (Number(item.machineRunningHour || item.machineRunning) || 0), 0);
     }, [filteredHistory]);
 
+    const materialSummaryData = useMemo(() => {
+        if (!summaryStartDate && !summaryEndDate && summaryMaterial === 'ALL' && summaryProduct === 'ALL') {
+            return { totalQty: 0, matchingRuns: [] };
+        }
+
+        let totalQty = 0;
+        const matchingRuns: any[] = [];
+
+        let data = semiActualData;
+        if (firmFilter.length > 0) {
+            data = data.filter((item) => firmFilter.includes(String(item.firmName || "")));
+        }
+
+        data.forEach((run) => {
+            if (run.status === "cancelled") return;
+
+            if (!isDateInRange(run.dateOfProduction || run.timestamp, summaryStartDate, summaryEndDate)) {
+                return;
+            }
+
+            if (summaryProduct !== "ALL") {
+                if (String(run.productName || "").trim() !== summaryProduct) {
+                    return;
+                }
+            }
+
+            let materialQtyFound = 0;
+            let hasMaterial = false;
+
+            const rmList = [
+                { name: run.rawMaterial1Name, qty: run.rawMaterial1Qty },
+                { name: run.rawMaterial2Name, qty: run.rawMaterial2Qty },
+                { name: run.rawMaterial3Name, qty: run.rawMaterial3Qty },
+                { name: run.rawMaterial4Name, qty: run.rawMaterial4Qty },
+                { name: run.rawMaterial5Name, qty: run.rawMaterial5Qty },
+            ];
+
+            if (summaryMaterial !== "ALL") {
+                const matchedMat = rmList.find(rm => String(rm.name || "").trim() === summaryMaterial);
+                if (matchedMat) {
+                    materialQtyFound = Number(matchedMat.qty) || 0;
+                    hasMaterial = true;
+                }
+            } else {
+                rmList.forEach(rm => {
+                    materialQtyFound += Number(rm.qty) || 0;
+                });
+                hasMaterial = rmList.some(rm => String(rm.name || "").trim() !== "" && (Number(rm.qty) || 0) > 0);
+            }
+
+            if (hasMaterial || (summaryMaterial === "ALL" && summaryProduct !== "ALL")) {
+                totalQty += materialQtyFound;
+                matchingRuns.push({
+                    ...run,
+                    specificMaterialQty: materialQtyFound
+                });
+            }
+        });
+
+        return { totalQty, matchingRuns };
+    }, [semiActualData, summaryStartDate, summaryEndDate, summaryProduct, summaryMaterial, firmFilter]);
+
+    const summarySFGQty = useMemo(() => {
+        return materialSummaryData.matchingRuns.reduce((sum, run) => sum + (Number(run.qtyOfSemiFinishedGood) || 0), 0);
+    }, [materialSummaryData]);
+
+    const sfgBreakdown = useMemo(() => {
+        const map = new Map<string, number>();
+        materialSummaryData.matchingRuns.forEach((run) => {
+            const key = String(run.productName || "").trim() || "Unknown";
+            map.set(key, (map.get(key) || 0) + (Number(run.qtyOfSemiFinishedGood) || 0));
+        });
+        return Array.from(map.entries()).map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty);
+    }, [materialSummaryData]);
+
+    const rmBreakdown = useMemo(() => {
+        const map = new Map<string, number>();
+        materialSummaryData.matchingRuns.forEach((run) => {
+            const rmList = [
+                { name: run.rawMaterial1Name, qty: run.rawMaterial1Qty },
+                { name: run.rawMaterial2Name, qty: run.rawMaterial2Qty },
+                { name: run.rawMaterial3Name, qty: run.rawMaterial3Qty },
+                { name: run.rawMaterial4Name, qty: run.rawMaterial4Qty },
+                { name: run.rawMaterial5Name, qty: run.rawMaterial5Qty },
+            ];
+            rmList.forEach((rm) => {
+                const matName = String(rm.name || "").trim();
+                if (!matName) return;
+                if (summaryMaterial !== "ALL" && matName !== summaryMaterial) return;
+                
+                map.set(matName, (map.get(matName) || 0) + (Number(rm.qty) || 0));
+            });
+        });
+        return Array.from(map.entries()).map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty);
+    }, [materialSummaryData, summaryMaterial]);
+
     const pendingJobCards = filteredPending;
     const historyEntries = filteredHistory;
 
@@ -659,6 +759,16 @@ export default function SemiActualProductionPage() {
                         <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${activeTab === 'history' ? 'bg-olive-100 text-olive-700' : 'bg-slate-200 text-slate-600'}`}>
                             {historyEntries.length}
                         </span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('summary')}
+                        className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === 'summary'
+                            ? 'bg-white text-olive-700 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                    >
+                        <Search size={14} />
+                        Summary
                     </button>
                 </div>
 
@@ -1041,6 +1151,149 @@ export default function SemiActualProductionPage() {
                         </div>
                     )}
                 </div>
+            )}
+
+            {/* ── Summary Tab ── */}
+            {activeTab === 'summary' && (
+                <Card className="shadow-sm border-border bg-white rounded-xl">
+                    <CardHeader className="py-3 px-4 bg-olive-50/70 rounded-t-lg border-b border-slate-100 flex flex-row items-center justify-between gap-4">
+                        <div>
+                            <CardTitle className="text-base font-semibold text-slate-800">Raw Material & Semi Finished Goods Summary</CardTitle>
+                            <CardDescription className="text-xs text-slate-500 mt-0.5">Calculate total consumption of raw materials or production of semi finished goods within a date range.</CardDescription>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="p-6 space-y-6">
+                        {/* Filters inside tab */}
+                        <div className={`bg-slate-50/50 p-4 rounded-xl border border-slate-200 shadow-inner grid grid-cols-1 md:grid-cols-4 gap-4 items-end`}>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="sumFromDate" className="text-xs font-bold text-slate-600 uppercase tracking-wider">Start Date</Label>
+                                <Input
+                                    id="sumFromDate"
+                                    type="date"
+                                    value={summaryStartDate}
+                                    onChange={(e) => setSummaryStartDate(e.target.value)}
+                                    className="h-10 rounded-xl border-slate-200 bg-white focus:ring-olive-500/20"
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label htmlFor="sumToDate" className="text-xs font-bold text-slate-600 uppercase tracking-wider">End Date</Label>
+                                <Input
+                                    id="sumToDate"
+                                    type="date"
+                                    value={summaryEndDate}
+                                    onChange={(e) => setSummaryEndDate(e.target.value)}
+                                    className="h-10 rounded-xl border-slate-200 bg-white focus:ring-olive-500/20"
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Semi Finished Good</Label>
+                                <Select value={summaryProduct} onValueChange={setSummaryProduct}>
+                                    <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-white">
+                                        <SelectValue placeholder="All Products" />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-60">
+                                        <SelectItem value="ALL">All Products</SelectItem>
+                                        {uniqueHistoryProducts.map((p) => (
+                                            <SelectItem key={p} value={p}>
+                                                {p}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Raw Material Name</Label>
+                                <Select value={summaryMaterial} onValueChange={setSummaryMaterial}>
+                                    <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-white">
+                                        <SelectValue placeholder="Select Raw Material" />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-60">
+                                        <SelectItem value="ALL">All Materials</SelectItem>
+                                        {rawMaterials.map((m) => (
+                                            <SelectItem key={m.name} value={m.name}>
+                                                {m.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        {/* Reset button — top aligned above cards */}
+                        <div className="flex justify-end mb-3">
+                            <Button
+                                variant="outline"
+                                type="button"
+                                onClick={() => {
+                                    setSummaryStartDate("")
+                                    setSummaryEndDate("")
+                                    setSummaryProduct("ALL")
+                                    setSummaryMaterial("ALL")
+                                }}
+                                className="h-9 px-5 rounded-xl border-slate-200 hover:bg-slate-50 font-semibold text-sm bg-white shadow-sm"
+                                disabled={!summaryStartDate && !summaryEndDate && summaryProduct === "ALL" && summaryMaterial === "ALL"}
+                            >
+                                Reset Summary Filters
+                            </Button>
+                        </div>
+
+                        {/* Two full-width side-by-side cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            {/* Raw Material Card */}
+                            <div className="bg-gradient-to-br from-olive-50 to-olive-100/60 p-6 rounded-2xl border border-olive-200/60 shadow-sm flex flex-col items-center text-center">
+                                <p className="text-xs font-bold text-olive-800 uppercase tracking-widest mb-2">Raw Material Consumption</p>
+                                <p className="text-4xl font-black text-olive-900 mb-1">
+                                    {materialSummaryData.totalQty.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                                </p>
+                                {summaryMaterial && summaryMaterial !== "ALL" ? (
+                                    <p className="text-xs text-olive-700 font-medium">
+                                        of <span className="font-bold">{summaryMaterial}</span>
+                                    </p>
+                                ) : (
+                                    <p className="text-xs text-olive-700 font-medium">of All Raw Materials</p>
+                                )}
+                                {rmBreakdown.length > 0 && (
+                                    <div className="mt-4 w-full max-h-48 overflow-y-auto rounded-xl border border-olive-200 bg-white/70 divide-y divide-olive-100 text-left">
+                                        {rmBreakdown.map((item) => (
+                                            <div key={item.name} className="flex justify-between items-center px-4 py-2">
+                                                <span className="text-xs text-olive-800 font-medium truncate max-w-[65%]">{item.name}</span>
+                                                <span className="text-xs font-bold text-olive-900 shrink-0">{item.qty.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Semi Finished Good Card */}
+                            <div className="bg-gradient-to-br from-blue-50 to-blue-100/60 p-6 rounded-2xl border border-blue-200/60 shadow-sm flex flex-col items-center text-center">
+                                <p className="text-xs font-bold text-blue-800 uppercase tracking-widest mb-2">Semi Finished Good Total Qty</p>
+                                <p className="text-4xl font-black text-blue-900 mb-1">
+                                    {summarySFGQty.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                                </p>
+                                {summaryProduct && summaryProduct !== "ALL" ? (
+                                    <p className="text-xs text-blue-700 font-medium">
+                                        of <span className="font-bold">{summaryProduct}</span>
+                                    </p>
+                                ) : (
+                                    <p className="text-xs text-blue-700 font-medium">of All Semi Finished Goods</p>
+                                )}
+                                {sfgBreakdown.length > 0 && (
+                                    <div className="mt-4 w-full max-h-48 overflow-y-auto rounded-xl border border-blue-200 bg-white/70 divide-y divide-blue-100 text-left">
+                                        {sfgBreakdown.map((item) => (
+                                            <div key={item.name} className="flex justify-between items-center px-4 py-2">
+                                                <span className="text-xs text-blue-800 font-medium truncate max-w-[65%]">{item.name}</span>
+                                                <span className="text-xs font-bold text-blue-900 shrink-0">{item.qty.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
             )}
 
             {/* ── Log Production Entry Modal ── */}

@@ -200,7 +200,11 @@ export default function Step5List() {
     const [historyToDate, setHistoryToDate] = useState<string>('');
     const [isProductPopoverOpen, setIsProductPopoverOpen] = useState<boolean>(false);
     const [productSearchInput, setProductSearchInput] = useState<string>('');
-    const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
+    const [activeTab, setActiveTab] = useState<'pending' | 'history' | 'summary'>('pending');
+    const [summaryStartDate, setSummaryStartDate] = useState('');
+    const [summaryEndDate, setSummaryEndDate] = useState('');
+    const [summaryInputProduct, setSummaryInputProduct] = useState('ALL');
+    const [summaryOutputProduct, setSummaryOutputProduct] = useState('ALL');
     const [submittedIds, setSubmittedIds] = useState<Set<number>>(new Set());
     
     // Inline edit states for Processing Cost
@@ -469,6 +473,102 @@ export default function Step5List() {
     const displayRecords = useMemo(() => {
         return activeTab === 'pending' ? pendingRecords : historyRecords;
     }, [activeTab, pendingRecords, historyRecords]);
+
+    const crushingSummaryData = useMemo(() => {
+        if (!summaryStartDate && !summaryEndDate && summaryInputProduct === 'ALL' && summaryOutputProduct === 'ALL') {
+            return { totalInputQty: 0, matchingRuns: [] };
+        }
+
+        let totalInputQty = 0;
+        const matchingRuns: any[] = [];
+
+        let data = crushingRecords.filter(item => submittedIds.has(item._rowIndex));
+        if (firmFilter.length > 0) {
+            data = data.filter((item) => firmFilter.includes(String(item.firmName || "")));
+        }
+
+        data.forEach((run) => {
+            if (!isDateInRange(run.dateOfProduction || run.timestamp, summaryStartDate, summaryEndDate)) {
+                return;
+            }
+
+            if (summaryInputProduct !== "ALL") {
+                if (String(run.crushingProductName || "").trim() !== summaryInputProduct) {
+                    return;
+                }
+            }
+
+            let outputQtyFound = 0;
+            let hasOutput = false;
+
+            const fgList = [
+                { name: run.fg1Name, qty: run.fg1Qty },
+                { name: run.fg2Name, qty: run.fg2Qty },
+                { name: run.fg3Name, qty: run.fg3Qty },
+                { name: run.fg4Name, qty: run.fg4Qty },
+            ];
+
+            if (summaryOutputProduct !== "ALL") {
+                const matchedFg = fgList.find(fg => String(fg.name || "").trim() === summaryOutputProduct);
+                if (matchedFg) {
+                    outputQtyFound = Number(matchedFg.qty) || 0;
+                    hasOutput = true;
+                }
+            } else {
+                fgList.forEach(fg => {
+                    outputQtyFound += Number(fg.qty) || 0;
+                });
+                hasOutput = fgList.some(fg => String(fg.name || "").trim() !== "" && (Number(fg.qty) || 0) > 0);
+            }
+
+            if (hasOutput || (summaryOutputProduct === "ALL" && summaryInputProduct !== "ALL")) {
+                totalInputQty += (Number(run.inputQty) || 0);
+                matchingRuns.push({
+                    ...run,
+                    specificOutputQty: outputQtyFound
+                });
+            }
+        });
+
+        return { totalInputQty, matchingRuns };
+    }, [crushingRecords, submittedIds, summaryStartDate, summaryEndDate, summaryInputProduct, summaryOutputProduct, firmFilter]);
+
+    const totalSummaryOutputQty = useMemo(() => {
+        if (summaryOutputProduct !== "ALL") {
+            return crushingSummaryData.matchingRuns.reduce((sum, run) => sum + (Number(run.specificOutputQty) || 0), 0);
+        }
+        return crushingSummaryData.matchingRuns.reduce((sum, run) => 
+            sum + (Number(run.fg1Qty) || 0) + (Number(run.fg2Qty) || 0) + (Number(run.fg3Qty) || 0) + (Number(run.fg4Qty) || 0), 0);
+    }, [crushingSummaryData, summaryOutputProduct]);
+
+    const inputBreakdown = useMemo(() => {
+        const map = new Map<string, number>();
+        crushingSummaryData.matchingRuns.forEach((run) => {
+            const key = String(run.crushingProductName || "").trim() || "Unknown";
+            map.set(key, (map.get(key) || 0) + (Number(run.inputQty) || 0));
+        });
+        return Array.from(map.entries()).map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty);
+    }, [crushingSummaryData]);
+
+    const outputBreakdown = useMemo(() => {
+        const map = new Map<string, number>();
+        crushingSummaryData.matchingRuns.forEach((run) => {
+            const fgList = [
+                { name: run.fg1Name, qty: run.fg1Qty },
+                { name: run.fg2Name, qty: run.fg2Qty },
+                { name: run.fg3Name, qty: run.fg3Qty },
+                { name: run.fg4Name, qty: run.fg4Qty },
+            ];
+            fgList.forEach((fg) => {
+                const matName = String(fg.name || "").trim();
+                if (!matName) return;
+                if (summaryOutputProduct !== "ALL" && matName !== summaryOutputProduct) return;
+                
+                map.set(matName, (map.get(matName) || 0) + (Number(fg.qty) || 0));
+            });
+        });
+        return Array.from(map.entries()).map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty);
+    }, [crushingSummaryData, summaryOutputProduct]);
 
     const validateForm = () => {
         const errors: Record<string, string> = {};
@@ -1011,7 +1111,8 @@ export default function Step5List() {
                     )}
 
                     {/* Table */}
-                    <div className="overflow-x-auto rounded-lg border">
+                    {activeTab !== 'summary' && (
+                        <div className="overflow-x-auto rounded-lg border">
                         <Table>
                             <TableHeader className="bg-slate-50">
                                 <TableRow>
@@ -1160,7 +1261,151 @@ export default function Step5List() {
                                 )}
                             </TableBody>
                         </Table>
-                    </div>
+                        </div>
+                    )}
+
+                    {/* ── Summary Tab ── */}
+                    {activeTab === 'summary' && (
+                        <Card className="shadow-sm border-border bg-white rounded-xl mt-6">
+                            <CardHeader className="py-3 px-4 bg-olive-50/70 rounded-t-lg border-b border-slate-100 flex flex-row items-center justify-between gap-4">
+                                <div>
+                                    <CardTitle className="text-base font-semibold text-slate-800">Crushing Input & Output Summary</CardTitle>
+                                    <CardDescription className="text-xs text-slate-500 mt-0.5">Calculate total input and output quantities within a date range.</CardDescription>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="p-6 space-y-6">
+                                {/* Filters inside tab */}
+                                <div className={`bg-slate-50/50 p-4 rounded-xl border border-slate-200 shadow-inner grid grid-cols-1 md:grid-cols-4 gap-4 items-end`}>
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="sumFromDate" className="text-xs font-bold text-slate-600 uppercase tracking-wider">Start Date</Label>
+                                        <Input
+                                            id="sumFromDate"
+                                            type="date"
+                                            value={summaryStartDate}
+                                            onChange={(e) => setSummaryStartDate(e.target.value)}
+                                            className="h-10 rounded-xl border-slate-200 bg-white focus:ring-olive-500/20"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="sumToDate" className="text-xs font-bold text-slate-600 uppercase tracking-wider">End Date</Label>
+                                        <Input
+                                            id="sumToDate"
+                                            type="date"
+                                            value={summaryEndDate}
+                                            onChange={(e) => setSummaryEndDate(e.target.value)}
+                                            className="h-10 rounded-xl border-slate-200 bg-white focus:ring-olive-500/20"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Input Product</Label>
+                                        <Select value={summaryInputProduct} onValueChange={setSummaryInputProduct}>
+                                            <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-white">
+                                                <SelectValue placeholder="All Products" />
+                                            </SelectTrigger>
+                                            <SelectContent className="max-h-60">
+                                                <SelectItem value="ALL">All Input Products</SelectItem>
+                                                {crushingProducts.map((p) => (
+                                                    <SelectItem key={p} value={p}>
+                                                        {p}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Output Product</Label>
+                                        <Select value={summaryOutputProduct} onValueChange={setSummaryOutputProduct}>
+                                            <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-white">
+                                                <SelectValue placeholder="Select Output Product" />
+                                            </SelectTrigger>
+                                            <SelectContent className="max-h-60">
+                                                <SelectItem value="ALL">All Output Products</SelectItem>
+                                                {finishedGoods.map((m) => (
+                                                    <SelectItem key={m} value={m}>
+                                                        {m}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+
+                                {/* Reset button */}
+                                <div className="flex justify-end mb-3">
+                                    <Button
+                                        variant="outline"
+                                        type="button"
+                                        onClick={() => {
+                                            setSummaryStartDate("")
+                                            setSummaryEndDate("")
+                                            setSummaryInputProduct("ALL")
+                                            setSummaryOutputProduct("ALL")
+                                        }}
+                                        className="h-9 px-5 rounded-xl border-slate-200 hover:bg-slate-50 font-semibold text-sm bg-white shadow-sm"
+                                        disabled={!summaryStartDate && !summaryEndDate && summaryInputProduct === "ALL" && summaryOutputProduct === "ALL"}
+                                    >
+                                        Reset Summary Filters
+                                    </Button>
+                                </div>
+
+                                {/* Two full-width side-by-side cards */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                    {/* Input Card */}
+                                    <div className="bg-gradient-to-br from-olive-50 to-olive-100/60 p-6 rounded-2xl border border-olive-200/60 shadow-sm flex flex-col items-center text-center">
+                                        <p className="text-xs font-bold text-olive-800 uppercase tracking-widest mb-2">Total Input Qty</p>
+                                        <p className="text-4xl font-black text-olive-900 mb-1">
+                                            {crushingSummaryData.totalInputQty.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                                        </p>
+                                        {summaryInputProduct && summaryInputProduct !== "ALL" ? (
+                                            <p className="text-xs text-olive-700 font-medium">
+                                                of <span className="font-bold">{summaryInputProduct}</span>
+                                            </p>
+                                        ) : (
+                                            <p className="text-xs text-olive-700 font-medium">of All Input Products</p>
+                                        )}
+                                        {inputBreakdown.length > 0 && (
+                                            <div className="mt-4 w-full max-h-48 overflow-y-auto rounded-xl border border-olive-200 bg-white/70 divide-y divide-olive-100 text-left">
+                                                {inputBreakdown.map((item) => (
+                                                    <div key={item.name} className="flex justify-between items-center px-4 py-2">
+                                                        <span className="text-xs text-olive-800 font-medium truncate max-w-[65%]">{item.name}</span>
+                                                        <span className="text-xs font-bold text-olive-900 shrink-0">{item.qty.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Output Card */}
+                                    <div className="bg-gradient-to-br from-blue-50 to-blue-100/60 p-6 rounded-2xl border border-blue-200/60 shadow-sm flex flex-col items-center text-center">
+                                        <p className="text-xs font-bold text-blue-800 uppercase tracking-widest mb-2">Total Output Qty</p>
+                                        <p className="text-4xl font-black text-blue-900 mb-1">
+                                            {totalSummaryOutputQty.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                                        </p>
+                                        {summaryOutputProduct && summaryOutputProduct !== "ALL" ? (
+                                            <p className="text-xs text-blue-700 font-medium">
+                                                of <span className="font-bold">{summaryOutputProduct}</span>
+                                            </p>
+                                        ) : (
+                                            <p className="text-xs text-blue-700 font-medium">of All Output Products</p>
+                                        )}
+                                        {outputBreakdown.length > 0 && (
+                                            <div className="mt-4 w-full max-h-48 overflow-y-auto rounded-xl border border-blue-200 bg-white/70 divide-y divide-blue-100 text-left">
+                                                {outputBreakdown.map((item) => (
+                                                    <div key={item.name} className="flex justify-between items-center px-4 py-2">
+                                                        <span className="text-xs text-blue-800 font-medium truncate max-w-[65%]">{item.name}</span>
+                                                        <span className="text-xs font-bold text-blue-900 shrink-0">{item.qty.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
                 </CardContent>
             </Card>
 
