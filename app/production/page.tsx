@@ -1669,7 +1669,10 @@ export default function ProductionPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(isAdmin ? editedViewingMaterials : viewingMaterials?.materials || []).map((material, index) => (
+                {(isAdmin ? editedViewingMaterials : viewingMaterials?.materials || [])
+                  .map((material, index) => ({ material, index }))
+                  .filter(({ material }) => (material.name || "").trim().toLowerCase() !== "birla white cement")
+                  .map(({ material, index }) => (
                   <TableRow key={index}>
                     <TableCell>
                       {material.name}
@@ -1707,6 +1710,7 @@ export default function ProductionPage() {
                 nameLower === "ffb flow 796" ||
                 nameLower === "ssf 304" ||
                 nameLower === "ssf 310" ||
+                nameLower === "birla white cement" ||
                 nameLower === "pp bag (25 kgs)" ||
                 nameLower === "pp bag (50 kgs)" ||
                 nameLower === "ton bag(1 ton)" ||
@@ -1739,6 +1743,7 @@ export default function ProductionPage() {
             const shmp = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "shmp");
             const ppf = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "ppf");
             const ffbFlow = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "ffb flow 796");
+            const birlaCement = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "birla white cement");
 
             const pp25Qty = pp25 ? (Number(pp25.quantity) || 0) : 0;
             const pp50Qty = pp50 ? (Number(pp50.quantity) || 0) : 0;
@@ -1746,6 +1751,7 @@ export default function ProductionPage() {
             const shmpQty = shmp ? (Number(shmp.quantity) || 0) : 0;
             const ppfQty = ppf ? (Number(ppf.quantity) || 0) : 0;
             const ffbFlowQty = ffbFlow ? (Number(ffbFlow.quantity) || 0) : 0;
+            const birlaCementQty = birlaCement ? (Number(birlaCement.quantity) || 0) : 0;
 
             return (
               <div className="mt-4 pt-4 border-t space-y-2 text-sm font-semibold text-slate-800">
@@ -1776,7 +1782,7 @@ export default function ProductionPage() {
                     )}
                   </div>
                 )}
-                {(shmpQty > 0 || ppfQty > 0 || ffbFlowQty > 0) && (
+                {(shmpQty > 0 || ppfQty > 0 || ffbFlowQty > 0 || birlaCementQty > 0) && (
                   <div className="space-y-1 pt-1 border-t border-dashed mt-1">
                     <div className="text-xs text-slate-400 uppercase tracking-wider font-bold">Excluded Additives</div>
                     {shmpQty > 0 && (
@@ -1795,6 +1801,12 @@ export default function ProductionPage() {
                       <div className="flex justify-between text-slate-600 font-medium pl-2">
                         <span>FFB Flow 796:</span>
                         <span>{ffbFlowQty}</span>
+                      </div>
+                    )}
+                    {birlaCementQty > 0 && (
+                      <div className="flex justify-between text-slate-600 font-medium pl-2">
+                        <span>Birla White Cement:</span>
+                        <span>{birlaCementQty}</span>
                       </div>
                     )}
                   </div>
@@ -2056,6 +2068,7 @@ export default function ProductionPage() {
                             nameLower === "ffb flow 796" ||
                             nameLower === "ssf 304" ||
                             nameLower === "ssf 310" ||
+                            nameLower === "birla white cement" ||
                             nameLower === "pp bag (25 kgs)" ||
                             nameLower === "pp bag (50 kgs)" ||
                             nameLower === "ton bag(1 ton)" ||
@@ -2085,6 +2098,7 @@ export default function ProductionPage() {
                         const shmp = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "shmp");
                         const ppf = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "ppf");
                         const ffbFlow = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "ffb flow 796");
+                        const birlaCement = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "birla white cement");
 
                         const pp25Qty = pp25 ? (Number(pp25.quantity) || 0) : 0;
                         const pp50Qty = pp50 ? (Number(pp50.quantity) || 0) : 0;
@@ -2092,6 +2106,7 @@ export default function ProductionPage() {
                         const shmpQty = shmp ? (Number(shmp.quantity) || 0) : 0;
                         const ppfQty = ppf ? (Number(ppf.quantity) || 0) : 0;
                         const ffbFlowQty = ffbFlow ? (Number(ffbFlow.quantity) || 0) : 0;
+                        const birlaCementQty = birlaCement ? (Number(birlaCement.quantity) || 0) : 0;
 
                         return (
                           <div className="mt-4 pt-4 border-t space-y-2 text-sm font-semibold text-slate-800">
@@ -2122,7 +2137,7 @@ export default function ProductionPage() {
                                 )}
                               </div>
                             )}
-                            {(shmpQty > 0 || ppfQty > 0 || ffbFlowQty > 0) && (
+                            {(shmpQty > 0 || ppfQty > 0 || ffbFlowQty > 0 || birlaCementQty > 0) && (
                               <div className="space-y-1 pt-1 border-t border-dashed mt-1">
                                 <div className="text-xs text-slate-400 uppercase tracking-wider font-bold">Excluded Additives</div>
                                 {shmpQty > 0 && (
@@ -2141,6 +2156,12 @@ export default function ProductionPage() {
                                   <div className="flex justify-between text-slate-600 font-medium pl-2">
                                     <span>FFB Flow 796:</span>
                                     <span>{ffbFlowQty}</span>
+                                  </div>
+                                )}
+                                {birlaCementQty > 0 && (
+                                  <div className="flex justify-between text-slate-600 font-medium pl-2">
+                                    <span>Birla White Cement:</span>
+                                    <span>{birlaCementQty}</span>
                                   </div>
                                 )}
                               </div>
