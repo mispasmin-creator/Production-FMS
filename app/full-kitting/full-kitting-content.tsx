@@ -1560,22 +1560,32 @@ export default function CheckPage() {
     });
   };
 
-  const kittingTotals = useMemo(
-    () =>
-      kittingFormRows.reduce(
-        (acc, row) => {
-          acc.al += row.al;
-          acc.fe += row.fe;
-          acc.bd += row.bd;
-          acc.ap += row.ap;
-          acc.variableCost += row.cost;
-          acc.percentage += Number.parseFloat(row.percentage) || 0;
-          return acc;
-        },
-        { al: 0, fe: 0, bd: 0, ap: 0, percentage: 0, variableCost: 0 },
-      ),
-    [kittingFormRows],
-  );
+  const kittingTotals = useMemo(() => {
+    const base = kittingFormRows.reduce(
+      (acc, row) => {
+        acc.al += row.al;
+        acc.fe += row.fe;
+        acc.bd += row.bd;
+        acc.ap += row.ap;
+        acc.variableCost += row.cost;
+        acc.percentage += Number.parseFloat(row.percentage) || 0;
+        return acc;
+      },
+      { al: 0, fe: 0, bd: 0, ap: 0, percentage: 0, variableCost: 0 },
+    );
+    return {
+      ...base,
+      alNormalized: base.percentage > 0 ? (base.al / base.percentage) * 100 : 0,
+      feNormalized: base.percentage > 0 ? (base.fe / base.percentage) * 100 : 0,
+    };
+  }, [kittingFormRows]);
+
+  // AL (Calc) subtotal always shows the %-normalized value (for Purab, RKL, Pmmpl).
+  // FE (Calc) subtotal shows the normalized value only for Purab/RKL; Pmmpl keeps the plain sum.
+  const isPurabOrRklFirm = useMemo(() => {
+    const firmLower = String(selectedCheck?.firmName || "").toLowerCase();
+    return firmLower.includes("rkl") || firmLower.includes("purab");
+  }, [selectedCheck?.firmName]);
 
   const handlePreCostingRowChange = (id: number, field: keyof KittingFormRow, value: any) => {
     setPreCostingFormRows((prev) =>
@@ -3036,10 +3046,10 @@ export default function CheckPage() {
                         -
                       </TableCell>
                       <TableCell className="p-2">
-                        {kittingTotals.al.toFixed(4)}
+                        {kittingTotals.alNormalized.toFixed(3)}
                       </TableCell>
                       <TableCell className="p-2">
-                        {kittingTotals.fe.toFixed(4)}
+                        {(isPurabOrRklFirm ? kittingTotals.feNormalized : kittingTotals.fe).toFixed(3)}
                       </TableCell>
                       <TableCell className="p-2">
                         {kittingTotals.bd.toFixed(4)}
@@ -3242,8 +3252,8 @@ export default function CheckPage() {
                         {kittingTotals.percentage.toFixed(2)}%
                       </TableCell>
                       <TableCell className="text-right text-slate-400">-</TableCell>
-                      <TableCell className="text-center font-bold text-slate-800">{kittingTotals.al.toFixed(4)}</TableCell>
-                      <TableCell className="text-center font-bold text-slate-800">{kittingTotals.fe.toFixed(4)}</TableCell>
+                      <TableCell className="text-center font-bold text-slate-800">{kittingTotals.alNormalized.toFixed(3)}</TableCell>
+                      <TableCell className="text-center font-bold text-slate-800">{(isPurabOrRklFirm ? kittingTotals.feNormalized : kittingTotals.fe).toFixed(3)}</TableCell>
                       <TableCell className="text-center font-bold text-slate-800">{kittingTotals.bd.toFixed(4)}</TableCell>
                       <TableCell className="text-center font-bold text-slate-800">{kittingTotals.ap.toFixed(4)}</TableCell>
                       <TableCell className="text-right font-extrabold text-emerald-900 bg-emerald-100/60">
