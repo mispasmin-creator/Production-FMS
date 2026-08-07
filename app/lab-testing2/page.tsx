@@ -608,9 +608,16 @@ export default function LabTesting2Page() {
     try {
       const now = new Date().toISOString()
       const isNonTested = formData.testStatus === "Non Tested"
+      const todayStr = format(new Date(), "yyyy-MM-dd")
       const payload: any = {
         "Actual2": now,
         "Status3": formData.testStatus,
+        // Skip Chemical Test and Management Approval. Go straight to Costing (Planned8).
+        "Actual3": todayStr,
+        "Actual4": todayStr,
+        "Actual5": todayStr,
+        "Actual6": todayStr,
+        "Actual7": todayStr,
       }
 
       if (!isNonTested) {
