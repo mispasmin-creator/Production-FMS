@@ -166,7 +166,6 @@ export default function Step4List() {
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState('');
     const [selectedRecord, setSelectedRecord] = useState<SemiActualRecord | null>(null);
-    const [isDetailsOpen, setIsDetailsOpen] = useState(false);
     const [isMarkDoneOpen, setIsMarkDoneOpen] = useState(false);
     const [markDoneRemarks, setMarkDoneRemarks] = useState('');
     const [markDoneErrors, setMarkDoneErrors] = useState<Record<string, string>>({});
@@ -316,11 +315,6 @@ export default function Step4List() {
             }
             return <Badge className="bg-slate-50 text-slate-600 hover:bg-slate-100">Completed</Badge>;
         }
-    };
-
-    const handleViewDetails = (record: SemiActualRecord) => {
-        setSelectedRecord(record);
-        setIsDetailsOpen(true);
     };
 
     const handleMarkDone = (record: SemiActualRecord) => {
@@ -520,14 +514,6 @@ export default function Step4List() {
                                                 <TableCell className="whitespace-nowrap">
                                                     <div className="flex items-center gap-2">
                                                         <Button
-                                                            onClick={() => handleViewDetails(record)}
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="h-8 w-8 p-0 text-slate-500 hover:text-olive-600"
-                                                        >
-                                                            <Eye className="h-4 w-4" />
-                                                        </Button>
-                                                        <Button
                                                             onClick={() => handleMarkDone(record)}
                                                             size="sm"
                                                             className="h-8 bg-olive-600 text-white hover:bg-olive-700"
@@ -635,17 +621,18 @@ export default function Step4List() {
             </Card>
 
             {/* Details Dialog */}
-            <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-                <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+            {/*Tally Dialog */}
+            <Dialog open={isMarkDoneOpen} onOpenChange={setIsMarkDoneOpen}>
+                <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>Production Details</DialogTitle>
+                        <DialogTitle>Verify Tally</DialogTitle>
                         <DialogDescription>
-                            Job Card: {selectedRecord?.semiFinishedJobCardNo} | S.No: {selectedRecord?.serialNo}
+                            {selectedRecord?.semiFinishedJobCardNo} — {selectedRecord?.productName}
                         </DialogDescription>
                     </DialogHeader>
 
                     {selectedRecord && (
-                        <div className="space-y-6 py-4">
+                        <form onSubmit={(e) => { e.preventDefault(); handleMarkDoneSubmit(); }} className="space-y-6 py-4">
                             {/* Basic Information */}
                             <div className="space-y-3">
                                 <h4 className="text-sm font-semibold text-slate-700 bg-slate-50 px-3 py-2 rounded-md">Basic Information</h4>
@@ -741,13 +728,13 @@ export default function Step4List() {
                                         <p className="text-sm text-slate-700">{selectedRecord.machineRunningHour}</p>
                                     </div>
                                 </div>
-                                
+
                                 {/* Photos */}
                                 <div className="flex gap-4 mt-2">
                                     {selectedRecord.startingReadingPhoto && (
-                                        <a 
-                                            href={selectedRecord.startingReadingPhoto} 
-                                            target="_blank" 
+                                        <a
+                                            href={selectedRecord.startingReadingPhoto}
+                                            target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-xs text-olive-600 hover:underline flex items-center"
                                         >
@@ -756,9 +743,9 @@ export default function Step4List() {
                                         </a>
                                     )}
                                     {selectedRecord.endingReadingPhoto && (
-                                        <a 
-                                            href={selectedRecord.endingReadingPhoto} 
-                                            target="_blank" 
+                                        <a
+                                            href={selectedRecord.endingReadingPhoto}
+                                            target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-xs text-olive-600 hover:underline flex items-center"
                                         >
@@ -801,44 +788,6 @@ export default function Step4List() {
                                     </p>
                                 </div>
                             )}
-                        </div>
-                    )}
-                </DialogContent>
-            </Dialog>
-
-            {/*Tally Dialog */}
-            <Dialog open={isMarkDoneOpen} onOpenChange={setIsMarkDoneOpen}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>Verify Tally</DialogTitle>
-                        <DialogDescription>
-                            {selectedRecord?.semiFinishedJobCardNo} — {selectedRecord?.productName}
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    {selectedRecord && (
-                        <form onSubmit={(e) => { e.preventDefault(); handleMarkDoneSubmit(); }} className="space-y-4 py-4">
-                            {/* Summary */}
-                            <div className="bg-slate-50 rounded-lg p-4 space-y-2">
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-slate-500">Job Card:</span>
-                                    <span className="font-medium text-olive-600">{selectedRecord.semiFinishedJobCardNo}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-slate-500">Product:</span>
-                                    <span className="font-medium text-slate-700">{selectedRecord.productName}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-slate-500">Supervisor:</span>
-                                    <span className="text-slate-600">{selectedRecord.supervisorName}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-slate-500">Planned Date:</span>
-                                    <span className="text-slate-600">
-                                        {formatDisplayDate(selectedRecord.planned1)}
-                                    </span>
-                                </div>
-                            </div>
 
                             {/* Remarks */}
                             <div className="space-y-2">

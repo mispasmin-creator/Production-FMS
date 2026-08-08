@@ -109,6 +109,7 @@ export default function TallyPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [selectedTally, setSelectedTally] = useState<ActualProductionItem | null>(null)
   const [remarks, setRemarks] = useState("")
+  const [isReadOnlyView, setIsReadOnlyView] = useState(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -238,6 +239,14 @@ export default function TallyPage() {
   const handleVerify = (tally: ActualProductionItem) => {
     setSelectedTally(tally)
     setRemarks("")
+    setIsReadOnlyView(false)
+    setIsDialogOpen(true)
+  }
+
+  const handleViewHistory = (tally: ActualProductionItem) => {
+    setSelectedTally(tally)
+    setRemarks("")
+    setIsReadOnlyView(true)
     setIsDialogOpen(true)
   }
 
@@ -309,6 +318,16 @@ export default function TallyPage() {
   ]
 
   const historyTableColumns = [
+    {
+      header: "Action",
+      key: "actionColumn",
+      render: (tally: ActualProductionItem) => (
+        <Button size="sm" variant="outline" onClick={() => handleViewHistory(tally)}>
+          <Eye className="mr-2 h-4 w-4" />
+          View
+        </Button>
+      ),
+    },
     {
       header: "Job Card No.",
       key: "jobCardNo",
@@ -706,30 +725,56 @@ export default function TallyPage() {
               <Separator />
 
               {/* Tally Remarks Section */}
-              <div className="space-y-3">
-                <h3 className="text-md font-semibold flex items-center gap-2 text-olive-700">
-                  <FileText className="h-4 w-4" /> Tally Verification Remarks
-                </h3>
-                <div className="space-y-2">
-                  <Textarea
-                    id="remarks"
-                    value={remarks}
-                    onChange={(e) => setRemarks(e.target.value)}
-                    placeholder="Enter your remarks for this tally verification..."
-                    rows={3}
-                  />
+              {isReadOnlyView ? (
+                <div className="space-y-3">
+                  <h3 className="text-md font-semibold flex items-center gap-2 text-olive-700">
+                    <FileText className="h-4 w-4" /> Tally Verification
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border rounded-lg">
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold text-gray-600">Tally Date</Label>
+                      <p className="text-sm">{selectedTally.tallyTimestamp || "N/A"}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold text-gray-600">Remarks</Label>
+                      <p className="text-sm">{selectedTally.tallyRemarks || "N/A"}</p>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-3">
+                  <h3 className="text-md font-semibold flex items-center gap-2 text-olive-700">
+                    <FileText className="h-4 w-4" /> Tally Verification Remarks
+                  </h3>
+                  <div className="space-y-2">
+                    <Textarea
+                      id="remarks"
+                      value={remarks}
+                      onChange={(e) => setRemarks(e.target.value)}
+                      placeholder="Enter your remarks for this tally verification..."
+                      rows={3}
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Action Buttons */}
               <div className="flex justify-end gap-3 pt-4 border-t">
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={isSubmitting} className="bg-olive-600 hover:bg-olive-700">
-                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Complete Tally Verification
-                </Button>
+                {isReadOnlyView ? (
+                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                    Close
+                  </Button>
+                ) : (
+                  <>
+                    <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={isSubmitting} className="bg-olive-600 hover:bg-olive-700">
+                      {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Complete Tally Verification
+                    </Button>
+                  </>
+                )}
               </div>
             </form>
           )}
