@@ -42,6 +42,7 @@ interface Order {
   priority: string
   note: string
   totalMade?: number
+  cancelQty?: number
   pending?: number
   id?: number
   orderCancel?: boolean
@@ -103,7 +104,7 @@ const PENDING_ORDERS_COLUMNS_META = [
 ]
 
 const HISTORY_COLUMNS_META = [
-  { header: "Timestamp", dataKey: "createdAt", toggleable: true, alwaysVisible: true }, // ✅ ADDED
+  { header: "Timestamp", dataKey: "createdAt", toggleable: true, alwaysVisible: true },
   { header: "ID", dataKey: "productionId", toggleable: true, alwaysVisible: true },
   { header: "Job Card No.", dataKey: "jobCardNo", toggleable: true, alwaysVisible: true },
   { header: "Firm Name", dataKey: "firmName", toggleable: true },
@@ -115,6 +116,9 @@ const HISTORY_COLUMNS_META = [
   { header: "Date of Production", dataKey: "dateOfProduction", toggleable: true },
   { header: "Shift", dataKey: "shift", toggleable: true },
   { header: "Total Made", dataKey: "totalMade", toggleable: true },
+  { header: "Cancel Qty", dataKey: "cancelQty", toggleable: true },
+  { header: "Status", dataKey: "status", toggleable: true, alwaysVisible: true },
+  { header: "Action", dataKey: "cancelAction", toggleable: true, alwaysVisible: true },
 ]
 
 export default function JobCardsPage() {
@@ -212,34 +216,97 @@ export default function JobCardsPage() {
       }
 
       const processedOrders: Order[] = filteredRows.map((row) => {
-        const deliveryOrderNo = String(row["Order No."] || "").trim()
-        const productName = String(row["product name"] || "").trim()
+        const deliveryOrderNo = String(row["Order No."] || row["Delivery Order No."] || row["DO No."] || "").trim()
+        const productName = String(row["product name"] || row["Product Name"] || "").trim()
         const partyName = String(row["Party Name"] || "").trim()
         const prodRow = findProductionRow(deliveryOrderNo, partyName, productName)
-        const orderQty = prodRow ? Number(prodRow["Order Quantity"] || 0) : 0
+        const orderQty = prodRow 
+          ? Number(prodRow["Order Quantity"] || row["Order Quantity"] || row["QUANTITY"] || row["Quantity"] || row["Qty"] || 0)
+          : Number(row["Order Quantity"] || row["QUANTITY"] || row["Quantity"] || row["Qty"] || 0)
 
-        const normalizedDo = deliveryOrderNo.toLowerCase()
-        const normalizedProduct = productName.toLowerCase()
-        const normalizedParty = partyName.toLowerCase()
-        const matchingJobCards = allJobCardsData.filter((jc: any) => {
-          const jcDo = String(jc["Delivery Order No."] || "").trim().toLowerCase()
-          const jcProduct = String(jc["Product Name"] || "").trim().toLowerCase()
-          const jcParty = String(jc["Party Name"] || "").trim().toLowerCase()
-          const jcStatus = String(jc["Status"] || "active").toLowerCase()
-          return jcDo === normalizedDo && jcProduct === normalizedProduct && (!normalizedParty || jcParty === normalizedParty) && jcStatus !== "cancelled"
+        const normalizedDo = normalizeKey(deliveryOrderNo)
+        const normalizedProduct = normalizeKey(productName)
+        const normalizedParty = normalizeKey(partyName)
+        const numericDo = getNumericDo(deliveryOrderNo)
+
+        // Resilient multi-level Job Card matching
+        let matchingJobCards = allJobCardsData.filter((jc: any) => {
+          const jcDo = normalizeKey(jc["Delivery Order No."])
+          const jcNumDo = getNumericDo(jc["Delivery Order No."])
+          const jcProd = normalizeKey(jc["Product Name"])
+          const jcParty = normalizeKey(jc["Party Name"])
+
+          const doMatches = jcDo === normalizedDo || (numericDo !== null && jcNumDo !== null && numericDo === jcNumDo)
+          if (!doMatches) return false
+
+          if (normalizedProduct && jcProd && jcProd !== normalizedProduct) return false
+          if (normalizedParty && jcParty && jcParty !== normalizedParty) return false
+
+          return true
         })
+
+        // Fallback 1: match by DO and Product if DO+Product+Party yielded no results
+        if (matchingJobCards.length === 0 && normalizedProduct) {
+          matchingJobCards = allJobCardsData.filter((jc: any) => {
+            const jcDo = normalizeKey(jc["Delivery Order No."])
+            const jcNumDo = getNumericDo(jc["Delivery Order No."])
+            const jcProd = normalizeKey(jc["Product Name"])
+
+            const doMatches = jcDo === normalizedDo || (numericDo !== null && jcNumDo !== null && numericDo === jcNumDo)
+            if (!doMatches) return false
+
+            return jcProd === normalizedProduct || (jcProd && normalizedProduct && (jcProd.includes(normalizedProduct) || normalizedProduct.includes(jcProd)))
+          })
+        }
+
+        // Fallback 2: match by DO only
+        if (matchingJobCards.length === 0) {
+          matchingJobCards = allJobCardsData.filter((jc: any) => {
+            const jcDo = normalizeKey(jc["Delivery Order No."])
+            const jcNumDo = getNumericDo(jc["Delivery Order No."])
+            return jcDo === normalizedDo || (numericDo !== null && jcNumDo !== null && numericDo === jcNumDo)
+          })
+        }
+
+        // Total made: sum of Total Made (or Quantity if Total Made is missing/0 on active cards)
         const rawTotalMadeSum = matchingJobCards.reduce(
-          (sum: number, jc: any) => sum + Number(jc["Total Made"] || jc["Quantity"] || 0),
+          (sum: number, jc: any) => {
+            const jcStatus = String(jc["Status"] || "active").toLowerCase()
+            const totalMade = Number(jc["Total Made"] || 0)
+            const qty = Number(jc["Quantity"] || 0)
+            const made = totalMade > 0 ? totalMade : (jcStatus !== "cancelled" ? qty : 0)
+            return sum + made
+          },
           0
         )
         const totalMadeSum = Number(rawTotalMadeSum.toFixed(2))
 
-        const rawQuantitySum = matchingJobCards.reduce(
-          (sum: number, jc: any) => sum + Number(jc["Quantity"] || 0),
+        // Total cancel qty from job cards
+        const rawCancelQtySum = matchingJobCards.reduce(
+          (sum: number, jc: any) => {
+            const jcStatus = String(jc["Status"] || "active").toLowerCase()
+            const cancelQty = jc["Cancel Qty"] !== null && jc["Cancel Qty"] !== undefined ? Number(jc["Cancel Qty"]) : 0
+            if (cancelQty > 0) return sum + cancelQty
+            if (jcStatus === "cancelled") {
+              const qty = Number(jc["Quantity"] || 0)
+              const totalMade = Number(jc["Total Made"] || 0)
+              return sum + Math.max(0, qty - totalMade)
+            }
+            return sum
+          },
           0
         )
-        const quantitySum = Number(rawQuantitySum.toFixed(2))
-        const pendingQty = Number((orderQty - quantitySum).toFixed(2))
+        const cancelQtySum = Number(rawCancelQtySum.toFixed(2))
+
+        const rawPending = orderQty > 0 ? (orderQty - (totalMadeSum + cancelQtySum)) : 0
+        const pendingQty = Number(Math.max(0, rawPending).toFixed(2))
+
+        const isOrderCancelled = prodRow ? (
+          prodRow["Order Cancel"] === true ||
+          String(prodRow["Order Cancel"]).trim().toLowerCase() === "true" ||
+          String(prodRow["Order Cancel"]).trim().toLowerCase() === "yes" ||
+          prodRow["Order Cancel"] === 1
+        ) : false
 
         return {
           key: row.id,
@@ -248,8 +315,8 @@ export default function JobCardsPage() {
           _rowIndex: row.id,
           costingResponseId: row.id,
           deliveryOrderNo,
-          firmName: prodRow ? String(prodRow["Firm Name"] || "") : "",
-          partyName: prodRow ? String(prodRow["Party Name"] || "") : "",
+          firmName: prodRow ? String(prodRow["Firm Name"] || "") : String(row["Firm Name"] || ""),
+          partyName: prodRow ? String(prodRow["Party Name"] || "") : String(row["Party Name"] || ""),
           productName,
           orderQuantity: orderQty,
           expectedDeliveryDate: prodRow && prodRow["Expected Delivery Date"] ? format(new Date(prodRow["Expected Delivery Date"]), "dd/MM/yyyy") : "",
@@ -257,14 +324,15 @@ export default function JobCardsPage() {
           plannedDate: row["Planned 2"] ? format(new Date(row["Planned 2"]), "dd/MM/yy") : "",
           priority: prodRow ? String(prodRow["Priority"] || "") : "",
           totalMade: totalMadeSum,
+          cancelQty: cancelQtySum,
           pending: pendingQty,
           note: "",
-          orderCancel: prodRow ? !!prodRow["Order Cancel"] : false,
+          orderCancel: isOrderCancelled,
         }
       }).filter((order) => {
         if (order.orderCancel) return false;
-        // Filter out completed orders where orderQuantity > 0 and totalMade >= orderQuantity (or pending <= 0)
-        if (order.orderQuantity > 0 && (order.totalMade >= order.orderQuantity || order.pending <= 0)) {
+        if (order.pending <= 0) return false;
+        if (order.orderQuantity > 0 && ((order.totalMade + (order.cancelQty || 0)) >= order.orderQuantity)) {
           return false;
         }
         return true;
@@ -282,6 +350,21 @@ export default function JobCardsPage() {
             String(row["Product Name"] || "")
           )
 
+          const jcQty = Number(row["Quantity"] || 0)
+          const prodOrderQty = Number(productionRow?.["Order Quantity"] || 0)
+          const totalMade = Number(row["Total Made"] || 0)
+          const explicitCancelQty = row["Cancel Qty"] !== null && row["Cancel Qty"] !== undefined ? Number(row["Cancel Qty"]) : undefined
+          const status = String(row["Status"] || "active").toLowerCase()
+
+          let cancelQty = explicitCancelQty
+          if (cancelQty === undefined && status === "cancelled") {
+            const baseQty = jcQty > 0 ? jcQty : prodOrderQty
+            cancelQty = Math.max(0, baseQty - totalMade)
+          }
+
+          const calcCancel = cancelQty || 0
+          const displayOrderQty = Math.max(jcQty, prodOrderQty, (totalMade + calcCancel))
+
           return {
             key: row.id,
             id: row.id,
@@ -293,17 +376,19 @@ export default function JobCardsPage() {
             deliveryOrderNo: String(row["Delivery Order No."] || ""),
             partyName: String(row["Party Name"] || productionRow?.["Party Name"] || ""),
             productName: String(row["Product Name"] || ""),
-            orderQuantity: Number(row["Quantity"] || 0),
+            orderQuantity: displayOrderQty,
             dateOfProduction: prodDate ? format(prodDate, "dd/MM/yyyy") : "",
             shift: String(row["Shift"] || ""),
-            totalMade: Number(row["Total Made"] || 0),
+            totalMade: totalMade,
             notes: String(row["Notes"] || ""),
             createdAt: createdAt ? format(createdAt, "dd/MM/yyyy HH:mm:ss") : "",
             expectedDeliveryDate: productionRow && productionRow["Expected Delivery Date"] 
               ? format(new Date(productionRow["Expected Delivery Date"]), "dd/MM/yyyy") 
               : "",
             priority: productionRow ? String(productionRow["Priority"] || "") : "",
-            status: String(row["Status"] || "active").toLowerCase(),
+            status: status,
+            cancelQty: cancelQty !== undefined ? cancelQty : 0,
+            cancelRemarks: String(row["Cancel Remarks"] || ""),
           }
         })
         .sort((a, b) => b.id - a.id)
@@ -433,8 +518,11 @@ export default function JobCardsPage() {
     if (!cancelFormData.cancelQty || Number(cancelFormData.cancelQty) <= 0) {
       newErrors.cancelQty = "Valid cancel quantity is required"
     }
-    if (selectedJobCard && Number(cancelFormData.cancelQty) > selectedJobCard.totalMade) {
-      newErrors.cancelQty = "Cancel quantity cannot exceed total made"
+    const maxAllowedCancel = selectedJobCard
+      ? Math.max(selectedJobCard.orderQuantity || 0, selectedJobCard.totalMade || 0)
+      : 0
+    if (selectedJobCard && maxAllowedCancel > 0 && Number(cancelFormData.cancelQty) > maxAllowedCancel) {
+      newErrors.cancelQty = `Cancel quantity cannot exceed order quantity (${maxAllowedCancel})`
     }
     if (!cancelFormData.cancelRemarks?.trim()) {
       newErrors.cancelRemarks = "Remarks are required for cancellation"
@@ -516,7 +604,9 @@ export default function JobCardsPage() {
         .from(JOBCARDS_TABLE)
         .update({
           Status: "cancelled",
-          Notes: `${selectedJobCard.notes}\nCancelled: ${cancelFormData.cancelRemarks} (Qty: ${cancelFormData.cancelQty})`
+          Notes: `${selectedJobCard.notes}\nCancelled: ${cancelFormData.cancelRemarks} (Qty: ${cancelFormData.cancelQty})`,
+          "Cancel Qty": Number(cancelFormData.cancelQty),
+          "Cancel Remarks": cancelFormData.cancelRemarks
         })
         .eq("id", selectedJobCard.id)
 
@@ -635,10 +725,10 @@ export default function JobCardsPage() {
  const pendingQty = useMemo(() => {
   if (!selectedOrder) return 0
 
-  // ✅ ALWAYS from sheet (NOT from input)
+  if (selectedOrder.pending !== undefined) return selectedOrder.pending
   const total = Number(selectedOrder.totalMade || 0)
-
-  return selectedOrder.orderQuantity - total
+  const cancelled = Number(selectedOrder.cancelQty || 0)
+  return Math.max(0, Number((selectedOrder.orderQuantity - total - cancelled).toFixed(2)))
 }, [selectedOrder])
 
   if (loading)
@@ -961,7 +1051,9 @@ export default function JobCardsPage() {
                                 >
                                   {column.dataKey === "status" ? (
                                     <Badge variant={card.status === 'cancelled' ? 'destructive' : 'default'}>
-                                      {card.status}
+                                      {card.status === 'cancelled' && card.totalMade > 0
+                                        ? `Partially Cancelled (${card.totalMade} made)`
+                                        : card.status}
                                     </Badge>
                                   ) : column.dataKey === "cancelAction" ? (
                                     card.status === 'active' && (
@@ -1176,7 +1268,7 @@ export default function JobCardsPage() {
                 id="cancelQty"
                 type="number"
                 min="0"
-                max={selectedJobCard?.totalMade}
+                max={selectedJobCard ? Math.max(selectedJobCard.orderQuantity || 0, selectedJobCard.totalMade || 0) : undefined}
                 value={cancelFormData.cancelQty}
                 onChange={(e) => handleCancelFormChange("cancelQty", e.target.value)}
                 className={cancelFormErrors.cancelQty ? "border-red-500" : ""}
@@ -1187,7 +1279,7 @@ export default function JobCardsPage() {
               )}
               {selectedJobCard && (
                 <p className="text-xs text-gray-500">
-                  Max cancel quantity: {selectedJobCard.totalMade}
+                  Order Qty: {selectedJobCard.orderQuantity} | Total Made: {selectedJobCard.totalMade}
                 </p>
               )}
             </div>

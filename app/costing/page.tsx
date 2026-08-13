@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { Loader2, AlertTriangle, DollarSign, History, Settings, Package, Building, User, Calendar, Clock, Hash, FileText, CheckCircle, Search, Download } from "lucide-react"
 import { format } from "date-fns"
+import { jsPDF } from "jspdf"
+import autoTable from "jspdf-autotable"
 // Shadcn UI components
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -238,6 +240,11 @@ const initialFormState = {
   costingAmount: "",
 }
 
+// Strips spaces/hyphens so "LC-80" and "LC - 80" resolve to the same order-rate key.
+function normalizeRateKey(value: any): string {
+  return String(value ?? "").trim().toLowerCase().replace(/[\s-]/g, "")
+}
+
 export default function CostingPage() {
   const [pendingCosting, setPendingCosting] = useState<PendingCostingItem[]>([])
   const [historyCosting, setHistoryCosting] = useState<HistoryCostingItem[]>([])
@@ -262,14 +269,17 @@ export default function CostingPage() {
     if (!item) return 0
     const doNo = String(item.deliveryOrderNo || "").trim()
     const firmName = String(item.firmName || "").trim().toLowerCase()
-    const productName = String(item.productName || "").trim().toLowerCase()
+    // Normalized (spaces/hyphens stripped) so "LC-80" and "LC - 80" match the same key.
+    const productNameNorm = normalizeRateKey(item.productName)
+    const doNoNorm = normalizeRateKey(doNo)
+    const firmNameNorm = normalizeRateKey(firmName)
 
     // 1. Try DO No. + Product Name + Firm Name
-    const key1 = `${doNo}_${productName}_${firmName}`.toLowerCase()
+    const key1 = `${doNoNorm}_${productNameNorm}_${firmNameNorm}`
     if (orderRates[key1] !== undefined) return orderRates[key1]
 
     // 2. Try DO No. + Product Name
-    const key2 = `${doNo}_${productName}`.toLowerCase()
+    const key2 = `${doNoNorm}_${productNameNorm}`
     if (orderRates[key2] !== undefined) return orderRates[key2]
 
     // 3. Try DO No. + Firm Name
@@ -734,15 +744,19 @@ export default function CostingPage() {
           const rate = Number(row["Rate Of Material"] || 0)
           const firmName = String(row["Firm Name"] || "").trim()
           const productName = String(row["Product Name"] || "").trim()
+          // Normalized (spaces/hyphens stripped) so "LC-80" and "LC - 80" resolve to the same key.
+          const doNoNorm = normalizeRateKey(doNo)
+          const firmNameNorm = normalizeRateKey(firmName)
+          const productNameNorm = normalizeRateKey(productName)
 
           if (doNo) {
             // 1. Map by DO + Product + Firm
             if (productName && firmName) {
-              rates[`${doNo}_${productName}_${firmName}`.toLowerCase()] = rate
+              rates[`${doNoNorm}_${productNameNorm}_${firmNameNorm}`] = rate
             }
             // 2. Map by DO + Product
             if (productName) {
-              rates[`${doNo}_${productName}`.toLowerCase()] = rate
+              rates[`${doNoNorm}_${productNameNorm}`] = rate
             }
             // 3. Map by DO + Firm
             if (firmName) {
@@ -1011,6 +1025,125 @@ export default function CostingPage() {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const handleExportProductionDetailsPDF = () => {
+    if (!selectedCosting?.completeDetails) return
+    const details = selectedCosting.completeDetails
+    const doc = new jsPDF()
+
+    doc.setFontSize(14)
+    doc.text(`Production Details - Job Card: ${details.jobCardNo || "N/A"}`, 14, 15)
+    doc.setFontSize(9)
+    doc.text("All information from the actual production record for this job card", 14, 21)
+
+    autoTable(doc, {
+      startY: 26,
+      theme: "grid",
+      styles: { fontSize: 8, cellPadding: 2 },
+      head: [["Field", "Value"]],
+      body: [
+        ["Job Card Number", details.jobCardNo || "N/A"],
+        ["Firm Name", details.firmName || "N/A"],
+        ["Date of Production", details.dateOfProduction || "N/A"],
+        ["Name of Supervisor", details.nameOfSupervisor || "N/A"],
+        ["Product Name", details.productName || "N/A"],
+        ["Quantity of FG", String(details.quantityOfFG || "N/A")],
+        ["Serial Number", details.serialNumber || "N/A"],
+        ["Machine Running Hour", details.machineRunningHour || "N/A"],
+        ["Delivery Order No.", selectedCosting.deliveryOrderNo || "N/A"],
+        ["Party Name", details.partyName || selectedCosting.partyName || "N/A"],
+      ],
+      headStyles: { fillColor: [107, 110, 48] },
+    })
+
+    let nextY = (doc as any).lastAutoTable.finalY + 8
+
+    if (details.rawMaterials && details.rawMaterials.length > 0) {
+      let totalMaterialCost = 0
+      const rmRows = details.rawMaterials.map((material) => {
+        const rmName = material.name ? material.name.trim() : ""
+        const rateInfo = liftRates[rmName]
+        const rate = Number(editedRates[rmName]?.rate ?? rateInfo?.rate ?? 0)
+        const transRate = Number(editedRates[rmName]?.transportRate ?? rateInfo?.transportRate ?? 0)
+        const qty = Number(material.quantity || 0)
+        const totalCost = qty * (rate + transRate)
+        totalMaterialCost += totalCost
+        return [
+          material.name || "-",
+          String(material.quantity ?? "-"),
+          `Rs.${rate.toFixed(2)}`,
+          `Rs.${transRate.toFixed(2)}`,
+          `Rs.${totalCost.toFixed(2)}`,
+        ]
+      })
+
+      doc.setFontSize(11)
+      doc.text("Raw Materials & Live Rates (LIFT-ACCOUNTS)", 14, nextY)
+      nextY += 4
+
+      autoTable(doc, {
+        startY: nextY,
+        theme: "grid",
+        styles: { fontSize: 8, cellPadding: 2 },
+        head: [["Raw Material", "Quantity", "Live Rate (Rs./MT)", "Trans. Rate (Rs./MT)", "Total Cost (Rs.)"]],
+        body: rmRows,
+        headStyles: { fillColor: [37, 99, 174] },
+      })
+
+      nextY = (doc as any).lastAutoTable.finalY + 4
+
+      const fgQty = Number(details.quantityOfFG || 0)
+      const perMtCost = fgQty > 0 ? totalMaterialCost / fgQty : 0
+      const response = costingResponses.find((r) => r.orderNo === selectedCosting?.deliveryOrderNo)
+      const targetFirm = selectedCosting?.firmName || details.firmName
+      const manufacturingCost = getManufacturingCost(targetFirm, response?.manufacturingCost)
+      const totalProductionCost = perMtCost + manufacturingCost
+
+      autoTable(doc, {
+        startY: nextY,
+        theme: "plain",
+        styles: { fontSize: 8, cellPadding: 1.5 },
+        body: [
+          ["Total Material Cost:", `Rs.${totalMaterialCost.toFixed(2)}`],
+          ["FG Quantity:", `${fgQty} MT`],
+          ["Calculated Per MT Cost:", `Rs.${perMtCost.toFixed(2)} / MT`],
+          ["Manufacturing Cost:", `Rs.${manufacturingCost.toFixed(2)} / MT`],
+          ["Total Production Cost / MT:", `Rs.${totalProductionCost.toFixed(2)} / MT`],
+        ],
+        columnStyles: { 0: { halign: "right", cellWidth: 140 }, 1: { halign: "right", fontStyle: "bold" } },
+      })
+
+      nextY = (doc as any).lastAutoTable.finalY + 6
+
+      const actualOrderRate = getActualOrderRate(selectedCosting)
+      if (actualOrderRate > 0 || response) {
+        const productionCostPct =
+          actualOrderRate > 0 ? ((totalProductionCost / actualOrderRate) * 100).toFixed(2) + "%" : "-"
+        autoTable(doc, {
+          startY: nextY,
+          theme: "grid",
+          styles: { fontSize: 8, cellPadding: 2 },
+          head: [["Actual Order Rate", "Production Cost %"]],
+          body: [
+            [
+              actualOrderRate > 0 ? `Rs.${actualOrderRate.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "-",
+              productionCostPct,
+            ],
+          ],
+          headStyles: { fillColor: [124, 58, 237] },
+        })
+        nextY = (doc as any).lastAutoTable.finalY + 6
+      }
+    }
+
+    const costingAmount = formData.costingAmount ? Number(formData.costingAmount) : Number(details.costingAmount || 0)
+    doc.setFontSize(10)
+    doc.text(`Costing Amount: Rs.${costingAmount ? costingAmount.toFixed(2) : "0.00"}`, 14, nextY)
+
+    doc.save(
+      `production_details_${(details.jobCardNo || "job_card").replace(/[^a-zA-Z0-9]/g, "_")}_${format(new Date(), "yyyyMMdd")}.pdf`,
+    )
   }
 
   const handleToggleColumn = (tab: string, dataKey: string, checked: boolean) => {
@@ -1460,9 +1593,23 @@ export default function CostingPage() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-xl border-b pb-2">
-              <Package className="h-5 w-5 text-green-600" />
-              Complete Production Details - Job Card: {selectedCosting?.jobCardNo}
+            <DialogTitle className="flex items-center justify-between gap-2 text-xl border-b pb-2">
+              <span className="flex items-center gap-2">
+                <Package className="h-5 w-5 text-green-600" />
+                Complete Production Details - Job Card: {selectedCosting?.jobCardNo}
+              </span>
+              {selectedCosting?.completeDetails && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportProductionDetailsPDF}
+                  className="h-8 text-xs gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 font-normal"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Download PDF
+                </Button>
+              )}
             </DialogTitle>
             <DialogDescription>
               All information from the actual production record for this job card
@@ -1536,6 +1683,12 @@ export default function CostingPage() {
                       <FileText className="h-3 w-3" /> Delivery Order No.
                     </Label>
                     <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedCosting.deliveryOrderNo || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500 flex items-center gap-1">
+                      <User className="h-3 w-3" /> Party Name
+                    </Label>
+                    <p className="text-sm font-medium bg-gray-50 p-2 rounded">{selectedCosting.completeDetails.partyName || selectedCosting.partyName || "N/A"}</p>
                   </div>
                 </div>
               </div>
