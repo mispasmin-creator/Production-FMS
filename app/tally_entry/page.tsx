@@ -79,6 +79,8 @@ interface SemiActualRecord {
     planned2: string;  // Column AH
     actual2: string;   // Column AI
     firmName?: string;
+    status?: string;
+    status1?: string;
 }
 
 // Column Definitions
@@ -105,6 +107,7 @@ const PRODUCTION_COLUMNS_META = [
 ];
 
 const HISTORY_COLUMNS_META = [
+    { header: "Actions", dataKey: "actions", alwaysVisible: true },
     { header: "Firm Name", dataKey: "firmName", alwaysVisible: true },
     { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true },
     { header: "Product", dataKey: "productName", alwaysVisible: true },
@@ -324,6 +327,13 @@ export default function Step4List() {
         setIsMarkDoneOpen(true);
     };
 
+    const handleViewHistory = (record: SemiActualRecord) => {
+        setSelectedRecord(record);
+        setMarkDoneRemarks(record.status || '');
+        setMarkDoneErrors({});
+        setIsMarkDoneOpen(true);
+    };
+
     const handleMarkDoneSubmit = async () => {
         if (!selectedRecord || !selectedRecord._rowIndex) {
             setError('Unable to identify the record row');
@@ -509,10 +519,10 @@ export default function Step4List() {
                                 {currentData.length > 0 ? (
                                     currentData.map((record, index) => (
                                         <TableRow key={`${record.serialNo}-${index}`} className="hover:bg-olive-50/40">
-                                            {/* Actions Column - only for pending tab */}
-                                            {activeTab === 'pending' && (
-                                                <TableCell className="whitespace-nowrap">
-                                                    <div className="flex items-center gap-2">
+                                            {/* Actions Column */}
+                                            <TableCell className="whitespace-nowrap">
+                                                <div className="flex items-center gap-2">
+                                                    {activeTab === 'pending' ? (
                                                         <Button
                                                             onClick={() => handleMarkDone(record)}
                                                             size="sm"
@@ -521,9 +531,19 @@ export default function Step4List() {
                                                             <CheckCircle2 className="h-3 w-3 mr-1" />
                                                             Verify
                                                         </Button>
-                                                    </div>
-                                                </TableCell>
-                                            )}
+                                                    ) : (
+                                                        <Button
+                                                            onClick={() => handleViewHistory(record)}
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="h-8 bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200"
+                                                        >
+                                                            <Eye className="h-3 w-3 mr-1" />
+                                                            View
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </TableCell>
 
                                             {/* Firm Name */}
                                             <TableCell className="whitespace-nowrap">
@@ -604,10 +624,7 @@ export default function Step4List() {
                                 ) : (
                                     <TableRow>
                                         <TableCell 
-                                            colSpan={
-                                                (activeTab === 'pending' ? PENDING_COLUMNS_META.length :
-                                                 HISTORY_COLUMNS_META.length) + 1
-                                            } 
+                                            colSpan={activeTab === 'pending' ? PENDING_COLUMNS_META.length : HISTORY_COLUMNS_META.length} 
                                             className="h-32 text-center text-slate-400"
                                         >
                                             No records found
@@ -625,14 +642,14 @@ export default function Step4List() {
             <Dialog open={isMarkDoneOpen} onOpenChange={setIsMarkDoneOpen}>
                 <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>Verify Tally</DialogTitle>
+                        <DialogTitle>{activeTab === 'history' ? "Production Details" : "Verify Tally"}</DialogTitle>
                         <DialogDescription>
                             {selectedRecord?.semiFinishedJobCardNo} — {selectedRecord?.productName}
                         </DialogDescription>
                     </DialogHeader>
 
                     {selectedRecord && (
-                        <form onSubmit={(e) => { e.preventDefault(); handleMarkDoneSubmit(); }} className="space-y-6 py-4">
+                        <form onSubmit={(e) => { e.preventDefault(); if (activeTab === 'pending') handleMarkDoneSubmit(); else setIsMarkDoneOpen(false); }} className="space-y-6 py-4">
                             {/* Basic Information */}
                             <div className="space-y-3">
                                 <h4 className="text-sm font-semibold text-slate-700 bg-slate-50 px-3 py-2 rounded-md">Basic Information</h4>
@@ -790,44 +807,65 @@ export default function Step4List() {
                             )}
 
                             {/* Remarks */}
-                            <div className="space-y-2">
-                                <Label htmlFor="remarks">Remarks <span className="text-red-500">*</span></Label>
-                                <Textarea
-                                    id="remarks"
-                                    value={markDoneRemarks}
-                                    onChange={(e) => {
-                                        setMarkDoneRemarks(e.target.value);
-                                        if (markDoneErrors.remarks) {
-                                            setMarkDoneErrors({});
-                                        }
-                                    }}
-                                    placeholder="Enter completion remarks..."
-                                    className={markDoneErrors.remarks ? "border-red-500" : ""}
-                                    rows={3}
-                                />
-                                {markDoneErrors.remarks && (
-                                    <p className="text-xs text-red-500">{markDoneErrors.remarks}</p>
-                                )}
-                            </div>
+                            {activeTab === 'pending' ? (
+                                <div className="space-y-2">
+                                    <Label htmlFor="remarks">Remarks <span className="text-red-500">*</span></Label>
+                                    <Textarea
+                                        id="remarks"
+                                        value={markDoneRemarks}
+                                        onChange={(e) => {
+                                            setMarkDoneRemarks(e.target.value);
+                                            if (markDoneErrors.remarks) {
+                                                setMarkDoneErrors({});
+                                            }
+                                        }}
+                                        placeholder="Enter completion remarks..."
+                                        className={markDoneErrors.remarks ? "border-red-500" : ""}
+                                        rows={3}
+                                    />
+                                    {markDoneErrors.remarks && (
+                                        <p className="text-xs text-red-500">{markDoneErrors.remarks}</p>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <h4 className="text-sm font-semibold text-slate-700 bg-slate-50 px-3 py-2 rounded-md">Verification Remarks</h4>
+                                    <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-md">
+                                        {selectedRecord.status || "Verified"}
+                                    </p>
+                                </div>
+                            )}
 
                             {/* Actions */}
                             <div className="flex justify-end gap-2 pt-4">
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={() => setIsMarkDoneOpen(false)}
-                                    disabled={isSubmitting}
-                                >
-                                    Cancel
-                                </Button>
-                                <Button
-                                    type="submit"
-                                    disabled={isSubmitting}
-                                    className="bg-olive-600 text-white hover:bg-olive-700"
-                                >
-                                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    Confirm
-                                </Button>
+                                {activeTab === 'pending' ? (
+                                    <>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => setIsMarkDoneOpen(false)}
+                                            disabled={isSubmitting}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            type="submit"
+                                            disabled={isSubmitting}
+                                            className="bg-olive-600 text-white hover:bg-olive-700"
+                                        >
+                                            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                            Confirm
+                                        </Button>
+                                    </>
+                                ) : (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => setIsMarkDoneOpen(false)}
+                                    >
+                                        Close
+                                    </Button>
+                                )}
                             </div>
                         </form>
                     )}
