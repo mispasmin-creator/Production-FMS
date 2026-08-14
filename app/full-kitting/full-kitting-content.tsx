@@ -18,8 +18,11 @@ import {
   ChevronsUpDown,
   Calculator,
   RotateCcw,
+  Download,
 } from "lucide-react";
 import { format } from "date-fns";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import { supabase, dispatchSupabase, purchaseSupabase, inventorySupabase } from "@/lib/supabase";
 import { useAuth, FIRM_MAP } from "@/lib/auth";
 import { cn } from "@/lib/utils"; 
@@ -1763,6 +1766,117 @@ export default function CheckPage() {
     });
   };
 
+  // ---------- EXPORT PREVIEW PDF ----------
+  const handleExportKittingPreviewPDF = () => {
+    const doc = new jsPDF();
+
+    doc.setFontSize(14);
+    doc.text("Full Kitting Details Preview", 14, 15);
+    doc.setFontSize(9);
+    doc.text(
+      selectedHistoryItem
+        ? `Revision of ${selectedHistoryItem.compositionNo}`
+        : "Raw Materials Composition, calculated parameters, and cost breakdown",
+      14,
+      21,
+    );
+
+    autoTable(doc, {
+      startY: 26,
+      theme: "grid",
+      styles: { fontSize: 8, cellPadding: 2 },
+      head: [["Field", "Value"]],
+      body: [
+        ["Delivery Order No.", selectedCheck?.deliveryOrderNo || "N/A"],
+        ["Product Name", selectedCheck?.productName || "N/A"],
+        ["Planned Date", selectedCheck?.plannedDate || "N/A"],
+      ],
+      headStyles: { fillColor: [107, 110, 48] },
+    });
+
+    let nextY = (doc as any).lastAutoTable.finalY + 8;
+
+    const rmRows = kittingFormRows
+      .filter((r) => r.productName)
+      .map((row, idx) => [
+        String(idx + 1),
+        row.productName,
+        row.baseAlumina.toFixed(2),
+        row.baseIron.toFixed(2),
+        row.baseBd.toFixed(2),
+        row.baseAp.toFixed(2),
+        `${row.percentage}%`,
+        `Rs.${row.basePrice.toFixed(2)}`,
+        row.al.toFixed(2),
+        row.fe.toFixed(2),
+        row.bd.toFixed(2),
+        row.ap.toFixed(2),
+        `Rs.${row.cost.toFixed(2)}`,
+      ]);
+
+    autoTable(doc, {
+      startY: nextY,
+      theme: "grid",
+      styles: { fontSize: 7, cellPadding: 1.5 },
+      head: [
+        [
+          "#",
+          "Material",
+          "AL",
+          "FE",
+          "BD",
+          "AP",
+          "% (Input)",
+          "Price (Rs.)",
+          "AL (Calc)",
+          "FE (Calc)",
+          "BD (Calc)",
+          "AP (Calc)",
+          "Cost (Rs.)",
+        ],
+      ],
+      body: rmRows,
+      foot: [
+        [
+          "",
+          "Raw Material Cost Subtotal",
+          "",
+          "",
+          "",
+          "",
+          `${kittingTotals.percentage.toFixed(2)}%`,
+          "-",
+          kittingTotals.alNormalized.toFixed(3),
+          (isPurabOrRklFirm ? kittingTotals.feNormalized : kittingTotals.fe).toFixed(3),
+          kittingTotals.bd.toFixed(4),
+          kittingTotals.ap.toFixed(4),
+          `Rs.${kittingTotals.variableCost.toFixed(2)}`,
+        ],
+      ],
+      headStyles: { fillColor: [37, 99, 174] },
+      footStyles: { fillColor: [241, 245, 249], textColor: [30, 41, 59], fontStyle: "bold" },
+    });
+
+    nextY = (doc as any).lastAutoTable.finalY + 6;
+
+    autoTable(doc, {
+      startY: nextY,
+      theme: "plain",
+      styles: { fontSize: 9, cellPadding: 1.5 },
+      body: [
+        ["+ Manufacturing Cost (Rs.)", `Rs.${(manufacturingCost || 0).toFixed(2)}`],
+        [
+          "= Total Cost (Rs.)",
+          `Rs.${(kittingTotals.variableCost + (manufacturingCost || 0)).toFixed(2)}`,
+        ],
+      ],
+      columnStyles: { 0: { halign: "right", cellWidth: 140 }, 1: { halign: "right", fontStyle: "bold" } },
+    });
+
+    const fileName = `Full-Kitting-Preview-${selectedHistoryItem?.compositionNo || selectedCheck?.deliveryOrderNo || "details"}.pdf`;
+    doc.save(fileName);
+  };
+
   // ---------- SAVE ----------
   const handleSaveKittingForm = async () => {
     if (!selectedCheck) return;
@@ -3285,6 +3399,15 @@ export default function CheckPage() {
           <DialogFooter className="gap-2 border-t pt-3 mt-2">
             <Button variant="outline" onClick={() => setIsPreviewOpen(false)}>
               Back to Edit
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleExportKittingPreviewPDF}
+              className="border-olive-300 text-olive-700 hover:bg-olive-50"
+            >
+              <Download className="mr-1 h-4 w-4" />
+              Export PDF
             </Button>
             <Button
               onClick={() => {

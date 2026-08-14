@@ -245,7 +245,11 @@ export default function JobCardsPage() {
           return true
         })
 
-        // Fallback 1: match by DO and Product if DO+Product+Party yielded no results
+        // Fallback 1: match by DO and Product (exact) if DO+Product+Party yielded no results.
+        // Product must match exactly (after normalization) — a loose "one name contains
+        // the other" check here would wrongly merge distinct products that share a common
+        // prefix (e.g. "High Cast Special" vs "High Cast Special With SSF"), and a DO-only
+        // fallback would wrongly pull in Total Made from unrelated products on the same DO.
         if (matchingJobCards.length === 0 && normalizedProduct) {
           matchingJobCards = allJobCardsData.filter((jc: any) => {
             const jcDo = normalizeKey(jc["Delivery Order No."])
@@ -255,16 +259,7 @@ export default function JobCardsPage() {
             const doMatches = jcDo === normalizedDo || (numericDo !== null && jcNumDo !== null && numericDo === jcNumDo)
             if (!doMatches) return false
 
-            return jcProd === normalizedProduct || (jcProd && normalizedProduct && (jcProd.includes(normalizedProduct) || normalizedProduct.includes(jcProd)))
-          })
-        }
-
-        // Fallback 2: match by DO only
-        if (matchingJobCards.length === 0) {
-          matchingJobCards = allJobCardsData.filter((jc: any) => {
-            const jcDo = normalizeKey(jc["Delivery Order No."])
-            const jcNumDo = getNumericDo(jc["Delivery Order No."])
-            return jcDo === normalizedDo || (numericDo !== null && jcNumDo !== null && numericDo === jcNumDo)
+            return jcProd === normalizedProduct
           })
         }
 

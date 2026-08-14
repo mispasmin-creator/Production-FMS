@@ -1030,116 +1030,132 @@ export default function CostingPage() {
   const handleExportProductionDetailsPDF = () => {
     if (!selectedCosting?.completeDetails) return
     const details = selectedCosting.completeDetails
-    const doc = new jsPDF()
 
-    doc.setFontSize(14)
-    doc.text(`Production Details - Job Card: ${details.jobCardNo || "N/A"}`, 14, 15)
-    doc.setFontSize(9)
-    doc.text("All information from the actual production record for this job card", 14, 21)
-
-    autoTable(doc, {
-      startY: 26,
-      theme: "grid",
-      styles: { fontSize: 8, cellPadding: 2 },
-      head: [["Field", "Value"]],
-      body: [
-        ["Job Card Number", details.jobCardNo || "N/A"],
-        ["Firm Name", details.firmName || "N/A"],
-        ["Date of Production", details.dateOfProduction || "N/A"],
-        ["Name of Supervisor", details.nameOfSupervisor || "N/A"],
-        ["Product Name", details.productName || "N/A"],
-        ["Quantity of FG", String(details.quantityOfFG || "N/A")],
-        ["Serial Number", details.serialNumber || "N/A"],
-        ["Machine Running Hour", details.machineRunningHour || "N/A"],
-        ["Delivery Order No.", selectedCosting.deliveryOrderNo || "N/A"],
-        ["Party Name", details.partyName || selectedCosting.partyName || "N/A"],
-      ],
-      headStyles: { fillColor: [107, 110, 48] },
-    })
-
-    let nextY = (doc as any).lastAutoTable.finalY + 8
-
-    if (details.rawMaterials && details.rawMaterials.length > 0) {
-      let totalMaterialCost = 0
-      const rmRows = details.rawMaterials.map((material) => {
-        const rmName = material.name ? material.name.trim() : ""
-        const rateInfo = liftRates[rmName]
-        const rate = Number(editedRates[rmName]?.rate ?? rateInfo?.rate ?? 0)
-        const transRate = Number(editedRates[rmName]?.transportRate ?? rateInfo?.transportRate ?? 0)
-        const qty = Number(material.quantity || 0)
-        const totalCost = qty * (rate + transRate)
-        totalMaterialCost += totalCost
-        return [
-          material.name || "-",
-          String(material.quantity ?? "-"),
-          `Rs.${rate.toFixed(2)}`,
-          `Rs.${transRate.toFixed(2)}`,
-          `Rs.${totalCost.toFixed(2)}`,
-        ]
-      })
-
-      doc.setFontSize(11)
-      doc.text("Raw Materials & Live Rates (LIFT-ACCOUNTS)", 14, nextY)
-      nextY += 4
+    // Renders the full report onto the given doc and returns the final Y
+    // position reached, so we can size the page to fit everything on one page.
+    const renderProductionDetails = (doc: jsPDF) => {
+      doc.setFontSize(14)
+      doc.text(`Production Details - Job Card: ${details.jobCardNo || "N/A"}`, 14, 15)
+      doc.setFontSize(9)
+      doc.text("All information from the actual production record for this job card", 14, 21)
 
       autoTable(doc, {
-        startY: nextY,
+        startY: 26,
         theme: "grid",
         styles: { fontSize: 8, cellPadding: 2 },
-        head: [["Raw Material", "Quantity", "Live Rate (Rs./MT)", "Trans. Rate (Rs./MT)", "Total Cost (Rs.)"]],
-        body: rmRows,
-        headStyles: { fillColor: [37, 99, 174] },
-      })
-
-      nextY = (doc as any).lastAutoTable.finalY + 4
-
-      const fgQty = Number(details.quantityOfFG || 0)
-      const perMtCost = fgQty > 0 ? totalMaterialCost / fgQty : 0
-      const response = costingResponses.find((r) => r.orderNo === selectedCosting?.deliveryOrderNo)
-      const targetFirm = selectedCosting?.firmName || details.firmName
-      const manufacturingCost = getManufacturingCost(targetFirm, response?.manufacturingCost)
-      const totalProductionCost = perMtCost + manufacturingCost
-
-      autoTable(doc, {
-        startY: nextY,
-        theme: "plain",
-        styles: { fontSize: 8, cellPadding: 1.5 },
+        head: [["Field", "Value"]],
         body: [
-          ["Total Material Cost:", `Rs.${totalMaterialCost.toFixed(2)}`],
-          ["FG Quantity:", `${fgQty} MT`],
-          ["Calculated Per MT Cost:", `Rs.${perMtCost.toFixed(2)} / MT`],
-          ["Manufacturing Cost:", `Rs.${manufacturingCost.toFixed(2)} / MT`],
-          ["Total Production Cost / MT:", `Rs.${totalProductionCost.toFixed(2)} / MT`],
+          ["Job Card Number", details.jobCardNo || "N/A"],
+          ["Firm Name", details.firmName || "N/A"],
+          ["Date of Production", details.dateOfProduction || "N/A"],
+          ["Name of Supervisor", details.nameOfSupervisor || "N/A"],
+          ["Product Name", details.productName || "N/A"],
+          ["Quantity of FG", String(details.quantityOfFG || "N/A")],
+          ["Serial Number", details.serialNumber || "N/A"],
+          ["Machine Running Hour", details.machineRunningHour || "N/A"],
+          ["Delivery Order No.", selectedCosting.deliveryOrderNo || "N/A"],
+          ["Party Name", details.partyName || selectedCosting.partyName || "N/A"],
         ],
-        columnStyles: { 0: { halign: "right", cellWidth: 140 }, 1: { halign: "right", fontStyle: "bold" } },
+        headStyles: { fillColor: [107, 110, 48] },
       })
 
-      nextY = (doc as any).lastAutoTable.finalY + 6
+      let nextY = (doc as any).lastAutoTable.finalY + 8
 
-      const actualOrderRate = getActualOrderRate(selectedCosting)
-      if (actualOrderRate > 0 || response) {
-        const productionCostPct =
-          actualOrderRate > 0 ? ((totalProductionCost / actualOrderRate) * 100).toFixed(2) + "%" : "-"
+      if (details.rawMaterials && details.rawMaterials.length > 0) {
+        let totalMaterialCost = 0
+        const rmRows = details.rawMaterials.map((material) => {
+          const rmName = material.name ? material.name.trim() : ""
+          const rateInfo = liftRates[rmName]
+          const rate = Number(editedRates[rmName]?.rate ?? rateInfo?.rate ?? 0)
+          const transRate = Number(editedRates[rmName]?.transportRate ?? rateInfo?.transportRate ?? 0)
+          const qty = Number(material.quantity || 0)
+          const totalCost = qty * (rate + transRate)
+          totalMaterialCost += totalCost
+          return [
+            material.name || "-",
+            String(material.quantity ?? "-"),
+            `Rs.${rate.toFixed(2)}`,
+            `Rs.${transRate.toFixed(2)}`,
+            `Rs.${totalCost.toFixed(2)}`,
+          ]
+        })
+
+        doc.setFontSize(11)
+        doc.text("Raw Materials & Live Rates (LIFT-ACCOUNTS)", 14, nextY)
+        nextY += 4
+
         autoTable(doc, {
           startY: nextY,
           theme: "grid",
           styles: { fontSize: 8, cellPadding: 2 },
-          head: [["Actual Order Rate", "Production Cost %"]],
-          body: [
-            [
-              actualOrderRate > 0 ? `Rs.${actualOrderRate.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "-",
-              productionCostPct,
-            ],
-          ],
-          headStyles: { fillColor: [124, 58, 237] },
+          head: [["Raw Material", "Quantity", "Live Rate (Rs./MT)", "Trans. Rate (Rs./MT)", "Total Cost (Rs.)"]],
+          body: rmRows,
+          headStyles: { fillColor: [37, 99, 174] },
         })
+
+        nextY = (doc as any).lastAutoTable.finalY + 4
+
+        const fgQty = Number(details.quantityOfFG || 0)
+        const perMtCost = fgQty > 0 ? totalMaterialCost / fgQty : 0
+        const response = costingResponses.find((r) => r.orderNo === selectedCosting?.deliveryOrderNo)
+        const targetFirm = selectedCosting?.firmName || details.firmName
+        const manufacturingCost = getManufacturingCost(targetFirm, response?.manufacturingCost)
+        const totalProductionCost = perMtCost + manufacturingCost
+
+        autoTable(doc, {
+          startY: nextY,
+          theme: "plain",
+          styles: { fontSize: 8, cellPadding: 1.5 },
+          body: [
+            ["Total Material Cost:", `Rs.${totalMaterialCost.toFixed(2)}`],
+            ["FG Quantity:", `${fgQty} MT`],
+            ["Calculated Per MT Cost:", `Rs.${perMtCost.toFixed(2)} / MT`],
+            ["Manufacturing Cost:", `Rs.${manufacturingCost.toFixed(2)} / MT`],
+            ["Total Production Cost / MT:", `Rs.${totalProductionCost.toFixed(2)} / MT`],
+          ],
+          columnStyles: { 0: { halign: "right", cellWidth: 140 }, 1: { halign: "right", fontStyle: "bold" } },
+        })
+
         nextY = (doc as any).lastAutoTable.finalY + 6
+
+        const actualOrderRate = getActualOrderRate(selectedCosting)
+        if (actualOrderRate > 0 || response) {
+          const productionCostPct =
+            actualOrderRate > 0 ? ((totalProductionCost / actualOrderRate) * 100).toFixed(2) + "%" : "-"
+          autoTable(doc, {
+            startY: nextY,
+            theme: "grid",
+            styles: { fontSize: 8, cellPadding: 2 },
+            head: [["Actual Order Rate", "Production Cost %"]],
+            body: [
+              [
+                actualOrderRate > 0 ? `Rs.${actualOrderRate.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "-",
+                productionCostPct,
+              ],
+            ],
+            headStyles: { fillColor: [124, 58, 237] },
+          })
+          nextY = (doc as any).lastAutoTable.finalY + 6
+        }
       }
+
+      const costingAmount = formData.costingAmount ? Number(formData.costingAmount) : Number(details.costingAmount || 0)
+      doc.setFontSize(10)
+      doc.text(`Costing Amount: Rs.${costingAmount ? costingAmount.toFixed(2) : "0.00"}`, 14, nextY)
+
+      return nextY
     }
 
-    const costingAmount = formData.costingAmount ? Number(formData.costingAmount) : Number(details.costingAmount || 0)
-    doc.setFontSize(10)
-    doc.text(`Costing Amount: Rs.${costingAmount ? costingAmount.toFixed(2) : "0.00"}`, 14, nextY)
+    // Pass 1: render on a generously tall scratch page (never breaks pages)
+    // just to measure how much vertical space the content actually needs.
+    const measureDoc = new jsPDF({ unit: "mm", format: [210, 2000] })
+    const contentEndY = renderProductionDetails(measureDoc)
+
+    // Pass 2: render for real on a page sized to fit all content on a single
+    // page (falls back to standard A4 height when the content is shorter).
+    const finalPageHeight = Math.max(297, contentEndY + 15)
+    const doc = new jsPDF({ unit: "mm", format: [210, finalPageHeight] })
+    renderProductionDetails(doc)
 
     doc.save(
       `production_details_${(details.jobCardNo || "job_card").replace(/[^a-zA-Z0-9]/g, "_")}_${format(new Date(), "yyyyMMdd")}.pdf`,
