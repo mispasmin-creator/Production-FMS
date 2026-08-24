@@ -746,10 +746,9 @@ export default function ProductionPage() {
     if (!formData.quantityFG || Number(formData.quantityFG) <= 0)
       errors.quantityFG = "Valid Finished Goods quantity is required."
     if (formData.rawMaterials.length === 0) errors.rawMaterials = "At least one raw material is required."
-    // const timeRegex = /^(?:2[0-3]|[01]?[0-9]):[0-5]?[0-9]:[0-5]?[0-9]$/
-    // if (!formData.machineRunningHour || !timeRegex.test(formData.machineRunningHour)) {
-    //   errors.machineRunningHour = "Machine running hour must be in HH:MM:SS format."
-    // }
+    if (!formData.machineRunningHour || String(formData.machineRunningHour).trim() === "" || isNaN(Number(formData.machineRunningHour)) || Number(formData.machineRunningHour) <= 0) {
+      errors.machineRunningHour = "Valid Machine Running Hour is required."
+    }
     setFormErrors(errors)
     return Object.keys(errors).length === 0
   }
@@ -2195,15 +2194,22 @@ export default function ProductionPage() {
                 />
               </div>
               <div>
-                <Label htmlFor="machineRunningHour" className="font-semibold">Machine Running Hour</Label>
+                <Label htmlFor="machineRunningHour" className="font-semibold">
+                  Machine Running Hour <span className="text-red-500">*</span>
+                </Label>
                 <Input
                   id="machineRunningHour"
-                  type="text"
+                  type="number"
+                  step="any"
+                  min="0.01"
                   placeholder="e.g. 8.5"
                   value={formData.machineRunningHour}
                   onChange={(e) => setFormData({ ...formData, machineRunningHour: e.target.value })}
                   className={formErrors.machineRunningHour ? "border-red-500 mt-1.5" : "mt-1.5"}
                 />
+                {formErrors.machineRunningHour && (
+                  <p className="text-xs text-red-600 mt-1">{formErrors.machineRunningHour}</p>
+                )}
               </div>
             </div>
 
