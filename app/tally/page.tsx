@@ -17,6 +17,14 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
+import { 
+  DropdownMenu, 
+  DropdownMenuTrigger, 
+  DropdownMenuContent, 
+  DropdownMenuLabel, 
+  DropdownMenuSeparator, 
+  DropdownMenuCheckboxItem 
+} from "@/components/ui/dropdown-menu"
 
 // --- Type Definitions ---
 interface RawMaterial {
@@ -103,6 +111,7 @@ export default function TallyPage() {
   const [pendingTallies, setPendingTallies] = useState<ActualProductionItem[]>([])
   const [historyTallies, setHistoryTallies] = useState<ActualProductionItem[]>([])
   const [searchQuery, setSearchQuery] = useState("")
+  const [firmFilter, setFirmFilter] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -110,6 +119,17 @@ export default function TallyPage() {
   const [selectedTally, setSelectedTally] = useState<ActualProductionItem | null>(null)
   const [remarks, setRemarks] = useState("")
   const [isReadOnlyView, setIsReadOnlyView] = useState(false)
+
+  const uniqueFirmsForFilter = useMemo(() => {
+    const firms = new Set<string>()
+    pendingTallies.forEach(item => {
+      if (item.firmName) firms.add(item.firmName)
+    })
+    historyTallies.forEach(item => {
+      if (item.firmName) firms.add(item.firmName)
+    })
+    return Array.from(firms).sort()
+  }, [pendingTallies, historyTallies])
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -215,26 +235,34 @@ export default function TallyPage() {
   }, [loadData])
 
   const filteredPending = useMemo(() => {
+    let list = pendingTallies
+    if (firmFilter.length > 0) {
+      list = list.filter(item => firmFilter.includes(String(item.firmName || "")))
+    }
     const q = searchQuery.toLowerCase().trim()
-    if (!q) return pendingTallies
-    return pendingTallies.filter(item =>
+    if (!q) return list
+    return list.filter(item =>
       (item.jobCardNo || "").toLowerCase().includes(q) ||
       (item.firmName || "").toLowerCase().includes(q) ||
       (item.productName || "").toLowerCase().includes(q) ||
       (item.partyName || "").toLowerCase().includes(q)
     )
-  }, [pendingTallies, searchQuery])
+  }, [pendingTallies, searchQuery, firmFilter])
 
   const filteredHistory = useMemo(() => {
+    let list = historyTallies
+    if (firmFilter.length > 0) {
+      list = list.filter(item => firmFilter.includes(String(item.firmName || "")))
+    }
     const q = searchQuery.toLowerCase().trim()
-    if (!q) return historyTallies
-    return historyTallies.filter(item =>
+    if (!q) return list
+    return list.filter(item =>
       (item.jobCardNo || "").toLowerCase().includes(q) ||
       (item.firmName || "").toLowerCase().includes(q) ||
       (item.productName || "").toLowerCase().includes(q) ||
       (item.partyName || "").toLowerCase().includes(q)
     )
-  }, [historyTallies, searchQuery])
+  }, [historyTallies, searchQuery, firmFilter])
 
   const handleVerify = (tally: ActualProductionItem) => {
     setSelectedTally(tally)
@@ -415,14 +443,44 @@ export default function TallyPage() {
                   </Badge>
                 </TabsTrigger>
               </TabsList>
-              <div className="relative w-full sm:w-[300px]">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search tallies..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 focus-visible:ring-olive-500"
-                />
+              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="w-full sm:w-[160px] bg-white border-slate-200 text-xs h-9 rounded-lg justify-between font-normal hover:bg-transparent">
+                      {firmFilter.length === 0 ? "All Firms" : `${firmFilter.length} Firm${firmFilter.length > 1 ? 's' : ''} Selected`}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-[160px] rounded-lg">
+                    <DropdownMenuLabel className="text-xs">Filter by Firm</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {uniqueFirmsForFilter.map((firm) => (
+                      <DropdownMenuCheckboxItem
+                        key={firm}
+                        checked={firmFilter.includes(firm)}
+                        className="text-xs"
+                        onCheckedChange={(checked: boolean) => {
+                          if (checked) {
+                            setFirmFilter([...firmFilter, firm])
+                          } else {
+                            setFirmFilter(firmFilter.filter((f) => f !== firm))
+                          }
+                        }}
+                      >
+                        {firm}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <div className="relative w-full sm:w-[260px]">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search tallies..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 focus-visible:ring-olive-500 h-9"
+                  />
+                </div>
               </div>
             </div>
 
