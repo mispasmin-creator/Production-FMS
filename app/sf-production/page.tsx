@@ -53,6 +53,7 @@ interface MasterItem {
 // Constants
 // Column Definitions
 const SEMI_COLUMNS_META = [
+    { header: "ID", dataKey: "id", alwaysVisible: true, toggleable: false },
     { header: "SF-Sr No.", dataKey: "sfSrNo", alwaysVisible: true, toggleable: false },
     { header: "Name Of Semi Finished Good", dataKey: "nameOfSemiFinished", alwaysVisible: true, toggleable: false },
     { header: "Timestamp", dataKey: "timestamp", toggleable: true },
@@ -539,6 +540,11 @@ export default function Step1List() {
 
                                         return (
                                             <TableRow key={item._rowIndex} className="hover:bg-olive-50/40">
+                                                {/* ID */}
+                                                <TableCell className="whitespace-nowrap text-sm font-medium text-slate-500">
+                                                    {item._rowIndex}
+                                                </TableCell>
+
                                                 {/* SF-Sr No. */}
                                                 <TableCell className="whitespace-nowrap">
                                                     <div className="text-sm font-semibold text-olive-600">{item.sfSrNo}</div>

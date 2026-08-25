@@ -123,6 +123,7 @@ const formatMachineHours = (hours: any) => {
 // Column Definitions
 const PENDING_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
+  { header: "Row ID", dataKey: "_rowIndex", toggleable: true },
   { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
   { header: "Firm Name", dataKey: "firmName", toggleable: true },
@@ -141,6 +142,7 @@ const PENDING_COLUMNS_META = [
 
 const HISTORY_COLUMNS_META = [
   { header: "Timestamp", dataKey: "timestamp", toggleable: true },
+  { header: "Row ID", dataKey: "_rowIndex", toggleable: true },
   { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
   { header: "Firm Name", dataKey: "firmName", toggleable: true },

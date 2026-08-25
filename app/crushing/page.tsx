@@ -80,6 +80,7 @@ interface MasterItem {
 
 // Column Definitions
 const CRUSHING_COLUMNS_META = [
+    { header: "ID", dataKey: "id", alwaysVisible: true },
     { header: "Date", dataKey: "date", alwaysVisible: true },
     { header: "Firm Name", dataKey: "firmName", alwaysVisible: true },
     { header: "Product", dataKey: "product", alwaysVisible: true },
@@ -1127,6 +1128,11 @@ export default function Step5List() {
                                 {displayRecords.length > 0 ? (
                                     displayRecords.map((record) => (
                                         <TableRow key={record._rowIndex} className="hover:bg-olive-50/40">
+                                            {/* ID */}
+                                            <TableCell className="whitespace-nowrap text-sm font-medium text-slate-500">
+                                                {record._rowIndex}
+                                            </TableCell>
+
                                             {/* Date */}
                                             <TableCell className="whitespace-nowrap">
                                                 <div className="flex items-center text-sm text-slate-600">

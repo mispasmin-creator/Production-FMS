@@ -513,6 +513,7 @@ export default function SFJobCardPage() {
                                 <Table>
                                     <TableHeader className="bg-slate-50">
                                         <TableRow>
+                                            <TableHead className="whitespace-nowrap text-xs font-semibold">ID</TableHead>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">Actions</TableHead>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">Firm Name</TableHead>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">SF Sr. No.</TableHead>
@@ -527,6 +528,9 @@ export default function SFJobCardPage() {
                                     <TableBody>
                                         {filteredPending.map((order: SemiProductionRecord, index: number) => (
                                             <TableRow key={`pending-${order.sfSrNo}-${index}`} className="hover:bg-olive-50/40">
+                                                <TableCell className="whitespace-nowrap text-sm font-medium text-slate-500">
+                                                    {order._rowIndex}
+                                                </TableCell>
                                                 <TableCell className="whitespace-nowrap">
                                                     <Button
                                                         onClick={() => handlePlanClick(order)}
@@ -588,6 +592,7 @@ export default function SFJobCardPage() {
                                 <Table>
                                     <TableHeader className="bg-slate-50">
                                         <TableRow>
+                                            <TableHead className="whitespace-nowrap text-xs font-semibold">ID</TableHead>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">Timestamp</TableHead>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">Firm Name</TableHead>
                                             <TableHead className="whitespace-nowrap text-xs font-semibold">SJC Sr. No.</TableHead>
@@ -602,6 +607,9 @@ export default function SFJobCardPage() {
                                     <TableBody>
                                         {filteredHistory.map((job: SemiJobCardRecord, index: number) => (
                                             <TableRow key={`history-${job.sjcSrNo}-${index}`} className="hover:bg-olive-50/40">
+                                                <TableCell className="whitespace-nowrap text-sm font-medium text-slate-500">
+                                                    {job._rowIndex}
+                                                </TableCell>
                                                 <TableCell className="whitespace-nowrap text-xs text-slate-500">
                                                     {job.timestamp || '-'}
                                                 </TableCell>

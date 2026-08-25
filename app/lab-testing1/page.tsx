@@ -126,6 +126,7 @@ const PENDING_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
   { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
+  { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
   { header: "Quantity", dataKey: "quantity", toggleable: true },
@@ -143,6 +144,7 @@ const PENDING_COLUMNS_META = [
 const HISTORY_COLUMNS_META = [
   { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
+  { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
