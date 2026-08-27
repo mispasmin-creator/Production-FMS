@@ -1279,7 +1279,8 @@ export default function OrdersPage() {
                 </Label>
                 <Input
                   type="number"
-                  min="1"
+                  step="any"
+                  min="0"
                   value={cancelQuantity}
                   onChange={(e) => setCancelQuantity(e.target.value)}
                   className="h-12 rounded-xl border-gray-200"

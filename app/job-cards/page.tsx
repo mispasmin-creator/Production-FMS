@@ -1262,6 +1262,7 @@ export default function JobCardsPage() {
               <Input
                 id="cancelQty"
                 type="number"
+                step="any"
                 min="0"
                 max={selectedJobCard ? Math.max(selectedJobCard.orderQuantity || 0, selectedJobCard.totalMade || 0) : undefined}
                 value={cancelFormData.cancelQty}
@@ -1322,6 +1323,7 @@ export default function JobCardsPage() {
               <Input
                 id="cancelOrderQty"
                 type="number"
+                step="any"
                 min="0"
                 value={cancelOrderQty}
                 onChange={(e) => setCancelOrderQty(e.target.value)}

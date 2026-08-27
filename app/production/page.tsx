@@ -1137,7 +1137,8 @@ export default function ProductionPage() {
   const handleOpenCancelJcFromPending = (item: ProductionItem) => {
     setSelectedJobCard(item)
     setCancelJcRemarks("")
-    setCancelJcQty(String((item.quantity || 0) - (item.totalMade || 0)))
+    const pendingVal = (item.quantity || 0) - (item.totalMade || 0)
+    setCancelJcQty(String(Number(pendingVal.toFixed(4))))
     setIsCancelJcDialogOpen(true)
   }
 
@@ -2273,6 +2274,7 @@ export default function ProductionPage() {
               <Input
                 id="cancelJcQty"
                 type="number"
+                step="any"
                 min="0"
                 value={cancelJcQty}
                 onChange={(e) => setCancelJcQty(e.target.value)}
@@ -2281,7 +2283,7 @@ export default function ProductionPage() {
               />
               {selectedJobCard && (
                 <p className="text-xs text-gray-500">
-                  Total Job Card Quantity: {selectedJobCard.quantity} (Pending: {(selectedJobCard.quantity || 0) - (selectedJobCard.totalMade || 0)})
+                  Total Job Card Quantity: {selectedJobCard.quantity} (Pending: {Number(((selectedJobCard.quantity || 0) - (selectedJobCard.totalMade || 0)).toFixed(4))})
                 </p>
               )}
             </div>

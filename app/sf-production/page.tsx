@@ -108,7 +108,7 @@ export default function Step1List() {
     const dropdownRef = useRef<HTMLDivElement>(null);
     const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
     const [cancelRecord, setCancelRecord] = useState<SemiProductionItem | null>(null);
-    const [cancelQty, setCancelQty] = useState<number | ''>('');
+    const [cancelQty, setCancelQty] = useState<number | string>('');
     const [cancelReason, setCancelReason] = useState("");
     const [isCancelSubmitting, setIsCancelSubmitting] = useState(false);
     const [successMessage, setSuccessMessage] = useState('');
@@ -352,10 +352,11 @@ export default function Step1List() {
 
         setIsCancelSubmitting(true);
         try {
+            const remainingPending = Math.max(0, Number((Number(cancelRecord.pending) - Number(cancelQty)).toFixed(4)));
             const { error: updateError } = await supabase
                 .from(SEMI_PRODUCTION_TABLE)
                 .update({
-                    "Pending": Number(cancelRecord.pending) - Number(cancelQty),
+                    "Pending": remainingPending,
                     "Cancel Order": Number(cancelQty),
                     "Status": "",
                     "Reason": cancelReason,
@@ -366,7 +367,7 @@ export default function Step1List() {
                 const { error: fallbackError } = await supabase
                     .from(SEMI_PRODUCTION_TABLE)
                     .update({
-                        "Pending": Number(cancelRecord.pending) - Number(cancelQty),
+                        "Pending": remainingPending,
                         "Cancel Order": Number(cancelQty),
                         "Status": "",
                     })
@@ -842,10 +843,11 @@ export default function Step1List() {
                                 <Input
                                     id="cancelQty"
                                     type="number"
-                                    min="1"
+                                    step="any"
+                                    min="0"
                                     max={cancelRecord.pending}
                                     value={cancelQty}
-                                    onChange={(e) => setCancelQty(e.target.value === '' ? '' : Number(e.target.value))}
+                                    onChange={(e) => setCancelQty(e.target.value)}
                                     placeholder="Enter quantity to cancel"
                                 />
                                 <p className="text-xs text-slate-500">
