@@ -69,6 +69,8 @@ interface HistoryItem extends ProductionItem {
   serialNumber?: string
   quantityFG?: string
   status?: string
+  cancelQty?: number
+  cancelRemarks?: string
 }
 
 interface CompositionItem {
@@ -145,11 +147,14 @@ const HISTORY_COLUMNS_META = [
   { header: "Row ID", dataKey: "_rowIndex", toggleable: true },
   { header: "ID", dataKey: "productionId", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", alwaysVisible: true, toggleable: false },
+  { header: "Status", dataKey: "status", alwaysVisible: true, toggleable: false },
   { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product", dataKey: "productName", toggleable: true },
   { header: "Qty", dataKey: "quantity", toggleable: true },
+  { header: "Total Made", dataKey: "totalMade", toggleable: true },
+  { header: "Cancel Qty", dataKey: "cancelQty", toggleable: true },
   { header: "Actual Quantity", dataKey: "actualQuantity", toggleable: true },
   { header: "Expected Delivery Date", dataKey: "expectedDeliveryDate", toggleable: true },
   { header: "Priority", dataKey: "priority", toggleable: true },
@@ -158,6 +163,7 @@ const HISTORY_COLUMNS_META = [
   { header: "Shift", dataKey: "shift", toggleable: true },
   { header: "Raw Materials", dataKey: "rawMaterials", toggleable: true },
   { header: "Machine Hours", dataKey: "machineHours", toggleable: true },
+  { header: "Cancel Remarks", dataKey: "cancelRemarks", toggleable: true },
   { header: "Remarks", dataKey: "remarks", toggleable: true }, // Add this
   { header: "Serial No.", dataKey: "serialNumber", toggleable: true }, // Optional
 ]
@@ -383,6 +389,15 @@ export default function ProductionPage() {
         const doNo = productionRecord.orderNo || jobCard?.["Delivery Order No."] || ""
         const prodInfo = findProductionInfo(doNo, productionRecord.productName)
 
+        const jcStatus = String(jobCard?.["Status"] || productionRecord.status || "active").toLowerCase()
+        const totalMade = Number(jobCard?.["Total Made"] || 0)
+        const jcQty = Number(jobCard?.["Quantity"] || 0)
+        let cancelQty = jobCard?.["Cancel Qty"] !== null && jobCard?.["Cancel Qty"] !== undefined ? Number(jobCard["Cancel Qty"]) : undefined
+        if (cancelQty === undefined && jcStatus === "cancelled") {
+          cancelQty = Math.max(0, jcQty - totalMade)
+        }
+        const cancelRemarks = String(jobCard?.["Cancel Remarks"] || "")
+
         return {
           _rowIndex: productionRecord.id,
           productionId: prodInfo?.id ?? "",
@@ -395,7 +410,7 @@ export default function ProductionPage() {
           dateOfProduction: productionRecord.dateOfProduction || "",
           supervisorName: productionRecord.supervisorName || "",
           shift: jobCard?.["Shift"] || "",
-          totalMade: Number(jobCard?.["Total Made"] || 0),
+          totalMade: totalMade > 0 ? totalMade : Number(productionRecord.quantityFG || 0),
           rawMaterials: productionRecord.rawMaterials as RawMaterial[],
           machineHours: String(productionRecord.machineHours || "-"),
           remarks: productionRecord.remarks || "",
@@ -406,16 +421,58 @@ export default function ProductionPage() {
           quantity: Number(jobCard?.["Quantity"] || 0),
           plannedDate: "",
           notes: "",
-          status: productionRecord.status,
+          status: jcStatus,
+          cancelQty: cancelQty !== undefined ? cancelQty : 0,
+          cancelRemarks: cancelRemarks,
           productRate: Number(prodInfo?.["product_rate"] || 0),
         } as HistoryItem
       })
+
+      // Include cancelled Job Cards that have 0 production entries in actualProductionRecords
+      const actualJobCardNos = new Set(actualProductionRecords.map((r: any) => normalizeKey(r.jobCardNo)))
+      const cancelledJobCardsWithoutProduction = (jobCardsData || [])
+        .filter((jc: any) => isCancelledStatus(jc["Status"]) && !actualJobCardNos.has(normalizeKey(jc["JC-Job Card Number"])))
+        .map((jc: any) => {
+          const doNo = String(jc["Delivery Order No."] || "")
+          const prodInfo = findProductionInfo(doNo, String(jc["Product Name"] || ""))
+          const jcQty = Number(jc["Quantity"] || 0)
+          const totalMade = Number(jc["Total Made"] || 0)
+          const cancelQty = jc["Cancel Qty"] !== null && jc["Cancel Qty"] !== undefined ? Number(jc["Cancel Qty"]) : Math.max(0, jcQty - totalMade)
+          return {
+            _rowIndex: jc.id,
+            productionId: prodInfo?.id ?? "",
+            timestamp: jc["Timestamp"] ? format(new Date(jc["Timestamp"]), "dd/MM/yy HH:mm") : "",
+            jobCardNo: String(jc["JC-Job Card Number"] || ""),
+            deliveryOrderNo: doNo,
+            actualQuantity: 0,
+            expectedDeliveryDate: prodInfo?.["Expected Delivery Date"] ? format(new Date(prodInfo["Expected Delivery Date"]), "dd/MM/yyyy") : "",
+            priority: prodInfo?.["Priority"] || "",
+            dateOfProduction: jc["Date Of Production"] ? format(new Date(jc["Date Of Production"]), "dd/MM/yyyy") : "",
+            supervisorName: String(jc["Supervisor Name"] || ""),
+            shift: String(jc["Shift"] || ""),
+            totalMade: totalMade,
+            rawMaterials: [] as RawMaterial[],
+            machineHours: "-",
+            remarks: jc["Notes"] || "",
+            firmName: String(jc["Firm Name"] || ""),
+            partyName: String(jc["Party Name"] || prodInfo?.["Party Name"] || ""),
+            productName: String(jc["Product Name"] || ""),
+            orderQuantity: jcQty,
+            quantity: jcQty,
+            plannedDate: "",
+            notes: String(jc["Notes"] || ""),
+            status: "cancelled",
+            cancelQty: cancelQty,
+            cancelRemarks: String(jc["Cancel Remarks"] || ""),
+            productRate: Number(prodInfo?.["product_rate"] || 0),
+          } as HistoryItem
+        })
 
       // Filter by Firm
       const filterByFirm = (data: any[]) => filterDataByFirm(data, user, (item) => String(item.firmName || ""));
 
       setPendingProductions(filterByFirm(pending))
-      setHistoryProductions(filterByFirm(history).sort((a, b) => b._rowIndex - a._rowIndex))
+      setHistoryProductions(filterByFirm([...history, ...cancelledJobCardsWithoutProduction]).sort((a, b) => b._rowIndex - a._rowIndex))
 
       // 4. Process Master + KYC Materials + build price map
       const priceMap: Record<string, number> = {}
@@ -547,6 +604,8 @@ export default function ProductionPage() {
         item.deliveryOrderNo,
         item.supervisorName,
         item.firmName,
+        item.status,
+        item.cancelRemarks,
         item.remarks
       ].some(val => String(val || "").toLowerCase().includes(searchQuery.toLowerCase().trim()))
 
@@ -980,7 +1039,13 @@ export default function ProductionPage() {
         const val = item[col.dataKey as keyof typeof item]
         let strVal = ""
         if (val !== null && val !== undefined) {
-          if (col.dataKey === "rawMaterials" && Array.isArray(val)) {
+          if (col.dataKey === "status") {
+            strVal = item.status === "cancelled" && (item.totalMade || 0) > 0
+              ? `Partially Cancelled (${item.totalMade} made)`
+              : item.status === "cancelled"
+                ? "Cancelled"
+                : (item.status === "active" ? "Active" : "Completed")
+          } else if (col.dataKey === "rawMaterials" && Array.isArray(val)) {
             strVal = val.map((rm: RawMaterial) => `${rm.name}: ${rm.quantity}`).join("; ")
           } else if (col.dataKey === "machineHours") {
             strVal = formatMachineHours(val)
@@ -1165,7 +1230,9 @@ export default function ProductionPage() {
         .from(JOBCARDS_TABLE)
         .update({
           Status: "cancelled",
-          Notes: updatedNotes
+          Notes: updatedNotes,
+          "Cancel Qty": Number(cancelJcQty),
+          "Cancel Remarks": cancelJcRemarks
         })
         .eq("id", selectedJobCard._rowIndex)
 
@@ -1436,11 +1503,23 @@ export default function ProductionPage() {
                             <TableRow key={item._rowIndex} className="hover:bg-olive-50/50 transition-colors">
                               {visibleHistoryColumnsMeta.map((col) => (
                                 <TableCell key={col.dataKey} className="whitespace-nowrap text-sm py-2 px-3">
-                                  {col.dataKey === "rawMaterials"
-                                    ? renderRawMaterials(item)
-                                    : col.dataKey === "machineHours"
-                                      ? formatMachineHours((item as any)[col.dataKey])
-                                      : (item as any)[col.dataKey] || "-"}
+                                  {col.dataKey === "status" ? (
+                                    <Badge variant={item.status === 'cancelled' ? 'destructive' : 'default'} className="text-xs">
+                                      {item.status === 'cancelled' && (item.totalMade || 0) > 0
+                                        ? `Partially Cancelled (${item.totalMade} made)`
+                                        : item.status === 'cancelled'
+                                          ? 'Cancelled'
+                                          : (item.status === 'active' ? 'Active' : 'Completed')}
+                                    </Badge>
+                                  ) : col.dataKey === "rawMaterials" ? (
+                                    renderRawMaterials(item)
+                                  ) : col.dataKey === "machineHours" ? (
+                                    formatMachineHours((item as any)[col.dataKey])
+                                  ) : (
+                                    (item as any)[col.dataKey] !== undefined && (item as any)[col.dataKey] !== null && (item as any)[col.dataKey] !== ""
+                                      ? (item as any)[col.dataKey]
+                                      : "-"
+                                  )}
                                 </TableCell>
                               ))}
                             </TableRow>

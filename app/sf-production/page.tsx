@@ -23,6 +23,7 @@ import {
     fetchSemiJobCardRows,
     fetchSemiProductionRows,
     getMasterValue,
+    SEMI_JOB_CARD_TABLE,
     SEMI_PRODUCTION_TABLE,
 } from "@/lib/semi-finished-supabase";
 
@@ -375,6 +376,14 @@ export default function Step1List() {
                 if (fallbackError) throw fallbackError;
             } else if (updateError) {
                 throw updateError;
+            }
+
+            if (remainingPending <= 0 && cancelRecord?.sfSrNo) {
+                await supabase
+                    .from(SEMI_JOB_CARD_TABLE)
+                    .update({ "Status": "cancelled" })
+                    .eq("Semi Finished Production No.", cancelRecord.sfSrNo)
+                    .is("Actual", null);
             }
 
             setSuccessMessage(`Order ${cancelRecord.sfSrNo} cancelled successfully!`);

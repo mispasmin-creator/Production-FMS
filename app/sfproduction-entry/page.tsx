@@ -53,6 +53,10 @@ interface SemiJobCardRecord {
     actualMade?: number;
     pending?: number;
     firmName?: string;
+    status?: string;
+    isParentCancelled?: boolean;
+    parentCancelOrder?: number;
+    parentPending?: number;
 }
 
 interface SemiActualRecord {
@@ -124,6 +128,11 @@ const formatDisplayDate = (val: any): string => {
 };
 
 const isSJCPending = (record: SemiJobCardRecord): boolean => {
+    const statusStr = String(record.status || '').toLowerCase().trim();
+    if (['complete', 'completed', 'cancelled', 'cancel'].includes(statusStr)) return false;
+    if (record.isParentCancelled) return false;
+    if (record.pending !== undefined && record.pending !== null && Number(record.pending) <= 0 && Number(record.actualMade || 0) > 0) return false;
+
     const hasPlanned = Boolean(record.planned && record.planned !== '' && record.planned !== 'null');
     const hasActual = Boolean(record.actual && record.actual !== '' && record.actual !== 'null');
     return hasPlanned && !hasActual;
@@ -235,11 +244,11 @@ export default function SemiActualProductionPage() {
                 fetchSemiProductionRows(),
             ]);
 
-            const productionFirmByNo = new Map<string, string>();
+            const productionByNo = new Map<string, any>();
             productionTable.forEach((row: any) => {
                 const compositeKey = `${row.sfSrNo}::${String(row.nameOfSemiFinished || "").toLowerCase().trim()}`;
-                productionFirmByNo.set(compositeKey, row.firmName);
-                productionFirmByNo.set(row.sfSrNo, row.firmName);
+                productionByNo.set(compositeKey, row);
+                productionByNo.set(row.sfSrNo, row);
             });
             
             // Filter by Firm
@@ -260,9 +269,19 @@ export default function SemiActualProductionPage() {
                 .filter((row: any) => row.sjcSrNo && row.sjcSrNo.startsWith('SJC-'))
                 .map((row: any) => {
                     const compositeKey = `${row.sfSrNo}::${String(row.productName || "").toLowerCase().trim()}`;
+                    const parentProd = productionByNo.get(compositeKey) || productionByNo.get(row.sfSrNo);
+                    const parentCancelQty = Number(parentProd?.cancelOrder || 0);
+                    const parentPending = Number(parentProd?.pending ?? row.pending ?? 0);
+                    const statusStr = String(row.status || '').toLowerCase().trim();
+                    const isCancelled = ['cancelled', 'cancel'].includes(statusStr) || (parentCancelQty > 0 && parentPending <= 0);
+
                     return {
                         ...row,
-                        firmName: productionFirmByNo.get(compositeKey) || productionFirmByNo.get(row.sfSrNo) || ""
+                        firmName: parentProd?.firmName || "",
+                        status: isCancelled ? 'cancelled' : row.status,
+                        isParentCancelled: parentCancelQty > 0 && parentPending <= 0,
+                        parentCancelOrder: parentCancelQty,
+                        parentPending: parentPending,
                     };
                 });
             setJobCardData(filterByFirm(jobCards).sort((a, b) => b._rowIndex - a._rowIndex));
@@ -271,9 +290,10 @@ export default function SemiActualProductionPage() {
                 .filter((row: any) => row.sNo && row.sNo.startsWith('SA-'))
                 .map((row: any) => {
                     const compositeKey = `${row.sfProductionNo}::${String(row.productName || "").toLowerCase().trim()}`;
+                    const parentProd = productionByNo.get(compositeKey) || productionByNo.get(row.sfProductionNo);
                     return {
                         ...row,
-                        firmName: productionFirmByNo.get(compositeKey) || productionFirmByNo.get(row.sfProductionNo) || ""
+                        firmName: parentProd?.firmName || ""
                     };
                 });
             setSemiActualData(filterByFirm(actuals).sort((a, b) => b._rowIndex - a._rowIndex));
