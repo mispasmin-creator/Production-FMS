@@ -1,5 +1,5 @@
 "use client"
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuCheckboxItem, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 ;
 
 import type React from "react";
@@ -19,6 +19,8 @@ import {
   Calculator,
   RotateCcw,
   Download,
+  ChevronDown,
+  XCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { jsPDF } from "jspdf";
@@ -57,6 +59,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -155,6 +158,7 @@ interface CostingHistoryItem {
   quantityDelivered?: string;
   productionPending?: string;
   manufacturingCost?: number;
+  remarks?: string;
 }
 
 // --- Constants ---
@@ -225,6 +229,7 @@ const HISTORY_COLUMNS_META = [
   { header: "Total BD", dataKey: "bd", toggleable: true },
   { header: "Total AP", dataKey: "ap", toggleable: true },
   { header: "Raw Materials", dataKey: "rawMaterials", toggleable: true },
+  { header: "Cancel Remark", dataKey: "remarks", toggleable: true },
 ];
 
 export default function CheckPage() {
@@ -239,6 +244,9 @@ export default function CheckPage() {
 
   // Dialog state
   const [isKittingDialogOpen, setIsKittingDialogOpen] = useState(false);
+  const [cancelConfirmItem, setCancelConfirmItem] = useState<ProductionItem | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelRemark, setCancelRemark] = useState<string>("");
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [selectedCheck, setSelectedCheck] = useState<ProductionItem | null>(
     null,
@@ -1261,6 +1269,7 @@ export default function CheckPage() {
           quantityDelivered: meta?.quantityDelivered || enriched.quantityDelivered || "",
           productionPending: meta?.productionPending || enriched.productionPending || "",
           manufacturingCost: row["Manufacturing Cost"] !== undefined && row["Manufacturing Cost"] !== null ? Number(row["Manufacturing Cost"]) : undefined,
+          remarks: row["Remarks"] ? String(row["Remarks"]) : undefined,
         };
       });
 
@@ -1414,6 +1423,64 @@ export default function CheckPage() {
     setAdminFirmFilter("");
     resetKittingForm();
     setIsKittingDialogOpen(true);
+  };
+
+  const handleCancelOrder = async () => {
+    if (!cancelConfirmItem) return;
+    setIsCancelling(true);
+    try {
+      // 1. Mark order as cancelled in production table (if productionId exists)
+      if (cancelConfirmItem.productionId) {
+        await supabase
+          .from(PRODUCTION_TABLE)
+          .update({ "Order Cancel": true })
+          .eq("id", cancelConfirmItem.productionId);
+      }
+
+      // 2. Insert a "Cancelled" record in costing_response so it shows in History tab
+      const cancelPayload: Record<string, any> = {
+        "Order No.": cancelConfirmItem.deliveryOrderNo,
+        "product name": cancelConfirmItem.productName,
+        "Firm Name": cancelConfirmItem.firmName || null,
+        "Party Name": cancelConfirmItem.partyName || null,
+        "Status": "Cancelled",
+        "Remarks": cancelRemark.trim() || null,
+        alumina: 0,
+        iron: 0,
+        BD: 0,
+        AP: 0,
+        "VARIABLE COST": 0,
+        "Manufacturing Cost": 0,
+        "SELLING PRICE": 0,
+      };
+      for (let i = 1; i <= 20; i++) {
+        cancelPayload[`RM${i}`] = null;
+        cancelPayload[`QTY${i}`] = null;
+        cancelPayload[`COST${i}`] = null;
+      }
+      const { error: insertErr } = await supabase
+        .from(COSTING_RESPONSE_TABLE)
+        .insert([cancelPayload]);
+      if (insertErr) throw insertErr;
+
+      setCancelConfirmItem(null);
+      setCancelRemark("");
+      await loadData();
+      toast({
+        title: "Order Cancelled",
+        description: `Order ${cancelConfirmItem.deliveryOrderNo} has been cancelled.`,
+        duration: 2000,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.message,
+        variant: "destructive",
+        duration: 3000,
+      });
+    } finally {
+      setIsCancelling(false);
+    }
   };
 
   const handleAdminFirmFilterChange = (value: string) => {
@@ -2301,16 +2368,28 @@ export default function CheckPage() {
                               {visiblePendingMeta.map((col) => (
                                 <TableCell key={col.dataKey}>
                                   {col.dataKey === "actionColumn" ? (
-                                    <Button
-                                      size="sm"
-                                      onClick={() =>
-                                        handleOpenKittingForm(item)
-                                      }
-                                      className="bg-olive-600 text-white hover:bg-olive-700"
-                                    >
-                                      <CheckCircle className="mr-2 h-4 w-4" />{" "}
-                                      Verify
-                                    </Button>
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button size="sm" variant="outline" className="h-8 gap-1 text-xs">
+                                          Actions <ChevronDown className="h-3 w-3" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end" className="w-40">
+                                        <DropdownMenuItem
+                                          onClick={() => handleOpenKittingForm(item)}
+                                          className="gap-2 cursor-pointer"
+                                        >
+                                          <CheckCircle className="h-4 w-4 text-green-600" /> Verify
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          onClick={() => setCancelConfirmItem(item)}
+                                          className="gap-2 cursor-pointer text-red-600 focus:text-red-600 focus:bg-red-50"
+                                        >
+                                          <XCircle className="h-4 w-4" /> Cancel Order
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
                                   ) : col.dataKey === "priority" ? (
                                     <Badge
                                       className={
@@ -2446,6 +2525,18 @@ export default function CheckPage() {
                               {visibleHistoryMeta.map((col) => (
                                 <TableCell key={col.dataKey}>
                                   {col.dataKey === "actionColumn" ? (
+                                    item.status === "Cancelled" ? (
+                                      <div className="flex flex-col gap-1">
+                                        <Badge className="bg-red-100 text-red-700 border border-red-200 gap-1 pointer-events-none">
+                                          <XCircle className="h-3.5 w-3.5" /> Cancelled
+                                        </Badge>
+                                        {item.remarks && (
+                                          <span className="text-xs text-gray-500 max-w-[160px] truncate" title={item.remarks}>
+                                            {item.remarks}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ) : (
                                     <Button
                                       size="sm"
                                       variant="outline"
@@ -2456,6 +2547,7 @@ export default function CheckPage() {
                                     >
                                       <Edit className="h-4 w-4 mr-1" /> Revise
                                     </Button>
+                                    )
                                   ) : col.dataKey === "rawMaterials" ? (
                                     <Button
                                       variant="outline"
@@ -3419,6 +3511,64 @@ export default function CheckPage() {
             >
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Confirm & Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ──── CANCEL ORDER CONFIRMATION DIALOG ──── */}
+      <Dialog
+        open={!!cancelConfirmItem}
+        onOpenChange={(open) => { if (!open) setCancelConfirmItem(null); }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <XCircle className="h-5 w-5" /> Cancel Order
+            </DialogTitle>
+            <DialogDescription asChild>
+              <div className="pt-2 space-y-3">
+                <span className="text-sm text-gray-700">Are you sure you want to cancel this order?</span>
+                <div className="p-3 bg-red-50 rounded-md border border-red-100 text-sm text-red-900 space-y-1">
+                  <p><span className="font-semibold">Order No:</span> {cancelConfirmItem?.deliveryOrderNo}</p>
+                  <p><span className="font-semibold">Product:</span> {cancelConfirmItem?.productName}</p>
+                  <p><span className="font-semibold">Party:</span> {cancelConfirmItem?.partyName || "—"}</p>
+                  <p><span className="font-semibold">Firm:</span> {cancelConfirmItem?.firmName || "—"}</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cancel-remark" className="text-sm font-medium text-gray-700">
+                    Remark <span className="text-gray-400 font-normal">(optional)</span>
+                  </Label>
+                  <Textarea
+                    id="cancel-remark"
+                    placeholder="Enter reason for cancellation..."
+                    value={cancelRemark}
+                    onChange={(e) => setCancelRemark(e.target.value)}
+                    className="resize-none h-20 text-sm"
+                    disabled={isCancelling}
+                  />
+                  <p className="text-xs text-gray-400">
+                    Remark will be saved and shown in the History tab.
+                  </p>
+                </div>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 mt-2">
+            <Button
+              variant="outline"
+              onClick={() => { setCancelConfirmItem(null); setCancelRemark(""); }}
+              disabled={isCancelling}
+            >
+              No, Keep It
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleCancelOrder}
+              disabled={isCancelling}
+            >
+              {isCancelling && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Yes, Cancel Order
             </Button>
           </DialogFooter>
         </DialogContent>
