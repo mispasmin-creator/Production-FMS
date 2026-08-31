@@ -577,6 +577,9 @@ export default function LabTesting2Page() {
 
   const handleFormChange = (field: string, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
+    if (formErrors[field]) {
+      setFormErrors((prev) => ({ ...prev, [field]: null }))
+    }
   }
 
   const validateForm = () => {
@@ -586,6 +589,21 @@ export default function LabTesting2Page() {
     if (formData.testStatus !== "Non Tested") {
       if (!formData.dateOfTest) errors.dateOfTest = "Date of Test is required."
       if (!formData.testedBy) errors.testedBy = "Tested By is required."
+      if (!formData.bdAt110 || !String(formData.bdAt110).trim()) {
+        errors.bdAt110 = "BD at 110°C is required."
+      }
+      if (!formData.ccsAt100 || !String(formData.ccsAt100).trim()) {
+        errors.ccsAt100 = "CCS at 100°C is required."
+      }
+      if (!formData.bdAt1100 || !String(formData.bdAt1100).trim()) {
+        errors.bdAt1100 = "BD at 1100°C is required."
+      }
+      if (!formData.ccsAt1100 || !String(formData.ccsAt1100).trim()) {
+        errors.ccsAt1100 = "CCS at 1100°C is required."
+      }
+      if (!formData.plcAt1100 || !String(formData.plcAt1100).trim()) {
+        errors.plcAt1100 = "PLC at 1100°C is required."
+      }
     } else {
       if (!formData.remarks || !formData.remarks.trim()) {
         errors.remarks = "Remark is required for Non Tested."
@@ -1159,49 +1177,59 @@ export default function LabTesting2Page() {
             {formData.testStatus !== "Non Tested" && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 border-t pt-4">
                 <div className="space-y-2">
-                  <Label htmlFor="bdAt110">BD at 110°C</Label>
+                  <Label htmlFor="bdAt110">BD at 110°C *</Label>
                   <Input
                     id="bdAt110"
                     placeholder="Enter value"
                     value={formData.bdAt110}
                     onChange={(e) => handleFormChange("bdAt110", e.target.value)}
+                    className={formErrors.bdAt110 ? "border-red-500" : ""}
                   />
+                  {formErrors.bdAt110 && <p className="text-xs text-red-500">{formErrors.bdAt110}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="ccsAt100">CCS at 100°C</Label>
+                  <Label htmlFor="ccsAt100">CCS at 100°C *</Label>
                   <Input
                     id="ccsAt100"
                     placeholder="Enter value"
                     value={formData.ccsAt100}
                     onChange={(e) => handleFormChange("ccsAt100", e.target.value)}
+                    className={formErrors.ccsAt100 ? "border-red-500" : ""}
                   />
+                  {formErrors.ccsAt100 && <p className="text-xs text-red-500">{formErrors.ccsAt100}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="bdAt1100">BD at 1100°C</Label>
+                  <Label htmlFor="bdAt1100">BD at 1100°C *</Label>
                   <Input
                     id="bdAt1100"
                     placeholder="Enter value"
                     value={formData.bdAt1100}
                     onChange={(e) => handleFormChange("bdAt1100", e.target.value)}
+                    className={formErrors.bdAt1100 ? "border-red-500" : ""}
                   />
+                  {formErrors.bdAt1100 && <p className="text-xs text-red-500">{formErrors.bdAt1100}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="ccsAt1100">CCS at 1100°C</Label>
+                  <Label htmlFor="ccsAt1100">CCS at 1100°C *</Label>
                   <Input
                     id="ccsAt1100"
                     placeholder="Enter value"
                     value={formData.ccsAt1100}
                     onChange={(e) => handleFormChange("ccsAt1100", e.target.value)}
+                    className={formErrors.ccsAt1100 ? "border-red-500" : ""}
                   />
+                  {formErrors.ccsAt1100 && <p className="text-xs text-red-500">{formErrors.ccsAt1100}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="plcAt1100">PLC at 1100°C</Label>
+                  <Label htmlFor="plcAt1100">PLC at 1100°C *</Label>
                   <Input
                     id="plcAt1100"
                     placeholder="Enter value"
                     value={formData.plcAt1100}
                     onChange={(e) => handleFormChange("plcAt1100", e.target.value)}
+                    className={formErrors.plcAt1100 ? "border-red-500" : ""}
                   />
+                  {formErrors.plcAt1100 && <p className="text-xs text-red-500">{formErrors.plcAt1100}</p>}
                 </div>
               </div>
             )}
