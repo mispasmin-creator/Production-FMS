@@ -315,6 +315,22 @@ export default function ProductionPage() {
         productionRecordsByJobCard.get(record.jobCardNo).push(record)
       })
 
+      // Live "Total Made" per job card, summed straight from the actual production
+      // log. The jobcards table also keeps its own "Total Made" counter (updated as a
+      // second, separate write right after each production entry is inserted), and that
+      // counter can drift or stay null if that second write never completes. Summing the
+      // production log here keeps the displayed total accurate even when that happens.
+      const actualMadeByJobCard = new Map<string, number>()
+      actualProductionRecords.forEach((record: any) => {
+        if (isCancelledStatus(record.status)) return
+        const key = `${normalizeKey(record.jobCardNo)}::${normalizeKey(record.firmName)}`
+        actualMadeByJobCard.set(key, (actualMadeByJobCard.get(key) || 0) + Number(record.quantityFG || 0))
+      })
+      const getLiveTotalMade = (jobCardNo: any, firmName: any, storedTotalMade: number) => {
+        const key = `${normalizeKey(jobCardNo)}::${normalizeKey(firmName)}`
+        return actualMadeByJobCard.has(key) ? actualMadeByJobCard.get(key)! : storedTotalMade
+      }
+
       const findActualProductionRecord = (jobCardNo: string, orderNo: string, productName: string) => {
         const exact = productionRecordsMap.get(makeProductionRecordKey(jobCardNo, orderNo, productName))
         if (exact) return exact
@@ -343,7 +359,7 @@ export default function ProductionPage() {
           if (isCancelledStatus(row["Status"])) return false
 
           const targetQuantity = Number(row["Quantity"] || 0)
-          const totalMade = Number(row["Total Made"] || 0)
+          const totalMade = getLiveTotalMade(row["JC-Job Card Number"], row["Firm Name"], Number(row["Total Made"] || 0))
           if (targetQuantity > 0) return totalMade < targetQuantity
 
           return !hasCompletedProductionFlag(row["Time Delay 1"])
@@ -363,7 +379,7 @@ export default function ProductionPage() {
             partyName: String(row["Party Name"] || prodInfo?.["Party Name"] || ""),
             productName: String(row["Product Name"] || ""),
             orderQuantity: Number(row["Quantity"] || 0),
-            totalMade: Number(row["Total Made"] || 0),
+            totalMade: getLiveTotalMade(row["JC-Job Card Number"], row["Firm Name"], Number(row["Total Made"] || 0)),
             dateOfProduction: row["Date Of Production"] ? format(new Date(row["Date Of Production"]), "dd/MM/yyyy") : "",
             plannedDate: row["Planned 1"] ? format(new Date(row["Planned 1"]), "dd/MM/yy") : "",
             shift: String(row["Shift"] || ""),
@@ -390,7 +406,9 @@ export default function ProductionPage() {
         const prodInfo = findProductionInfo(doNo, productionRecord.productName)
 
         const jcStatus = String(jobCard?.["Status"] || productionRecord.status || "active").toLowerCase()
-        const totalMade = Number(jobCard?.["Total Made"] || 0)
+        const totalMade = jobCard
+          ? getLiveTotalMade(jobCard["JC-Job Card Number"], jobCard["Firm Name"], Number(jobCard["Total Made"] || 0))
+          : getLiveTotalMade(productionRecord.jobCardNo, productionRecord.firmName, Number(productionRecord.quantityFG || 0))
         const jcQty = Number(jobCard?.["Quantity"] || 0)
         let cancelQty = jobCard?.["Cancel Qty"] !== null && jobCard?.["Cancel Qty"] !== undefined ? Number(jobCard["Cancel Qty"]) : undefined
         if (cancelQty === undefined && jcStatus === "cancelled") {
