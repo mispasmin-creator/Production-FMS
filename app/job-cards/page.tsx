@@ -215,11 +215,27 @@ export default function JobCardsPage() {
         );
       }
 
+      // A DO+product can have more than one production row (a split-quantity
+      // order line by line), which findProductionRow above can't tell apart.
+      // When a costing row recorded exactly which order-receipt line it came
+      // from ("Order Receipt Id"), prefer the production row stamped with that
+      // same id instead — that pairing is unambiguous.
+      const productionByOrderReceiptId = new Map<number, any>()
+      allProductionData.forEach((p: any) => {
+        if (p["Order Receipt Id"] !== null && p["Order Receipt Id"] !== undefined) {
+          productionByOrderReceiptId.set(Number(p["Order Receipt Id"]), p)
+        }
+      })
+
       const processedOrders: Order[] = filteredRows.map((row) => {
         const deliveryOrderNo = String(row["Order No."] || row["Delivery Order No."] || row["DO No."] || "").trim()
         const productName = String(row["product name"] || row["Product Name"] || "").trim()
         const partyName = String(row["Party Name"] || "").trim()
-        const prodRow = findProductionRow(deliveryOrderNo, partyName, productName)
+        const prodRow =
+          (row["Order Receipt Id"] !== null && row["Order Receipt Id"] !== undefined
+            ? productionByOrderReceiptId.get(Number(row["Order Receipt Id"]))
+            : undefined) ||
+          findProductionRow(deliveryOrderNo, partyName, productName)
         const orderQty = prodRow 
           ? Number(prodRow["Order Quantity"] || row["Order Quantity"] || row["QUANTITY"] || row["Quantity"] || row["Qty"] || 0)
           : Number(row["Order Quantity"] || row["QUANTITY"] || row["Quantity"] || row["Qty"] || 0)

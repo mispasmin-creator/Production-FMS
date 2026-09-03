@@ -111,24 +111,33 @@ export default function SampleTestPage() {
           .order("id", { ascending: false }),
         supabase
           .from(PRODUCTION_TABLE)
-          .select('id, "Delivery Order No.", "Product Name", "Party Name", "Order Quantity"'),
+          .select('id, "Delivery Order No.", "Product Name", "Party Name", "Order Quantity", "Order Receipt Id"'),
       ])
 
       if (dbErr) throw dbErr
       if (prodErr) throw prodErr
 
       const productionMeta = new Map<string, { productionId?: number | string; partyName: string; orderQuantity: number }>()
+      // A DO+product can have more than one production row (a split-quantity
+      // order line by line), which the DO+product map above can't tell apart.
+      // When a costing row recorded exactly which order-receipt line it came
+      // from ("Order Receipt Id"), prefer the production row stamped with that
+      // same id instead — that pairing is unambiguous.
+      const productionByOrderReceiptId = new Map<number, { productionId?: number | string; partyName: string; orderQuantity: number }>()
       ;(prodData || []).forEach((p: any) => {
         const orderNo = String(p["Delivery Order No."] || "").trim()
         const productName = String(p["Product Name"] || "").trim()
+        const meta = {
+          productionId: p.id,
+          partyName: String(p["Party Name"] || ""),
+          orderQuantity: Number(p["Order Quantity"] || 0),
+        }
         if (orderNo) {
-          const meta = {
-            productionId: p.id,
-            partyName: String(p["Party Name"] || ""),
-            orderQuantity: Number(p["Order Quantity"] || 0),
-          }
           productionMeta.set(makeOrderProductKey(orderNo, productName), meta)
           if (!productionMeta.has(normalizeKey(orderNo))) productionMeta.set(normalizeKey(orderNo), meta)
+        }
+        if (p["Order Receipt Id"] !== null && p["Order Receipt Id"] !== undefined) {
+          productionByOrderReceiptId.set(Number(p["Order Receipt Id"]), meta)
         }
       })
 
@@ -149,6 +158,9 @@ export default function SampleTestPage() {
         const orderNo = row["Order No."] || ""
         const productName = row["product name"] || ""
         const meta =
+          (row["Order Receipt Id"] !== null && row["Order Receipt Id"] !== undefined
+            ? productionByOrderReceiptId.get(Number(row["Order Receipt Id"]))
+            : undefined) ||
           productionMeta.get(makeOrderProductKey(orderNo, productName)) ||
           productionMeta.get(normalizeKey(orderNo))
 

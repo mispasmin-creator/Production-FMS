@@ -83,6 +83,7 @@ const EXPECTED_LABELS: { key: string; label: string }[] = [
 interface LabItem {
   id: number;
   productionId?: number | string;
+  orderReceiptId?: number | string;
   compositionNo: string;
   orderNo: string;
   partyName: string;
@@ -116,7 +117,8 @@ interface LabItem {
 
 const PENDING_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
-  { header: "ID", dataKey: "productionId", toggleable: true },
+  { header: "ID", dataKey: "id", toggleable: true },
+  { header: "Order Line ID", dataKey: "orderReceiptId", toggleable: true },
   { header: "Composition No.", dataKey: "compositionNo", toggleable: true },
   { header: "Order No.", dataKey: "orderNo", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
@@ -131,7 +133,8 @@ const PENDING_COLUMNS_META = [
 
 const HISTORY_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
-  { header: "ID", dataKey: "productionId", toggleable: true },
+  { header: "ID", dataKey: "id", toggleable: true },
+  { header: "Order Line ID", dataKey: "orderReceiptId", toggleable: true },
   { header: "Decision", dataKey: "piApprovalStatus", toggleable: true },
   { header: "Composition No.", dataKey: "compositionNo", toggleable: true },
   { header: "Order No.", dataKey: "orderNo", toggleable: true },
@@ -214,27 +217,34 @@ export default function PIApprovalPage() {
       // 2. Fetch product metadata from production table (keyed by Delivery Order No. + product)
       const { data: prodData, error: prodErr } = await supabase
         .from(PRODUCTION_TABLE)
-        .select('id, "Delivery Order No.", "Product Name", product_rate, "Firm Name", "Party Name", "Order Quantity"');
+        .select('id, "Delivery Order No.", "Product Name", product_rate, "Firm Name", "Party Name", "Order Quantity", "Order Receipt Id"');
       if (prodErr) throw prodErr;
-      const productionMetaMap = new Map<
-        string,
-        { productionId?: number | string; productRate: number; firmName: string; partyName: string; orderQuantity: number }
-      >();
+      type ProdMeta = { productionId?: number | string; productRate: number; firmName: string; partyName: string; orderQuantity: number };
+      const productionMetaMap = new Map<string, ProdMeta>();
+      // A DO+product can have more than one production row (a split-quantity
+      // order line by line). The DO+product map above only keeps one entry per
+      // key, so when a composition recorded exactly which order-receipt line it
+      // came from ("Order Receipt Id"), prefer the production row stamped with
+      // that same id instead — that pairing is unambiguous.
+      const productionByOrderReceiptId = new Map<number, ProdMeta>();
       (prodData || []).forEach((p: any) => {
         const orderNo = String(p["Delivery Order No."] || "").trim();
         const productName = String(p["Product Name"] || "").trim();
+        const meta: ProdMeta = {
+          productionId: p.id,
+          productRate: Number(p.product_rate || 0),
+          firmName: String(p["Firm Name"] || ""),
+          partyName: String(p["Party Name"] || ""),
+          orderQuantity: Number(p["Order Quantity"] || 0),
+        };
         if (orderNo) {
-          const meta = {
-            productionId: p.id,
-            productRate: Number(p.product_rate || 0),
-            firmName: String(p["Firm Name"] || ""),
-            partyName: String(p["Party Name"] || ""),
-            orderQuantity: Number(p["Order Quantity"] || 0),
-          };
           productionMetaMap.set(makeOrderProductKey(orderNo, productName), meta);
           if (!productionMetaMap.has(normalizeKey(orderNo))) {
             productionMetaMap.set(normalizeKey(orderNo), meta);
           }
+        }
+        if (p["Order Receipt Id"] !== null && p["Order Receipt Id"] !== undefined) {
+          productionByOrderReceiptId.set(Number(p["Order Receipt Id"]), meta);
         }
       });
 
@@ -274,6 +284,9 @@ export default function PIApprovalPage() {
         const orderNo = row["Order No."] || "";
         const productName = row["product name"] || "";
         const productionMeta =
+          (row["Order Receipt Id"] !== null && row["Order Receipt Id"] !== undefined
+            ? productionByOrderReceiptId.get(Number(row["Order Receipt Id"]))
+            : undefined) ||
           productionMetaMap.get(makeOrderProductKey(orderNo, productName)) ||
           productionMetaMap.get(normalizeKey(orderNo));
         const productRate = productionMeta?.productRate || 0;
@@ -281,6 +294,7 @@ export default function PIApprovalPage() {
         return {
           id: row.id,
           productionId: productionMeta?.productionId || "",
+          orderReceiptId: row["Order Receipt Id"] || "",
           compositionNo: row["Composition No."] || "",
           orderNo,
           partyName: productionMeta?.partyName || "",

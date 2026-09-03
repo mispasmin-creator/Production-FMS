@@ -78,6 +78,13 @@ import { Badge } from "@/components/ui/badge";
 interface ProductionItem {
   id: number;
   productionId?: number | string;
+  // Set only for a pending line sourced straight from an ORDER RECEIPT row that
+  // has no production row of its own yet (e.g. a split-quantity order where the
+  // same DO/product/firm/party has more than one line). Carries that row's own
+  // unique id so the composition created from it can be traced back to this
+  // exact line instead of being matched by DO+product+party, which can't tell
+  // two such lines apart.
+  orderReceiptId?: number;
   timestamp: string;
   firmName: string;
   deliveryOrderNo: string;
@@ -133,6 +140,7 @@ interface ExpectedValueRow {
 interface CostingHistoryItem {
   id: number;
   productionId?: number | string;
+  orderReceiptId?: number | string;
   timestamp: string;
   compositionNo: string;
   orderNo: string;
@@ -186,7 +194,7 @@ const PENDING_COLUMNS_META = [
     toggleable: false,
   },
   { header: "Timestamp", dataKey: "timestamp", toggleable: true },
-  { header: "ID", dataKey: "productionId", toggleable: true },
+  { header: "ID", dataKey: "id", toggleable: true },
   { header: "Firm Name", dataKey: "firmName", toggleable: true },
   {
     header: "Delivery Order No.",
@@ -219,11 +227,13 @@ const HISTORY_COLUMNS_META = [
     toggleable: false,
   },
   { header: "Timestamp", dataKey: "timestamp", toggleable: true },
-  { header: "ID", dataKey: "productionId", toggleable: true },
+  { header: "ID", dataKey: "id", toggleable: true },
+  { header: "Order Line ID", dataKey: "orderReceiptId", toggleable: true },
   { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Composition No.", dataKey: "compositionNo", toggleable: true },
   { header: "Order No.", dataKey: "orderNo", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
+  { header: "Order Qty", dataKey: "orderQuantity", toggleable: true },
   { header: "Total AL", dataKey: "alumina", toggleable: true },
   { header: "Total FE", dataKey: "iron", toggleable: true },
   { header: "Total BD", dataKey: "bd", toggleable: true },
@@ -528,6 +538,11 @@ export default function CheckPage() {
 
       // Build metadata map from orderReceiptData
       const orderMetaMap = new Map<string, ReturnType<typeof buildOrderMeta>>();
+      // Direct id -> row lookup, so a composition that stored its exact source
+      // order line ("Order Receipt Id") can read that line's own Quantity
+      // instead of the DO+product keyed map above, which only keeps one entry
+      // per key and can't tell two same-DO/product lines apart.
+      const orderReceiptById = new Map<number, any>();
       (orderReceiptData || []).forEach((row: any) => {
         const doNo = String(row["DO-Delivery Order No."] || "").trim();
         const meta = buildOrderMeta(row);
@@ -535,6 +550,9 @@ export default function CheckPage() {
         if (doNo) {
           if (!orderMetaMap.has(doNo)) orderMetaMap.set(doNo, meta);
           orderMetaMap.set(makeOrderProductKey(doNo, productName), meta);
+        }
+        if (row.id !== undefined && row.id !== null) {
+          orderReceiptById.set(Number(row.id), row);
         }
       });
 
@@ -546,6 +564,11 @@ export default function CheckPage() {
       // the count lets the surplus lines stay pending instead of one
       // composition hiding all of them.
       const verifiedCountByKey = new Map<string, number>();
+      // Exact per-line tracking: a composition created from a specific ORDER
+      // RECEIPT row stores that row's own id, so a line whose id shows up here
+      // is unambiguously already composed — no need to fall back to the
+      // DO+party+product counting heuristic below for it.
+      const verifiedOrderReceiptIds = new Set<number>();
       // Legacy costing rows saved before party was recorded: they can only be
       // matched on DO + product, so they still verify every party of that pair.
       const verifiedKeysWithoutParty = new Set<string>();
@@ -554,6 +577,9 @@ export default function CheckPage() {
         const orderNo = String(row["Order No."] || "").trim();
         const productName = String(row["product name"] || "").trim();
         const partyName = String(row["Party Name"] || "").trim();
+        if (row["Order Receipt Id"] !== null && row["Order Receipt Id"] !== undefined) {
+          verifiedOrderReceiptIds.add(Number(row["Order Receipt Id"]));
+        }
         if (orderNo) {
           if (productName) {
             if (partyName) {
@@ -650,11 +676,21 @@ export default function CheckPage() {
         const partyName = String(row["Party Names"] || "").trim();
         if (!doNo) return;
 
+        const exactKey = makeOrderPartyProductKey(doNo, partyName, productName);
+
+        // This exact order-receipt line already has its own composition
+        // (tracked by id, not by DO+party+product) — definitely done, skip it.
+        // Still counts against the DO+party+product tally below so a sibling
+        // line without a stored id (older data) isn't wrongly counted as free.
+        if (verifiedOrderReceiptIds.has(Number(row.id))) {
+          consumedVerifiedByKey.set(exactKey, (consumedVerifiedByKey.get(exactKey) || 0) + 1);
+          return;
+        }
+
         // Count-aware verification: consume one composition per matching line;
         // any line beyond the number of compositions done stays pending. Legacy
         // party-less / DO-only verifications keep their original behaviour.
         let isSurplusLine = false;
-        const exactKey = makeOrderPartyProductKey(doNo, partyName, productName);
         if (verifiedKeys.has(exactKey)) {
           const allowed = verifiedCountByKey.get(exactKey) || 0;
           const consumed = consumedVerifiedByKey.get(exactKey) || 0;
@@ -725,6 +761,7 @@ export default function CheckPage() {
         pendingList.push({
           id: row.id,
           productionId: "",
+          orderReceiptId: row.id,
           timestamp: row["Timestamp"] || "",
           firmName: row["Firm Name"] || enriched.firmName || "",
           deliveryOrderNo: doNo,
@@ -1239,9 +1276,15 @@ export default function CheckPage() {
             productRate: "",
           };
         }
+        const linkedOrderReceipt =
+          row["Order Receipt Id"] !== null && row["Order Receipt Id"] !== undefined
+            ? orderReceiptById.get(Number(row["Order Receipt Id"]))
+            : null;
+
         return {
           id: row.id,
           productionId: enriched.productionId || "",
+          orderReceiptId: row["Order Receipt Id"] || "",
           firmName: meta?.firmName || enriched.firmName || "",
           timestamp: row["TIMESTAMP"]
             ? format(new Date(row["TIMESTAMP"]), "dd/MM/yyyy HH:mm:ss")
@@ -1261,7 +1304,9 @@ export default function CheckPage() {
           priority: enriched.priority,
           status: row["Status"] || meta?.status || enriched.status || "",
           partyName: meta?.partyName || enriched.partyName || "",
-          orderQuantity: meta?.orderQuantity || enriched.orderQuantity || 0,
+          orderQuantity: linkedOrderReceipt
+            ? Number(linkedOrderReceipt["Quantity"] || 0)
+            : meta?.orderQuantity || enriched.orderQuantity || 0,
           note: meta?.note || enriched.note || "",
           productRate: meta?.productRate || enriched.productRate || "",
           uploadSo: meta?.uploadSo || enriched.uploadSo || "",
@@ -1966,6 +2011,7 @@ export default function CheckPage() {
         "product name": selectedCheck.productName,
         "Firm Name": selectedCheck.firmName || null,
         "Party Name": selectedCheck.partyName || null,
+        "Order Receipt Id": selectedCheck.orderReceiptId || null,
         alumina: kittingTotals.al,
         iron: kittingTotals.fe,
         BD: kittingTotals.bd,
@@ -2041,27 +2087,31 @@ export default function CheckPage() {
           "Actual 1": completedAt,
           product_rate: toNumberOrNull(selectedCheck.productRate),
           "Upload SO": selectedCheck.uploadSo || null,
+          // Only stamp this when we actually know the source order-receipt line
+          // (a fresh pending line). Omitted (not nulled) when updating an
+          // existing production row so a prior link isn't wiped out.
+          ...(selectedCheck.orderReceiptId
+            ? { "Order Receipt Id": selectedCheck.orderReceiptId }
+            : {}),
         };
 
-        let updateQuery = supabase
-          .from(PRODUCTION_TABLE)
-          .update(productionPayload)
-          .eq('"Delivery Order No."', selectedCheck.deliveryOrderNo)
-          .eq("Product Name", selectedCheck.productName);
+        // Update the exact production row this check came from (when it already
+        // has one), instead of matching by DO+Product+Firm+Party. Two order-receipt
+        // lines for the same DO/product/firm/party (a split-quantity order) would
+        // otherwise both match that same broad filter, so kitting the second line
+        // would silently overwrite the first line's already-created production row
+        // instead of getting a row of its own.
+        const existingProductionId = selectedCheck.productionId
+          ? Number(selectedCheck.productionId)
+          : null;
 
-        if (selectedCheck.firmName) {
-          updateQuery = updateQuery.eq("Firm Name", selectedCheck.firmName);
-        }
-
-        if (selectedCheck.partyName) {
-          updateQuery = updateQuery.eq("Party Name", selectedCheck.partyName);
-        }
-
-        const { data: updatedRows, error: updateErr } =
-          await updateQuery.select("id");
-        if (updateErr) throw updateErr;
-
-        if (!updatedRows || updatedRows.length === 0) {
+        if (existingProductionId) {
+          const { error: updateErr } = await supabase
+            .from(PRODUCTION_TABLE)
+            .update(productionPayload)
+            .eq("id", existingProductionId);
+          if (updateErr) throw updateErr;
+        } else {
           const { error: insertProdErr } = await supabase
             .from(PRODUCTION_TABLE)
             .insert([productionPayload]);
