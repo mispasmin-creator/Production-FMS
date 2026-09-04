@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface MaterialRow {
-  name: string
+  name: string 
   expectedPct: number
   expectedQty: number
   actualQty: number
