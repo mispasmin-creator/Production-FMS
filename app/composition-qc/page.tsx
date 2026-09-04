@@ -138,9 +138,16 @@ export default function CompositionQCPage() {
       })
 
       const productionMetaMap = new Map<string, { productionId?: number | string; rate: number; firm: string; party: string; productName: string }>()
+      // A DO+product can have more than one production row (a split-quantity
+      // order line by line), which the DO+product map above can't tell apart.
+      // A job card stamped with its own "Production Id" resolves that row
+      // unambiguously; that row's own "Order Receipt Id" then finds the exact
+      // matching composition below instead of guessing by DO+product.
+      const productionById = new Map<number, any>()
       ;(prodData || []).forEach((p: any) => {
         const doNo = String(p["Delivery Order No."] || "").trim()
         const productName = String(p["Product Name"] || "").trim()
+        if (p.id !== null && p.id !== undefined) productionById.set(Number(p.id), p)
         if (!doNo) return
         const meta = {
           productionId: p.id,
@@ -179,9 +186,13 @@ export default function CompositionQCPage() {
 
       // Build costing lookup: order no → latest costing row
       const costMap = new Map<string, any>()
+      const costByOrderReceiptId = new Map<number, any>()
       ;(costData || []).forEach((r: any) => {
         const on = String(r["Order No."] || "").trim()
         const productName = String(r["product name"] || "").trim()
+        if (r["Order Receipt Id"] !== null && r["Order Receipt Id"] !== undefined) {
+          costByOrderReceiptId.set(Number(r["Order Receipt Id"]), r)
+        }
         if (!on) return
         const key = makeOrderProductKey(on, productName)
         if (!costMap.has(key)) costMap.set(key, r)
@@ -200,7 +211,18 @@ export default function CompositionQCPage() {
           apMap.get(`${jobCardNo}::${normalize(doNo)}::${normalize(productName)}`) ||
           apMap.get(`${jobCardNo}::${normalize(doNo)}`) ||
           apMap.get(jobCardNo)
-        let costRow = costMap.get(makeOrderProductKey(doNo, productName));
+        // Resolve the exact composition via this job card's own production row
+        // (Production Id -> that row's Order Receipt Id -> the matching cost
+        // row) before falling back to the DO+product guess below, which can't
+        // tell apart two order lines that share the same DO/product.
+        let costRow: any = undefined
+        if (jc["Production Id"] !== null && jc["Production Id"] !== undefined) {
+          const prodRow = productionById.get(Number(jc["Production Id"]))
+          if (prodRow && prodRow["Order Receipt Id"] !== null && prodRow["Order Receipt Id"] !== undefined) {
+            costRow = costByOrderReceiptId.get(Number(prodRow["Order Receipt Id"]))
+          }
+        }
+        if (!costRow) costRow = costMap.get(makeOrderProductKey(doNo, productName));
         if (!costRow) {
           const fallback = costMap.get(doNo);
           if (fallback && (!fallback["product name"] || !productName || normalize(fallback["product name"]) === normalize(productName))) {
@@ -219,7 +241,20 @@ export default function CompositionQCPage() {
         }
         if (!orderMeta || orderMeta.checkDeliveryInStockOrNot !== "For Production Planning") continue
 
-        let productionMeta = productionMetaMap.get(makeOrderProductKey(doNo, productName));
+        let productionMeta: { productionId?: number | string; rate: number; firm: string; party: string; productName: string } | undefined
+        if (jc["Production Id"] !== null && jc["Production Id"] !== undefined) {
+          const p = productionById.get(Number(jc["Production Id"]))
+          if (p) {
+            productionMeta = {
+              productionId: p.id,
+              rate: Number(p["product_rate"] || 0),
+              firm: String(p["Firm Name"] || ""),
+              party: String(p["Party Name"] || ""),
+              productName: String(p["Product Name"] || ""),
+            }
+          }
+        }
+        if (!productionMeta) productionMeta = productionMetaMap.get(makeOrderProductKey(doNo, productName));
         if (!productionMeta) {
           const fallback = productionMetaMap.get(doNo);
           if (fallback && (!fallback.productName || !productName || normalize(fallback.productName) === normalize(productName))) {

@@ -32,6 +32,7 @@ interface Order {
   _rowIndex: number
   costingResponseId: number
   productionId?: number | string
+  orderReceiptId?: number | string
   deliveryOrderNo: string
   firmName: string
   partyName: string
@@ -53,6 +54,7 @@ interface JobCard {
   key: number
   id: number
   productionId?: number | string
+  orderReceiptId?: number | string
   _rowIndex: number
   jobCardNo: string
   firmName: string
@@ -90,6 +92,7 @@ const COSTING_RESPONSE_TABLE = "costing_response"
 const PENDING_ORDERS_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", toggleable: false, alwaysVisible: true },
   { header: "ID", dataKey: "productionId", toggleable: true, alwaysVisible: true },
+  { header: "Order Line ID", dataKey: "orderReceiptId", toggleable: true },
   { header: "Delivery Order No.", dataKey: "deliveryOrderNo", toggleable: true, alwaysVisible: true },
   { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
@@ -106,6 +109,7 @@ const PENDING_ORDERS_COLUMNS_META = [
 const HISTORY_COLUMNS_META = [
   { header: "Timestamp", dataKey: "createdAt", toggleable: true, alwaysVisible: true },
   { header: "ID", dataKey: "productionId", toggleable: true, alwaysVisible: true },
+  { header: "Order Line ID", dataKey: "orderReceiptId", toggleable: true },
   { header: "Job Card No.", dataKey: "jobCardNo", toggleable: true, alwaysVisible: true },
   { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Supervisor", dataKey: "supervisorName", toggleable: true },
@@ -221,9 +225,13 @@ export default function JobCardsPage() {
       // from ("Order Receipt Id"), prefer the production row stamped with that
       // same id instead — that pairing is unambiguous.
       const productionByOrderReceiptId = new Map<number, any>()
+      const productionById = new Map<number, any>()
       allProductionData.forEach((p: any) => {
         if (p["Order Receipt Id"] !== null && p["Order Receipt Id"] !== undefined) {
           productionByOrderReceiptId.set(Number(p["Order Receipt Id"]), p)
+        }
+        if (p.id !== null && p.id !== undefined) {
+          productionById.set(Number(p.id), p)
         }
       })
 
@@ -245,21 +253,36 @@ export default function JobCardsPage() {
         const normalizedParty = normalizeKey(partyName)
         const numericDo = getNumericDo(deliveryOrderNo)
 
-        // Resilient multi-level Job Card matching
-        let matchingJobCards = allJobCardsData.filter((jc: any) => {
-          const jcDo = normalizeKey(jc["Delivery Order No."])
-          const jcNumDo = getNumericDo(jc["Delivery Order No."])
-          const jcProd = normalizeKey(jc["Product Name"])
-          const jcParty = normalizeKey(jc["Party Name"])
+        const hasProductionId = (jc: any) => jc["Production Id"] !== null && jc["Production Id"] !== undefined
 
-          const doMatches = jcDo === normalizedDo || (numericDo !== null && jcNumDo !== null && numericDo === jcNumDo)
-          if (!doMatches) return false
+        // Tier 0: a job card explicitly tied (by production row id) to this
+        // exact order line. This is the only reliable signal when a DO/product/
+        // party has more than one order line (e.g. a split-quantity order) —
+        // DO+product(+party) alone can't tell those lines' job cards apart.
+        let matchingJobCards = prodRow
+          ? allJobCardsData.filter((jc: any) => hasProductionId(jc) && Number(jc["Production Id"]) === Number(prodRow.id))
+          : []
 
-          if (normalizedProduct && jcProd && jcProd !== normalizedProduct) return false
-          if (normalizedParty && jcParty && jcParty !== normalizedParty) return false
+        // Legacy job cards (created before this link existed) still need the
+        // old DO+Product(+Party) matching below — but never pull in a job card
+        // that's already explicitly tied to a different order line's row.
+        if (matchingJobCards.length === 0) {
+          matchingJobCards = allJobCardsData.filter((jc: any) => {
+            if (hasProductionId(jc)) return false
+            const jcDo = normalizeKey(jc["Delivery Order No."])
+            const jcNumDo = getNumericDo(jc["Delivery Order No."])
+            const jcProd = normalizeKey(jc["Product Name"])
+            const jcParty = normalizeKey(jc["Party Name"])
 
-          return true
-        })
+            const doMatches = jcDo === normalizedDo || (numericDo !== null && jcNumDo !== null && numericDo === jcNumDo)
+            if (!doMatches) return false
+
+            if (normalizedProduct && jcProd && jcProd !== normalizedProduct) return false
+            if (normalizedParty && jcParty && jcParty !== normalizedParty) return false
+
+            return true
+          })
+        }
 
         // Fallback 1: match by DO and Product (exact) if DO+Product+Party yielded no results.
         // Product must match exactly (after normalization) — a loose "one name contains
@@ -268,6 +291,7 @@ export default function JobCardsPage() {
         // fallback would wrongly pull in Total Made from unrelated products on the same DO.
         if (matchingJobCards.length === 0 && normalizedProduct) {
           matchingJobCards = allJobCardsData.filter((jc: any) => {
+            if (hasProductionId(jc)) return false
             const jcDo = normalizeKey(jc["Delivery Order No."])
             const jcNumDo = getNumericDo(jc["Delivery Order No."])
             const jcProd = normalizeKey(jc["Product Name"])
@@ -323,6 +347,7 @@ export default function JobCardsPage() {
           key: row.id,
           id: row.id,
           productionId: prodRow?.id ?? "",
+          orderReceiptId: row["Order Receipt Id"] || "",
           _rowIndex: row.id,
           costingResponseId: row.id,
           deliveryOrderNo,
@@ -355,11 +380,19 @@ export default function JobCardsPage() {
           const prodDate = row["Date Of Production"] ? new Date(row["Date Of Production"]) : null
           const createdAt = row["Timestamp"] ? new Date(row["Timestamp"]) : null
           
-          const productionRow = findProductionRow(
-            String(row["Delivery Order No."] || ""),
-            String(row["Party Name"] || ""),
-            String(row["Product Name"] || "")
-          )
+          // This job card recorded exactly which production row it was created
+          // from ("Production Id"); prefer that over DO+product+party matching,
+          // which can't tell apart two order lines that share those fields
+          // (e.g. a split-quantity order).
+          const productionRow =
+            (row["Production Id"] !== null && row["Production Id"] !== undefined
+              ? productionById.get(Number(row["Production Id"]))
+              : undefined) ||
+            findProductionRow(
+              String(row["Delivery Order No."] || ""),
+              String(row["Party Name"] || ""),
+              String(row["Product Name"] || "")
+            )
 
           const jcQty = Number(row["Quantity"] || 0)
           const prodOrderQty = Number(productionRow?.["Order Quantity"] || 0)
@@ -380,6 +413,7 @@ export default function JobCardsPage() {
             key: row.id,
             id: row.id,
             productionId: productionRow?.id ?? "",
+            orderReceiptId: productionRow?.["Order Receipt Id"] || "",
             _rowIndex: row.id,
             jobCardNo: String(row["JC-Job Card Number"] || ""),
             firmName: String(row["Firm Name"] || ""),
@@ -586,7 +620,11 @@ export default function JobCardsPage() {
           "Date Of Production": format(formData.dateOfProduction, "yyyy-MM-dd"),
           "Shift": formData.shift,
           "Notes": formData.notes || "",
-          "Status": "active"
+          "Status": "active",
+          // Ties this job card to the exact order line it was created from, so
+          // Total Made isn't shared across other order lines with the same
+          // DO/product/party (e.g. a split-quantity order).
+          "Production Id": selectedOrder.productionId || null
         }])
 
       if (insertError) throw insertError

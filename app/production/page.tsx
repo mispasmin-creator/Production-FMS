@@ -353,6 +353,21 @@ export default function ProductionPage() {
           (p: any) => String(p["Product Name"] || "")
         );
       }
+      // A DO+product can have more than one production row (a split-quantity
+      // order line by line), which findProductionInfo above can't tell apart.
+      // A job card stamped with its own "Production Id" (the exact row it was
+      // created from) resolves that unambiguously.
+      const productionById = new Map<number, any>()
+      ;(productionData || []).forEach((p: any) => {
+        if (p.id !== null && p.id !== undefined) productionById.set(Number(p.id), p)
+      })
+      const findProductionInfoForJobCard = (jc: any, deliveryOrderNo: string, productName: string) => {
+        if (jc && jc["Production Id"] !== null && jc["Production Id"] !== undefined) {
+          const byId = productionById.get(Number(jc["Production Id"]))
+          if (byId) return byId
+        }
+        return findProductionInfo(deliveryOrderNo, productName)
+      }
 
       const pending = (jobCardsData || [])
         .filter(row => {
@@ -365,7 +380,8 @@ export default function ProductionPage() {
           return !hasCompletedProductionFlag(row["Time Delay 1"])
         })
         .map((row: any) => {
-          const prodInfo = findProductionInfo(
+          const prodInfo = findProductionInfoForJobCard(
+            row,
             String(row["Delivery Order No."] || ""),
             String(row["Product Name"] || "")
           )
@@ -403,7 +419,7 @@ export default function ProductionPage() {
           (jc: any) => normalizeKey(jc["JC-Job Card Number"]) === normalizeKey(jcNo)
         )
         const doNo = productionRecord.orderNo || jobCard?.["Delivery Order No."] || ""
-        const prodInfo = findProductionInfo(doNo, productionRecord.productName)
+        const prodInfo = findProductionInfoForJobCard(jobCard, doNo, productionRecord.productName)
 
         const jcStatus = String(jobCard?.["Status"] || productionRecord.status || "active").toLowerCase()
         const totalMade = jobCard
@@ -452,7 +468,7 @@ export default function ProductionPage() {
         .filter((jc: any) => isCancelledStatus(jc["Status"]) && !actualJobCardNos.has(normalizeKey(jc["JC-Job Card Number"])))
         .map((jc: any) => {
           const doNo = String(jc["Delivery Order No."] || "")
-          const prodInfo = findProductionInfo(doNo, String(jc["Product Name"] || ""))
+          const prodInfo = findProductionInfoForJobCard(jc, doNo, String(jc["Product Name"] || ""))
           const jcQty = Number(jc["Quantity"] || 0)
           const totalMade = Number(jc["Total Made"] || 0)
           const cancelQty = jc["Cancel Qty"] !== null && jc["Cancel Qty"] !== undefined ? Number(jc["Cancel Qty"]) : Math.max(0, jcQty - totalMade)
