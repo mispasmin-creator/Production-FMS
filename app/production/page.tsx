@@ -901,6 +901,8 @@ export default function ProductionPage() {
         "Remarks1": formData.remarks || "",
         "Order No.": selectedJobCard.deliveryOrderNo,
         "Planned1": format(new Date(), "yyyy-MM-dd"),
+        // Costing unlocks in parallel with Lab Test 1, not after Lab Test 2 anymore.
+        "Planned8": format(new Date(), "yyyy-MM-dd"),
         // Cost & profit fields (requires DB columns – see SQL migration)
         "expected_cost": expectedRMCost,
         "actual_cost": actualRMCost,
