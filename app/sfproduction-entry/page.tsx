@@ -8,13 +8,14 @@ import { format } from 'date-fns';
 import {
     Loader2, AlertTriangle, RefreshCw, ClipboardList, History,
     FileCheck, Clock, Zap, Camera, Upload, Save, Eye, X, Plus,
-    Pencil, Target, Settings, Search, Package, Calendar, ChevronDown, Check, Building
+    Pencil, Target, Settings, Search, Package, Calendar, ChevronDown, Check, Building, Ban
 } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -57,6 +58,7 @@ interface SemiJobCardRecord {
     isParentCancelled?: boolean;
     parentCancelOrder?: number;
     parentPending?: number;
+    cancelRemarks?: string;
 }
 
 interface SemiActualRecord {
@@ -106,6 +108,8 @@ interface SemiActualRecord {
     finalQty: number;
     processingCost?: number;
     firmName?: string;
+    isCancelled?: boolean;
+    cancelRemarks?: string;
 }
 
 interface RawMaterialRow {
@@ -166,6 +170,11 @@ export default function SemiActualProductionPage() {
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
     const [selectedSjc, setSelectedSjc] = useState<SemiJobCardRecord | null>(null);
     const [selectedActual, setSelectedActual] = useState<SemiActualRecord | null>(null);
+    const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
+    const [cancelTarget, setCancelTarget] = useState<SemiJobCardRecord | null>(null);
+    const [cancelRemarksInput, setCancelRemarksInput] = useState('');
+    const [cancelFormError, setCancelFormError] = useState('');
+    const [isCancelling, setIsCancelling] = useState(false);
     const [formError, setFormError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
@@ -357,6 +366,45 @@ export default function SemiActualProductionPage() {
         setIsViewModalOpen(true);
     };
 
+    const handleOpenCancelDialog = (record: SemiJobCardRecord) => {
+        setCancelTarget(record);
+        setCancelRemarksInput('');
+        setCancelFormError('');
+        setIsCancelDialogOpen(true);
+    };
+
+    const handleCancelSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!cancelTarget) return;
+        if (!cancelRemarksInput.trim()) {
+            setCancelFormError('Remark is required to cancel this job card.');
+            return;
+        }
+
+        setIsCancelling(true);
+        setCancelFormError('');
+        try {
+            const { error } = await supabase
+                .from(SEMI_JOB_CARD_TABLE)
+                .update({
+                    "Status": "CANCELLED",
+                    "Cancel Remarks": cancelRemarksInput.trim(),
+                })
+                .eq("id", cancelTarget._rowIndex);
+            if (error) throw error;
+
+            setIsCancelDialogOpen(false);
+            setCancelTarget(null);
+            setCancelRemarksInput('');
+            setSuccessMessage(`${cancelTarget.sjcSrNo} cancelled successfully!`);
+            await loadAllData();
+        } catch (err: any) {
+            setCancelFormError(err.message || 'Failed to cancel. Please try again.');
+        } finally {
+            setIsCancelling(false);
+        }
+    };
+
     const handleSaveProcessingCost = async () => {
         if (!selectedActual) return;
         setSavingProcessingCost(true);
@@ -533,13 +581,65 @@ export default function SemiActualProductionPage() {
         );
     }, [jobCardData, searchQuery, firmFilter]);
 
+    // Cancelled job cards don't have an actual production entry (semi_actual row),
+    // so they're projected into the same shape as SemiActualRecord to show up in
+    // the Production History tab alongside real entries, with Status = CANCELLED.
+    const cancelledHistoryData = useMemo<SemiActualRecord[]>(() => {
+        return jobCardData
+            .filter(job => String(job.status || '').toLowerCase().includes('cancel'))
+            .map(job => ({
+                _rowIndex: job._rowIndex,
+                timestamp: job.timestamp,
+                semiFinishedJobCardNo: job.sjcSrNo,
+                supervisorName: job.supervisorName,
+                dateOfProduction: job.dateOfProduction,
+                productName: job.productName,
+                qtyOfSemiFinishedGood: 0,
+                rawMaterial1Name: '', rawMaterial1Qty: 0, rawMaterial1Rate: 0,
+                rawMaterial2Name: '', rawMaterial2Qty: 0, rawMaterial2Rate: 0,
+                rawMaterial3Name: '', rawMaterial3Qty: 0, rawMaterial3Rate: 0,
+                rawMaterial4Name: '', rawMaterial4Qty: 0, rawMaterial4Rate: 0,
+                rawMaterial5Name: '', rawMaterial5Qty: 0, rawMaterial5Rate: 0,
+                isAnyEndProduct: 'No',
+                endProductRawMaterialName: '',
+                endProductQty: 0,
+                narration: '',
+                sNo: job.sjcSrNo,
+                startingReading: 0,
+                startingReadingPhoto: '',
+                endingReading: 0,
+                endingReadingPhoto: '',
+                machineRunningHour: 0,
+                machineRunning: 0,
+                sfProductionNo: job.sfSrNo,
+                planned1: '',
+                actual1: '',
+                timeDelay1: '',
+                status: 'CANCELLED',
+                actualQty1: 0,
+                planned2: '',
+                actual2: '',
+                timeDelay2: '',
+                actualQty2: 0,
+                finalQty: 0,
+                processingCost: 0,
+                firmName: job.firmName,
+                isCancelled: true,
+                cancelRemarks: job.cancelRemarks || '',
+            }));
+    }, [jobCardData]);
+
+    const combinedHistoryData = useMemo<SemiActualRecord[]>(() => {
+        return [...semiActualData, ...cancelledHistoryData];
+    }, [semiActualData, cancelledHistoryData]);
+
     const uniqueHistoryProducts = useMemo(() => {
         const set = new Set<string>();
-        semiActualData.forEach(item => {
+        combinedHistoryData.forEach(item => {
             if (item.productName) set.add(item.productName.trim());
         });
         return Array.from(set).filter(Boolean).sort();
-    }, [semiActualData]);
+    }, [combinedHistoryData]);
 
     const isDateInRange = (dateVal: any, fromDate: string, toDate: string): boolean => {
         if (!fromDate && !toDate) return true;
@@ -574,7 +674,7 @@ export default function SemiActualProductionPage() {
 
     const filteredHistory = useMemo(() => {
         const q = searchQuery.toLowerCase().trim();
-        let history = semiActualData;
+        let history = combinedHistoryData;
         if (firmFilter.length > 0) {
             history = history.filter(item => firmFilter.includes(String(item.firmName || "")));
         }
@@ -594,14 +694,16 @@ export default function SemiActualProductionPage() {
             (item.supervisorName || "").toLowerCase().includes(q) ||
             (item.status || "").toLowerCase().includes(q)
         );
-    }, [semiActualData, searchQuery, firmFilter, selectedHistoryProduct, historyFromDate, historyToDate]);
+    }, [combinedHistoryData, searchQuery, firmFilter, selectedHistoryProduct, historyFromDate, historyToDate]);
 
+    // Cancelled entries carry zero qty/hours already, but they're excluded explicitly
+    // here too so these totals stay exactly what they were before cancellation existed.
     const totalHistoryQty = useMemo(() => {
-        return filteredHistory.reduce((sum, item) => sum + (Number(item.qtyOfSemiFinishedGood) || 0), 0);
+        return filteredHistory.filter(item => !item.isCancelled).reduce((sum, item) => sum + (Number(item.qtyOfSemiFinishedGood) || 0), 0);
     }, [filteredHistory]);
 
     const totalMachineHours = useMemo(() => {
-        return filteredHistory.reduce((sum, item) => sum + (Number(item.machineRunningHour || item.machineRunning) || 0), 0);
+        return filteredHistory.filter(item => !item.isCancelled).reduce((sum, item) => sum + (Number(item.machineRunningHour || item.machineRunning) || 0), 0);
     }, [filteredHistory]);
 
     const materialSummaryData = useMemo(() => {
@@ -1056,6 +1158,13 @@ export default function SemiActualProductionPage() {
                                                         <Pencil size={12} />
                                                         Perform Test
                                                     </button>
+                                                    <button
+                                                        onClick={() => handleOpenCancelDialog(job)}
+                                                        className="flex items-center gap-2 px-3 py-2 bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 text-xs font-semibold rounded-lg transition-colors"
+                                                    >
+                                                        <Ban size={12} />
+                                                        Cancel
+                                                    </button>
                                                 </div>
                                             </td>
                                             <td className="px-6 py-3.5">
@@ -1127,13 +1236,17 @@ export default function SemiActualProductionPage() {
                                     {historyEntries.map((entry, index) => (
                                         <tr key={`history-${entry.sNo}-${index}`} className="hover:bg-slate-50/70 transition-colors">
                                             <td className="px-6 py-3.5">
-                                                <button
-                                                    onClick={() => handleViewClick(entry)}
-                                                    className="flex items-center gap-2 px-4 py-2 border border-violet-300 text-olive-700 hover:bg-olive-50 text-xs font-semibold rounded-lg transition-colors"
-                                                >
-                                                    <Eye size={12} />
-                                                    View
-                                                </button>
+                                                {entry.isCancelled ? (
+                                                    <span className="text-xs text-slate-400 italic">No entry</span>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => handleViewClick(entry)}
+                                                        className="flex items-center gap-2 px-4 py-2 border border-violet-300 text-olive-700 hover:bg-olive-50 text-xs font-semibold rounded-lg transition-colors"
+                                                    >
+                                                        <Eye size={12} />
+                                                        View
+                                                    </button>
+                                                )}
                                             </td>
                                             <td className="px-6 py-3.5">
                                                 <span className="text-sm font-semibold text-olive-600">{entry.sNo}</span>
@@ -1156,12 +1269,21 @@ export default function SemiActualProductionPage() {
                                             <td className="px-6 py-3.5 text-sm font-semibold text-amber-600">{entry.machineRunningHour}h</td>
                                             <td className="px-6 py-3.5">
                                                 {entry.status ? (
-                                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${entry.status.toLowerCase().includes('complete')
-                                                        ? 'bg-emerald-50 text-emerald-700'
-                                                        : 'bg-amber-50 text-amber-700'
-                                                        }`}>
-                                                        {entry.status}
-                                                    </span>
+                                                    <div>
+                                                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${entry.isCancelled
+                                                            ? 'bg-rose-50 text-rose-700'
+                                                            : entry.status.toLowerCase().includes('complete')
+                                                                ? 'bg-emerald-50 text-emerald-700'
+                                                                : 'bg-amber-50 text-amber-700'
+                                                            }`}>
+                                                            {entry.status}
+                                                        </span>
+                                                        {entry.isCancelled && entry.cancelRemarks && (
+                                                            <div className="text-[10px] text-rose-400 mt-1 max-w-[160px] truncate" title={entry.cancelRemarks}>
+                                                                {entry.cancelRemarks}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 ) : <span className="text-slate-400 text-xs">-</span>}
                                             </td>
                                         </tr>
@@ -1816,6 +1938,47 @@ export default function SemiActualProductionPage() {
                             </div>
                         </div>
                     )}
+                </DialogContent>
+            </Dialog>
+
+            {/* Cancel Job Card Dialog */}
+            <Dialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Cancel Job Card: {cancelTarget?.sjcSrNo}</DialogTitle>
+                        <DialogDescription>
+                            This will remove this item from the pending list. Please provide a remark.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleCancelSubmit} className="space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="cancelRemarks">Remark *</Label>
+                            <Textarea
+                                id="cancelRemarks"
+                                value={cancelRemarksInput}
+                                onChange={(e) => {
+                                    setCancelRemarksInput(e.target.value);
+                                    if (cancelFormError) setCancelFormError('');
+                                }}
+                                className={cancelFormError ? "border-red-500" : ""}
+                                placeholder="Enter reason for cancellation"
+                                rows={3}
+                            />
+                            {cancelFormError && (
+                                <p className="text-xs text-red-600">{cancelFormError}</p>
+                            )}
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-2">
+                            <Button type="button" variant="outline" onClick={() => setIsCancelDialogOpen(false)} disabled={isCancelling}>
+                                No, Keep it
+                            </Button>
+                            <Button type="submit" variant="destructive" disabled={isCancelling}>
+                                {isCancelling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Yes, Cancel
+                            </Button>
+                        </div>
+                    </form>
                 </DialogContent>
             </Dialog>
         </div>

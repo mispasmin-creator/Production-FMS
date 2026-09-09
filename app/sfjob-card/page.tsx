@@ -59,6 +59,8 @@ interface SemiJobCardRecord {
     qty: number;
     dateOfProduction: string;
     firmName?: string;
+    status?: string;
+    cancelRemarks?: string;
 }
 
 interface Supervisor {
@@ -635,7 +637,18 @@ export default function SFJobCardPage() {
                                                     {job.dateOfProduction || '-'}
                                                 </TableCell>
                                                 <TableCell className="whitespace-nowrap">
-                                                    {completedSjcNumbers.has(job.sjcSrNo) ? (
+                                                    {String(job.status || '').toLowerCase().includes('cancel') ? (
+                                                        <div>
+                                                            <Badge className="bg-rose-50 text-rose-600 border-0 text-xs">
+                                                                CANCELLED
+                                                            </Badge>
+                                                            {job.cancelRemarks && (
+                                                                <div className="text-[10px] text-rose-400 mt-1 max-w-[160px] truncate" title={job.cancelRemarks}>
+                                                                    {job.cancelRemarks}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ) : completedSjcNumbers.has(job.sjcSrNo) ? (
                                                         <Badge className="bg-emerald-50 text-emerald-600 border-0 text-xs">
                                                             COMPLETE
                                                         </Badge>
