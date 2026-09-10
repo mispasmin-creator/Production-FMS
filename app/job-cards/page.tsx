@@ -513,6 +513,10 @@ export default function JobCardsPage() {
     })
   }, [historyJobCards, searchQuery, firmFilter])
 
+  const filteredHistoryTotalMade = useMemo(() => {
+    return filteredHistory.reduce((sum, item) => sum + (Number(item.totalMade) || 0), 0)
+  }, [filteredHistory])
+
   const handleOpenDialog = (order: Order) => {
     setSelectedOrder(order)
     setFormData({
@@ -1067,6 +1071,12 @@ export default function JobCardsPage() {
                           </div>
                         </PopoverContent>
                       </Popover>
+                      {searchQuery.trim() !== "" && (
+                        <div className="flex items-center gap-1.5 bg-white border border-olive-200 px-3 py-1.5 rounded-lg text-xs font-semibold h-8">
+                          <span className="text-slate-500 font-medium">Total Made:</span>
+                          <span className="text-olive-700 font-bold">{filteredHistoryTotalMade}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </CardHeader>
