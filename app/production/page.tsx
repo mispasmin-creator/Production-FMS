@@ -71,6 +71,7 @@ interface HistoryItem extends ProductionItem {
   status?: string
   cancelQty?: number
   cancelRemarks?: string
+  isCancelledPlaceholder?: boolean
 }
 
 interface CompositionItem {
@@ -499,6 +500,7 @@ export default function ProductionPage() {
             cancelQty: cancelQty,
             cancelRemarks: String(jc["Cancel Remarks"] || ""),
             productRate: Number(prodInfo?.["product_rate"] || 0),
+            isCancelledPlaceholder: true,
           } as HistoryItem
         })
 
@@ -684,7 +686,7 @@ export default function ProductionPage() {
   const uniqueProducts = useMemo(() => {
     const products = new Set<string>()
     historyProductions.forEach(p => {
-      if (p.status !== "cancelled" && p.productName) products.add(p.productName.trim())
+      if (!p.isCancelledPlaceholder && p.productName) products.add(p.productName.trim())
     })
     return Array.from(products).sort()
   }, [historyProductions])
@@ -692,7 +694,7 @@ export default function ProductionPage() {
   const uniqueMaterials = useMemo(() => {
     const mats = new Set<string>()
     historyProductions.forEach(p => {
-      if (p.status !== "cancelled") {
+      if (!p.isCancelledPlaceholder) {
         p.rawMaterials.forEach(rm => {
           if (rm.name && rm.name.trim() !== "" && Number(rm.quantity) > 0) mats.add(rm.name.trim())
         })
@@ -704,7 +706,7 @@ export default function ProductionPage() {
   const uniqueFirms = useMemo(() => {
     const firms = new Set<string>()
     historyProductions.forEach(p => {
-      if (p.status !== "cancelled" && p.firmName) firms.add(p.firmName.trim())
+      if (!p.isCancelledPlaceholder && p.firmName) firms.add(p.firmName.trim())
     })
     return Array.from(firms).sort()
   }, [historyProductions])
@@ -723,7 +725,7 @@ export default function ProductionPage() {
     }
 
     data.forEach((run) => {
-      if (run.status === "cancelled") return
+      if (run.isCancelledPlaceholder) return
 
 
 
