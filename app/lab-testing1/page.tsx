@@ -544,7 +544,12 @@ export default function LabTesting1Page() {
               normalizeKey(jc["Product Name"]) === normalizeKey(jobCardProductName)
           ) || (jobCardsData || []).find((jc: any) => normalizeKey(jc["JC-Job Card Number"]) === normalizeKey(jobCardNo))
 
-          if (isCancelledStatus(jobCard?.["Status"])) return null
+          // Note: don't skip this record just because the job card's overall
+          // Status is "cancelled" — a job card can be *partially* cancelled
+          // (remaining unproduced qty voided) while this specific production
+          // entry represents genuine, already-completed work that still needs
+          // to go through Lab Testing. Excluding on job-card status hid real
+          // production entries whenever any portion of their job card was cancelled.
           const productionRow = findProductionRow(deliveryOrderNo, jobCardProductName)
 
           const costingData = findCostingData(deliveryOrderNo.trim(), jobCardProductName.trim())
