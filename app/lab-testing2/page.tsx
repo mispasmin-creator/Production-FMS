@@ -438,6 +438,7 @@ export default function LabTesting2Page() {
       const pendingData = (actualProductionData || [])
         .map((row: any) => buildActualProductionInfo(row))
         .filter((row: any) => row.jobCardNo && hasValue(row.actual1) && !hasValue(row.status3))
+        .filter((row: any) => !(["Non Tested", "Direct supply"].includes(String(row.status2 || "").trim()) && hasValue(row.actual2)))
         .map((row: any) => {
           const jobCardNo = String(row.jobCardNo || "").trim()
           const deliveryOrderNo = String(row.deliveryOrderNo || "").trim()

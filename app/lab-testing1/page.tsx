@@ -749,6 +749,16 @@ export default function LabTesting1Page() {
         .update(payload)
         .eq("id", selectedProduction._rowIndex)
       if (updateErr) throw updateErr
+
+      if (isSkipped) {
+        // Lab Test 2 is skipped, so open Costing now (only if not already opened at production).
+        const { error: costingErr } = await supabase
+          .from(ACTUAL_PRODUCTION_TABLE)
+          .update({ "Planned8": format(new Date(), "yyyy-MM-dd") })
+          .eq("id", selectedProduction._rowIndex)
+          .is("Planned8", null)
+        if (costingErr) throw costingErr
+      }
       alert("Lab Test 1 data saved successfully!")
       setIsDialogOpen(false)
       await loadAllData()
