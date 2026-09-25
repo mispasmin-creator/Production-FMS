@@ -544,7 +544,12 @@ export default function LabTesting1Page() {
               normalizeKey(jc["Product Name"]) === normalizeKey(jobCardProductName)
           ) || (jobCardsData || []).find((jc: any) => normalizeKey(jc["JC-Job Card Number"]) === normalizeKey(jobCardNo))
 
-          if (isCancelledStatus(jobCard?.["Status"])) return null
+          // Note: don't skip this record just because the job card's overall
+          // Status is "cancelled" — a job card can be *partially* cancelled
+          // (remaining unproduced qty voided) while this specific production
+          // entry represents genuine, already-completed work that still needs
+          // to go through Lab Testing. Excluding on job-card status hid real
+          // production entries whenever any portion of their job card was cancelled.
           const productionRow = findProductionRow(deliveryOrderNo, jobCardProductName)
 
           const costingData = findCostingData(deliveryOrderNo.trim(), jobCardProductName.trim())
@@ -744,6 +749,16 @@ export default function LabTesting1Page() {
         .update(payload)
         .eq("id", selectedProduction._rowIndex)
       if (updateErr) throw updateErr
+
+      if (isSkipped) {
+        // Lab Test 2 is skipped, so open Costing now (only if not already opened at production).
+        const { error: costingErr } = await supabase
+          .from(ACTUAL_PRODUCTION_TABLE)
+          .update({ "Planned8": format(new Date(), "yyyy-MM-dd") })
+          .eq("id", selectedProduction._rowIndex)
+          .is("Planned8", null)
+        if (costingErr) throw costingErr
+      }
       alert("Lab Test 1 data saved successfully!")
       setIsDialogOpen(false)
       await loadAllData()

@@ -71,6 +71,7 @@ export const mapSemiJobCard = (row: any) => ({
   actualMade: toNumber(row["Actual Made"]),
   pending: toNumber(row["Pending"]),
   status: String(row["Status"] || ""),
+  cancelRemarks: String(row["Cancel Remarks"] || ""),
 });
 
 export const mapSemiActual = (row: any) => ({

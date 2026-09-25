@@ -71,6 +71,7 @@ interface HistoryItem extends ProductionItem {
   status?: string
   cancelQty?: number
   cancelRemarks?: string
+  isCancelledPlaceholder?: boolean
 }
 
 interface CompositionItem {
@@ -315,6 +316,22 @@ export default function ProductionPage() {
         productionRecordsByJobCard.get(record.jobCardNo).push(record)
       })
 
+      // Live "Total Made" per job card, summed straight from the actual production
+      // log. The jobcards table also keeps its own "Total Made" counter (updated as a
+      // second, separate write right after each production entry is inserted), and that
+      // counter can drift or stay null if that second write never completes. Summing the
+      // production log here keeps the displayed total accurate even when that happens.
+      const actualMadeByJobCard = new Map<string, number>()
+      actualProductionRecords.forEach((record: any) => {
+        if (isCancelledStatus(record.status)) return
+        const key = `${normalizeKey(record.jobCardNo)}::${normalizeKey(record.firmName)}`
+        actualMadeByJobCard.set(key, (actualMadeByJobCard.get(key) || 0) + Number(record.quantityFG || 0))
+      })
+      const getLiveTotalMade = (jobCardNo: any, firmName: any, storedTotalMade: number) => {
+        const key = `${normalizeKey(jobCardNo)}::${normalizeKey(firmName)}`
+        return actualMadeByJobCard.has(key) ? actualMadeByJobCard.get(key)! : storedTotalMade
+      }
+
       const findActualProductionRecord = (jobCardNo: string, orderNo: string, productName: string) => {
         const exact = productionRecordsMap.get(makeProductionRecordKey(jobCardNo, orderNo, productName))
         if (exact) return exact
@@ -337,19 +354,35 @@ export default function ProductionPage() {
           (p: any) => String(p["Product Name"] || "")
         );
       }
+      // A DO+product can have more than one production row (a split-quantity
+      // order line by line), which findProductionInfo above can't tell apart.
+      // A job card stamped with its own "Production Id" (the exact row it was
+      // created from) resolves that unambiguously.
+      const productionById = new Map<number, any>()
+      ;(productionData || []).forEach((p: any) => {
+        if (p.id !== null && p.id !== undefined) productionById.set(Number(p.id), p)
+      })
+      const findProductionInfoForJobCard = (jc: any, deliveryOrderNo: string, productName: string) => {
+        if (jc && jc["Production Id"] !== null && jc["Production Id"] !== undefined) {
+          const byId = productionById.get(Number(jc["Production Id"]))
+          if (byId) return byId
+        }
+        return findProductionInfo(deliveryOrderNo, productName)
+      }
 
       const pending = (jobCardsData || [])
         .filter(row => {
           if (isCancelledStatus(row["Status"])) return false
 
           const targetQuantity = Number(row["Quantity"] || 0)
-          const totalMade = Number(row["Total Made"] || 0)
+          const totalMade = getLiveTotalMade(row["JC-Job Card Number"], row["Firm Name"], Number(row["Total Made"] || 0))
           if (targetQuantity > 0) return totalMade < targetQuantity
 
           return !hasCompletedProductionFlag(row["Time Delay 1"])
         })
         .map((row: any) => {
-          const prodInfo = findProductionInfo(
+          const prodInfo = findProductionInfoForJobCard(
+            row,
             String(row["Delivery Order No."] || ""),
             String(row["Product Name"] || "")
           )
@@ -363,7 +396,7 @@ export default function ProductionPage() {
             partyName: String(row["Party Name"] || prodInfo?.["Party Name"] || ""),
             productName: String(row["Product Name"] || ""),
             orderQuantity: Number(row["Quantity"] || 0),
-            totalMade: Number(row["Total Made"] || 0),
+            totalMade: getLiveTotalMade(row["JC-Job Card Number"], row["Firm Name"], Number(row["Total Made"] || 0)),
             dateOfProduction: row["Date Of Production"] ? format(new Date(row["Date Of Production"]), "dd/MM/yyyy") : "",
             plannedDate: row["Planned 1"] ? format(new Date(row["Planned 1"]), "dd/MM/yy") : "",
             shift: String(row["Shift"] || ""),
@@ -387,10 +420,12 @@ export default function ProductionPage() {
           (jc: any) => normalizeKey(jc["JC-Job Card Number"]) === normalizeKey(jcNo)
         )
         const doNo = productionRecord.orderNo || jobCard?.["Delivery Order No."] || ""
-        const prodInfo = findProductionInfo(doNo, productionRecord.productName)
+        const prodInfo = findProductionInfoForJobCard(jobCard, doNo, productionRecord.productName)
 
         const jcStatus = String(jobCard?.["Status"] || productionRecord.status || "active").toLowerCase()
-        const totalMade = Number(jobCard?.["Total Made"] || 0)
+        const totalMade = jobCard
+          ? getLiveTotalMade(jobCard["JC-Job Card Number"], jobCard["Firm Name"], Number(jobCard["Total Made"] || 0))
+          : getLiveTotalMade(productionRecord.jobCardNo, productionRecord.firmName, Number(productionRecord.quantityFG || 0))
         const jcQty = Number(jobCard?.["Quantity"] || 0)
         let cancelQty = jobCard?.["Cancel Qty"] !== null && jobCard?.["Cancel Qty"] !== undefined ? Number(jobCard["Cancel Qty"]) : undefined
         if (cancelQty === undefined && jcStatus === "cancelled") {
@@ -434,7 +469,7 @@ export default function ProductionPage() {
         .filter((jc: any) => isCancelledStatus(jc["Status"]) && !actualJobCardNos.has(normalizeKey(jc["JC-Job Card Number"])))
         .map((jc: any) => {
           const doNo = String(jc["Delivery Order No."] || "")
-          const prodInfo = findProductionInfo(doNo, String(jc["Product Name"] || ""))
+          const prodInfo = findProductionInfoForJobCard(jc, doNo, String(jc["Product Name"] || ""))
           const jcQty = Number(jc["Quantity"] || 0)
           const totalMade = Number(jc["Total Made"] || 0)
           const cancelQty = jc["Cancel Qty"] !== null && jc["Cancel Qty"] !== undefined ? Number(jc["Cancel Qty"]) : Math.max(0, jcQty - totalMade)
@@ -465,6 +500,7 @@ export default function ProductionPage() {
             cancelQty: cancelQty,
             cancelRemarks: String(jc["Cancel Remarks"] || ""),
             productRate: Number(prodInfo?.["product_rate"] || 0),
+            isCancelledPlaceholder: true,
           } as HistoryItem
         })
 
@@ -650,7 +686,7 @@ export default function ProductionPage() {
   const uniqueProducts = useMemo(() => {
     const products = new Set<string>()
     historyProductions.forEach(p => {
-      if (p.status !== "cancelled" && p.productName) products.add(p.productName.trim())
+      if (!p.isCancelledPlaceholder && p.productName) products.add(p.productName.trim())
     })
     return Array.from(products).sort()
   }, [historyProductions])
@@ -658,7 +694,7 @@ export default function ProductionPage() {
   const uniqueMaterials = useMemo(() => {
     const mats = new Set<string>()
     historyProductions.forEach(p => {
-      if (p.status !== "cancelled") {
+      if (!p.isCancelledPlaceholder) {
         p.rawMaterials.forEach(rm => {
           if (rm.name && rm.name.trim() !== "" && Number(rm.quantity) > 0) mats.add(rm.name.trim())
         })
@@ -670,7 +706,7 @@ export default function ProductionPage() {
   const uniqueFirms = useMemo(() => {
     const firms = new Set<string>()
     historyProductions.forEach(p => {
-      if (p.status !== "cancelled" && p.firmName) firms.add(p.firmName.trim())
+      if (!p.isCancelledPlaceholder && p.firmName) firms.add(p.firmName.trim())
     })
     return Array.from(firms).sort()
   }, [historyProductions])
@@ -689,7 +725,7 @@ export default function ProductionPage() {
     }
 
     data.forEach((run) => {
-      if (run.status === "cancelled") return
+      if (run.isCancelledPlaceholder) return
 
 
 
@@ -887,6 +923,8 @@ export default function ProductionPage() {
         "Remarks1": formData.remarks || "",
         "Order No.": selectedJobCard.deliveryOrderNo,
         "Planned1": format(new Date(), "yyyy-MM-dd"),
+        // Costing unlocks in parallel with Lab Test 1, not after Lab Test 2 anymore.
+        "Planned8": format(new Date(), "yyyy-MM-dd"),
         // Cost & profit fields (requires DB columns – see SQL migration)
         "expected_cost": expectedRMCost,
         "actual_cost": actualRMCost,

@@ -81,6 +81,7 @@ const EXPECTED_LABELS: { key: string; label: string }[] = [
 interface LabItem {
   id: number;
   productionId?: number | string;
+  orderReceiptId?: number | string;
   compositionNo: string;
   orderNo: string;
   partyName: string;
@@ -121,7 +122,8 @@ interface LabItem {
 
 const PENDING_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
-  { header: "ID", dataKey: "productionId", toggleable: true },
+  { header: "ID", dataKey: "id", toggleable: true },
+  { header: "Order Line ID", dataKey: "orderReceiptId", toggleable: true },
   { header: "Composition No.", dataKey: "compositionNo", toggleable: true },
   { header: "Order No.", dataKey: "orderNo", toggleable: true },
   { header: "Firm Name", dataKey: "firmName", toggleable: true },
@@ -138,7 +140,8 @@ const PENDING_COLUMNS_META = [
 
 const HISTORY_COLUMNS_META = [
   { header: "Action", dataKey: "actionColumn", alwaysVisible: true, toggleable: false },
-  { header: "ID", dataKey: "productionId", toggleable: true },
+  { header: "ID", dataKey: "id", toggleable: true },
+  { header: "Order Line ID", dataKey: "orderReceiptId", toggleable: true },
   { header: "Decision", dataKey: "managementApprovalStatus", toggleable: true },
   { header: "Composition No.", dataKey: "compositionNo", toggleable: true },
   { header: "Order No.", dataKey: "orderNo", toggleable: true },
@@ -219,12 +222,24 @@ export default function ManagementApp() {
         { data: prodData, error: prodErr }
       ] = await Promise.all([
         supabase.from(KYC_TABLE).select("*"),
-        supabase.from(PRODUCTION_TABLE).select('id, "Delivery Order No.", "Product Name", product_rate, "Firm Name", "Party Name", "Order Quantity"'),
+        supabase.from(PRODUCTION_TABLE).select('id, "Delivery Order No.", "Product Name", product_rate, "Firm Name", "Party Name", "Order Quantity", "Order Receipt Id"'),
       ]);
       
       if (kycErr) throw kycErr;
       if (prodErr) throw prodErr;
-      
+
+      // A DO+product can have more than one production row (a split-quantity
+      // order line by line), which findMatchingRow below can't tell apart. When
+      // a composition recorded exactly which order-receipt line it came from
+      // ("Order Receipt Id"), prefer the production row stamped with that same
+      // id instead — that pairing is unambiguous.
+      const productionByOrderReceiptId = new Map<number, any>();
+      (prodData || []).forEach((p: any) => {
+        if (p["Order Receipt Id"] !== null && p["Order Receipt Id"] !== undefined) {
+          productionByOrderReceiptId.set(Number(p["Order Receipt Id"]), p);
+        }
+      });
+
       const kycMap = new Map();
       (kycData || []).forEach(k => {
         kycMap.set(String(k["Product name"] || "").trim().toLowerCase(), k);
@@ -268,13 +283,17 @@ export default function ManagementApp() {
         const productName = row["product name"] || "";
         
         // Find matching production row with robust fallback logic
-        const prodRowMatch = findMatchingRow(
-          prodData || [],
-          orderNo,
-          productName,
-          (p: any) => String(p["Delivery Order No."] || ""),
-          (p: any) => String(p["Product Name"] || "")
-        );
+        const prodRowMatch =
+          (row["Order Receipt Id"] !== null && row["Order Receipt Id"] !== undefined
+            ? productionByOrderReceiptId.get(Number(row["Order Receipt Id"]))
+            : undefined) ||
+          findMatchingRow(
+            prodData || [],
+            orderNo,
+            productName,
+            (p: any) => String(p["Delivery Order No."] || ""),
+            (p: any) => String(p["Product Name"] || "")
+          );
         
         const productionMeta = prodRowMatch ? {
           productionId: prodRowMatch.id,
@@ -289,6 +308,7 @@ export default function ManagementApp() {
         return {
           id: row.id,
           productionId: productionMeta?.productionId || "",
+          orderReceiptId: row["Order Receipt Id"] || "",
           compositionNo: row["Composition No."] || "",
           orderNo,
           partyName: productionMeta?.partyName || "",
