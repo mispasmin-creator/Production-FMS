@@ -303,15 +303,9 @@ export default function JobCardsPage() {
           })
         }
 
-        // Total made: sum of Total Made (or Quantity if Total Made is missing/0 on active cards)
+        // Total made: sum of actual Total Made only (job cards with no production entry count as 0)
         const rawTotalMadeSum = matchingJobCards.reduce(
-          (sum: number, jc: any) => {
-            const jcStatus = String(jc["Status"] || "active").toLowerCase()
-            const totalMade = Number(jc["Total Made"] || 0)
-            const qty = Number(jc["Quantity"] || 0)
-            const made = totalMade > 0 ? totalMade : (jcStatus !== "cancelled" ? qty : 0)
-            return sum + made
-          },
+          (sum: number, jc: any) => sum + Number(jc["Total Made"] || 0),
           0
         )
         const totalMadeSum = Number(rawTotalMadeSum.toFixed(2))
