@@ -842,11 +842,6 @@ export default function ProductionPage() {
     const errors: Record<string, string> = {}
     if (!formData.quantityFG || Number(formData.quantityFG) <= 0)
       errors.quantityFG = "Valid Finished Goods quantity is required."
-    else if (selectedJobCard && (selectedJobCard.quantity || 0) > 0) {
-      const remaining = (selectedJobCard.quantity || 0) - (selectedJobCard.totalMade || 0)
-      if (Number(formData.quantityFG) > remaining)
-        errors.quantityFG = `Only ${Math.max(remaining, 0)} left (Job Card Qty ${selectedJobCard.quantity}, already made ${selectedJobCard.totalMade || 0}).`
-    }
     if (formData.rawMaterials.length === 0) errors.rawMaterials = "At least one raw material is required."
     if (!formData.machineRunningHour || String(formData.machineRunningHour).trim() === "" || isNaN(Number(formData.machineRunningHour)) || Number(formData.machineRunningHour) <= 0) {
       errors.machineRunningHour = "Valid Machine Running Hour is required."
@@ -865,21 +860,6 @@ export default function ProductionPage() {
 
     setIsSubmitting(true)
     try {
-      // 0. Re-check latest Total Made from DB (page data may be stale / entry submitted elsewhere)
-      const { data: freshJc, error: freshJcErr } = await supabase
-        .from(JOBCARDS_TABLE)
-        .select("Total Made, Quantity")
-        .eq("id", selectedJobCard._rowIndex)
-        .single()
-      if (freshJcErr) throw freshJcErr
-      const freshMade = Number((freshJc as any)?.["Total Made"] || 0)
-      const freshTarget = Number((freshJc as any)?.["Quantity"] || 0)
-      if (freshTarget > 0 && freshMade + Number(formData.quantityFG) > freshTarget) {
-        alert(`Job Card ${selectedJobCard.jobCardNo}: ${freshMade} of ${freshTarget} already made. Only ${Math.max(freshTarget - freshMade, 0)} can be added. Please refresh.`)
-        setIsSubmitting(false)
-        return
-      }
-
       // 1. Get last serial number
       const { data: lastLog, error: logErr } = await supabase
         .from(ACTUAL_PRODUCTION_TABLE)
@@ -951,7 +931,7 @@ export default function ProductionPage() {
       if (insertErr) throw insertErr
 
       // 4. Update Job Card status to move it to history if fully produced
-      const newTotalMade = freshMade + Number(formData.quantityFG)
+      const newTotalMade = (selectedJobCard.totalMade || 0) + Number(formData.quantityFG)
       const isFullyProduced = newTotalMade >= (selectedJobCard.quantity || 0)
 
       const updatePayload: any = {
@@ -2038,11 +2018,7 @@ export default function ProductionPage() {
                   {formErrors.quantityFG ? (
                     <p className="text-[10px] text-red-600 font-bold uppercase tracking-tighter">{formErrors.quantityFG}</p>
                   ) : (
-                    <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-tighter">
-                      {selectedJobCard && (selectedJobCard.quantity || 0) > 0
-                        ? `Made ${selectedJobCard.totalMade || 0} / ${selectedJobCard.quantity} — Remaining ${Math.max((selectedJobCard.quantity || 0) - (selectedJobCard.totalMade || 0), 0)}`
-                        : "Enter total quantity made in this run"}
-                    </p>
+                    <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-tighter">Enter total quantity made in this run</p>
                   )}
                 </div>
               </div>
