@@ -1834,7 +1834,9 @@ export default function ProductionPage() {
                 nameLower === "pp bag (50 kgs)" ||
                 nameLower === "ton bag(1 ton)" ||
                 nameLower === "pp bag 25kg" ||
-                nameLower === "pp bag 25 kg"
+                nameLower === "pp bag 25 kg" ||
+                nameLower === "plastic clay" ||
+                nameLower === "pce 20"
               ) {
                 return sum;
               }
@@ -1863,7 +1865,11 @@ export default function ProductionPage() {
             const ppf = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "ppf");
             const ffbFlow = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "ffb flow 796");
             const birlaCement = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "birla white cement");
+            const plasticClay = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "plastic clay");
+            const pce20 = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "pce 20");
 
+            const plasticClayQty = plasticClay ? (Number(plasticClay.quantity) || 0) : 0;
+            const pce20Qty = pce20 ? (Number(pce20.quantity) || 0) : 0;
             const pp25Qty = pp25 ? (Number(pp25.quantity) || 0) : 0;
             const pp50Qty = pp50 ? (Number(pp50.quantity) || 0) : 0;
             const pp25kgQty = pp25kg ? (Number(pp25kg.quantity) || 0) : 0;
@@ -1901,7 +1907,7 @@ export default function ProductionPage() {
                     )}
                   </div>
                 )}
-                {(shmpQty > 0 || ppfQty > 0 || ffbFlowQty > 0 || birlaCementQty > 0) && (
+                {(shmpQty > 0 || ppfQty > 0 || ffbFlowQty > 0 || birlaCementQty > 0 || plasticClayQty > 0 || pce20Qty > 0) && (
                   <div className="space-y-1 pt-1 border-t border-dashed mt-1">
                     <div className="text-xs text-slate-400 uppercase tracking-wider font-bold">Excluded Additives</div>
                     {shmpQty > 0 && (
@@ -1926,6 +1932,18 @@ export default function ProductionPage() {
                       <div className="flex justify-between text-slate-600 font-medium pl-2">
                         <span>Birla White Cement:</span>
                         <span>{birlaCementQty}</span>
+                      </div>
+                    )}
+                    {plasticClayQty > 0 && (
+                      <div className="flex justify-between text-slate-600 font-medium pl-2">
+                        <span>Plastic Clay:</span>
+                        <span>{plasticClayQty}</span>
+                      </div>
+                    )}
+                    {pce20Qty > 0 && (
+                      <div className="flex justify-between text-slate-600 font-medium pl-2">
+                        <span>PCE 20:</span>
+                        <span>{pce20Qty}</span>
                       </div>
                     )}
                   </div>
@@ -2192,7 +2210,9 @@ export default function ProductionPage() {
                             nameLower === "pp bag (50 kgs)" ||
                             nameLower === "ton bag(1 ton)" ||
                             nameLower === "pp bag 25kg" ||
-                            nameLower === "pp bag 25 kg"
+                            nameLower === "pp bag 25 kg" ||
+                            nameLower === "plastic clay" ||
+                            nameLower === "pce 20"
                           ) {
                             return sum;
                           }
@@ -2218,7 +2238,12 @@ export default function ProductionPage() {
                         const ppf = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "ppf");
                         const ffbFlow = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "ffb flow 796");
                         const birlaCement = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "birla white cement");
+                        const plasticClay = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "plastic clay");
 
+                        const pce20 = activeMaterials.find(m => (m.name || "").trim().toLowerCase() === "pce 20");
+
+                        const plasticClayQty = plasticClay ? (Number(plasticClay.quantity) || 0) : 0;
+                        const pce20Qty = pce20 ? (Number(pce20.quantity) || 0) : 0;
                         const pp25Qty = pp25 ? (Number(pp25.quantity) || 0) : 0;
                         const pp50Qty = pp50 ? (Number(pp50.quantity) || 0) : 0;
                         const pp25kgQty = pp25kg ? (Number(pp25kg.quantity) || 0) : 0;
@@ -2256,7 +2281,7 @@ export default function ProductionPage() {
                                 )}
                               </div>
                             )}
-                            {(shmpQty > 0 || ppfQty > 0 || ffbFlowQty > 0 || birlaCementQty > 0) && (
+                            {(shmpQty > 0 || ppfQty > 0 || ffbFlowQty > 0 || birlaCementQty > 0 || plasticClayQty > 0 || pce20Qty > 0) && (
                               <div className="space-y-1 pt-1 border-t border-dashed mt-1">
                                 <div className="text-xs text-slate-400 uppercase tracking-wider font-bold">Excluded Additives</div>
                                 {shmpQty > 0 && (
@@ -2281,6 +2306,18 @@ export default function ProductionPage() {
                                   <div className="flex justify-between text-slate-600 font-medium pl-2">
                                     <span>Birla White Cement:</span>
                                     <span>{birlaCementQty}</span>
+                                  </div>
+                                )}
+                                {plasticClayQty > 0 && (
+                                  <div className="flex justify-between text-slate-600 font-medium pl-2">
+                                    <span>Plastic Clay:</span>
+                                    <span>{plasticClayQty}</span>
+                                  </div>
+                                )}
+                                {pce20Qty > 0 && (
+                                  <div className="flex justify-between text-slate-600 font-medium pl-2">
+                                    <span>PCE 20:</span>
+                                    <span>{pce20Qty}</span>
                                   </div>
                                 )}
                               </div>
