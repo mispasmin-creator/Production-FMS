@@ -2136,6 +2136,7 @@ export default function ProductionPage() {
                                 <TableCell className="py-1.5 px-1">
                                   <Input
                                     type="number"
+                                    step="any"
                                     placeholder="Qty"
                                     value={rm.quantity}
                                     onChange={(e) => {

@@ -575,8 +575,8 @@ export default function Step5List() {
         const errors: Record<string, string> = {};
         
         if (!formData.crushingProductName) errors.crushingProductName = "Product name is required";
-        if (!formData.inputQty || Number(formData.inputQty) <= 0) errors.inputQty = "Valid input quantity is required";
-        if (!formData.machineHours || Number(formData.machineHours) <= 0) errors.machineHours = "Machine hours are required";
+        if (String(formData.inputQty).trim() === '' || isNaN(Number(formData.inputQty)) || Number(formData.inputQty) < 0) errors.inputQty = "Valid input quantity is required";
+        if (String(formData.machineHours).trim() === '' || isNaN(Number(formData.machineHours)) || Number(formData.machineHours) < 0) errors.machineHours = "Machine hours are required";
         if (user?.role === 'admin' && !formData.firmName) errors.firmName = "Firm name is required";
         
         if (formData.fg1Name && (!formData.fg1Cost || Number(formData.fg1Cost) <= 0)) errors.fg1Cost = "Processing Cost 1 is required";
@@ -1495,7 +1495,7 @@ export default function Step5List() {
                                 id="inputQty"
                                 type="number"
                                 step="0.001"
-                                min="0.001"
+                                min="0"
                                 value={formData.inputQty}
                                 onChange={(e) => setFormData({ ...formData, inputQty: e.target.value })}
                                 placeholder="Enter input quantity"
@@ -1782,7 +1782,7 @@ export default function Step5List() {
                                     id="machineHours"
                                     type="number"
                                     step="0.1"
-                                    min="0.1"
+                                    min="0"
                                     value={formData.machineHours}
                                     onChange={(e) => setFormData({ ...formData, machineHours: e.target.value })}
                                     placeholder="0.0"
