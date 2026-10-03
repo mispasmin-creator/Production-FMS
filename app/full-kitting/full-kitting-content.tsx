@@ -167,6 +167,7 @@ interface CostingHistoryItem {
   productionPending?: string;
   manufacturingCost?: number;
   remarks?: string;
+  expectedValues?: string[]; // values of EXPECTED_VALUE_COLUMNS
 }
 
 // --- Constants ---
@@ -184,6 +185,19 @@ const DEFAULT_EXPECTED_PROPERTIES: ExpectedValueRow[] = [
   { property: "CCS at 110°C (kg/cm²)", unit: "kg/cm²", value: "" },
   { property: "CCS at 1100°C (kg/cm²)", unit: "kg/cm²", value: "" },
   { property: "PLC at 1100°C (%)", unit: "%", value: "" },
+];
+
+// DB columns for expected values, same order as DEFAULT_EXPECTED_PROPERTIES
+const EXPECTED_VALUE_COLUMNS = [
+  "Expected WC %",
+  "Expected Sticky Flow",
+  "Expected IST",
+  "Expected FST",
+  "Expected BD 110C",
+  "Expected BD 1100C",
+  "Expected CCS 110C",
+  "Expected CCS 1100C",
+  "Expected PLC 1100C",
 ];
 
 const PENDING_COLUMNS_META = [
@@ -1315,6 +1329,9 @@ export default function CheckPage() {
           productionPending: meta?.productionPending || enriched.productionPending || "",
           manufacturingCost: row["Manufacturing Cost"] !== undefined && row["Manufacturing Cost"] !== null ? Number(row["Manufacturing Cost"]) : undefined,
           remarks: row["Remarks"] ? String(row["Remarks"]) : undefined,
+          expectedValues: EXPECTED_VALUE_COLUMNS.map((col) =>
+            row[col] !== null && row[col] !== undefined ? String(row[col]) : "",
+          ),
         };
       });
 
@@ -1587,7 +1604,10 @@ export default function CheckPage() {
 
     setKittingFormRows(rows);
     setExpectedValues(
-      DEFAULT_EXPECTED_PROPERTIES.map((r) => ({ ...r, value: "" })),
+      DEFAULT_EXPECTED_PROPERTIES.map((r, i) => ({
+        ...r,
+        value: item.expectedValues?.[i] || "",
+      })),
     );
     const firmLower = String(item.firmName || "").toLowerCase();
     const firmDefaultMfgCost = (firmLower.includes("rkl") || firmLower.includes("purab")) ? 2000 : 1500;
