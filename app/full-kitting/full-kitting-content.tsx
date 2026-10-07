@@ -2014,8 +2014,6 @@ export default function CheckPage() {
     if (!selectedCheck) return;
     setIsSubmitting(true);
     try {
-      const compositionNumber = await generateCompositionNumber();
-
       // Build RM1..RM20 / QTY1..QTY20 fields
       const rmFields: Record<string, any> = {};
       for (let i = 1; i <= 20; i++) {
@@ -2025,38 +2023,82 @@ export default function CheckPage() {
         rmFields[`COST${i}`] = row?.cost ? Number(row.cost) : null;
       }
 
-      const insertPayload = {
-        "Composition No.": compositionNumber,
-        "Order No.": selectedCheck.deliveryOrderNo,
-        "product name": selectedCheck.productName,
-        "Firm Name": selectedCheck.firmName || null,
-        "Party Name": selectedCheck.partyName || null,
-        "Order Receipt Id": selectedCheck.orderReceiptId || null,
-        alumina: kittingTotals.al,
-        iron: kittingTotals.fe,
-        BD: kittingTotals.bd,
-        AP: kittingTotals.ap,
-        "VARIABLE COST": kittingTotals.variableCost,
-        "Manufacturing Cost": manufacturingCost || 1500,
-        "SELLING PRICE": kittingTotals.variableCost + (manufacturingCost || 1500),
-        ...rmFields,
-        // Expected Values (mapped by index to DB columns)
-        "Expected WC %": expectedValues[0]?.value || null,
-        "Expected Sticky Flow": expectedValues[1]?.value || null,
-        "Expected IST": expectedValues[2]?.value || null,
-        "Expected FST": expectedValues[3]?.value || null,
-        "Expected BD 110C": expectedValues[4]?.value || null,
-        "Expected BD 1100C": expectedValues[5]?.value || null,
-        "Expected CCS 110C": expectedValues[6]?.value || null,
-        "Expected CCS 1100C": expectedValues[7]?.value || null,
-        "Expected PLC 1100C": expectedValues[8]?.value || null,
-      };
+      if (selectedHistoryItem) {
+        // Revise existing entry - UPDATE row in costing_response
+        const updatePayload = {
+          "Composition No.": selectedHistoryItem.compositionNo,
+          "Order No.": selectedCheck.deliveryOrderNo,
+          "product name": selectedCheck.productName,
+          "Firm Name": selectedCheck.firmName || null,
+          "Party Name": selectedCheck.partyName || null,
+          "Order Receipt Id":
+            selectedCheck.orderReceiptId ||
+            selectedHistoryItem.orderReceiptId ||
+            null,
+          alumina: kittingTotals.al,
+          iron: kittingTotals.fe,
+          BD: kittingTotals.bd,
+          AP: kittingTotals.ap,
+          "VARIABLE COST": kittingTotals.variableCost,
+          "Manufacturing Cost": manufacturingCost || 1500,
+          "SELLING PRICE":
+            kittingTotals.variableCost + (manufacturingCost || 1500),
+          ...rmFields,
+          // Expected Values (mapped by index to DB columns)
+          "Expected WC %": expectedValues[0]?.value || null,
+          "Expected Sticky Flow": expectedValues[1]?.value || null,
+          "Expected IST": expectedValues[2]?.value || null,
+          "Expected FST": expectedValues[3]?.value || null,
+          "Expected BD 110C": expectedValues[4]?.value || null,
+          "Expected BD 1100C": expectedValues[5]?.value || null,
+          "Expected CCS 110C": expectedValues[6]?.value || null,
+          "Expected CCS 1100C": expectedValues[7]?.value || null,
+          "Expected PLC 1100C": expectedValues[8]?.value || null,
+        };
 
-      const { error: insertErr } = await supabase
-        .from(COSTING_RESPONSE_TABLE)
-        .insert([insertPayload]);
+        const { error: updateErr } = await supabase
+          .from(COSTING_RESPONSE_TABLE)
+          .update(updatePayload)
+          .eq("id", selectedHistoryItem.id);
 
-      if (insertErr) throw insertErr;
+        if (updateErr) throw updateErr;
+      } else {
+        const compositionNumber = await generateCompositionNumber();
+
+        const insertPayload = {
+          "Composition No.": compositionNumber,
+          "Order No.": selectedCheck.deliveryOrderNo,
+          "product name": selectedCheck.productName,
+          "Firm Name": selectedCheck.firmName || null,
+          "Party Name": selectedCheck.partyName || null,
+          "Order Receipt Id": selectedCheck.orderReceiptId || null,
+          alumina: kittingTotals.al,
+          iron: kittingTotals.fe,
+          BD: kittingTotals.bd,
+          AP: kittingTotals.ap,
+          "VARIABLE COST": kittingTotals.variableCost,
+          "Manufacturing Cost": manufacturingCost || 1500,
+          "SELLING PRICE":
+            kittingTotals.variableCost + (manufacturingCost || 1500),
+          ...rmFields,
+          // Expected Values (mapped by index to DB columns)
+          "Expected WC %": expectedValues[0]?.value || null,
+          "Expected Sticky Flow": expectedValues[1]?.value || null,
+          "Expected IST": expectedValues[2]?.value || null,
+          "Expected FST": expectedValues[3]?.value || null,
+          "Expected BD 110C": expectedValues[4]?.value || null,
+          "Expected BD 1100C": expectedValues[5]?.value || null,
+          "Expected CCS 110C": expectedValues[6]?.value || null,
+          "Expected CCS 1100C": expectedValues[7]?.value || null,
+          "Expected PLC 1100C": expectedValues[8]?.value || null,
+        };
+
+        const { error: insertErr } = await supabase
+          .from(COSTING_RESPONSE_TABLE)
+          .insert([insertPayload]);
+
+        if (insertErr) throw insertErr;
+      }
 
       // Update or create the production record for this exact order/product.
       if (selectedCheck?.deliveryOrderNo) {
@@ -2123,6 +2165,8 @@ export default function CheckPage() {
         // instead of getting a row of its own.
         const existingProductionId = selectedCheck.productionId
           ? Number(selectedCheck.productionId)
+          : selectedHistoryItem?.productionId
+          ? Number(selectedHistoryItem.productionId)
           : null;
 
         if (existingProductionId) {
@@ -2141,12 +2185,15 @@ export default function CheckPage() {
       }
 
       setIsKittingDialogOpen(false);
+      const isRevision = !!selectedHistoryItem;
       setSelectedCheck(null);
       setSelectedHistoryItem(null);
       await loadData();
       toast({
         title: "Success!",
-        description: "Full Kitting data submitted successfully.",
+        description: isRevision
+          ? "Full Kitting data revised successfully."
+          : "Full Kitting data submitted successfully.",
         duration: 2000,
       });
     } catch (err: any) {
