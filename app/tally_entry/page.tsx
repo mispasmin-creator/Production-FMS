@@ -70,6 +70,16 @@ interface SemiActualRecord {
     rawMaterial4Qty: number;
     rawMaterial5Name: string;
     rawMaterial5Qty: number;
+    rawMaterial6Name: string;
+    rawMaterial6Qty: number;
+    rawMaterial7Name: string;
+    rawMaterial7Qty: number;
+    rawMaterial8Name: string;
+    rawMaterial8Qty: number;
+    rawMaterial9Name: string;
+    rawMaterial9Qty: number;
+    rawMaterial10Name: string;
+    rawMaterial10Qty: number;
     machineRunning: number;
     semiFinishedProductionNo: string;
     
@@ -723,6 +733,36 @@ export default function Step4List() {
                                         <div>
                                             <p className="text-xs text-slate-400 font-medium">Raw Material 5</p>
                                             <p className="text-sm text-slate-700">{selectedRecord.rawMaterial5Name} ({selectedRecord.rawMaterial5Qty})</p>
+                                        </div>
+                                    )}
+                                    {selectedRecord.rawMaterial6Name && (
+                                        <div>
+                                            <p className="text-xs text-slate-400 font-medium">Raw Material 6</p>
+                                            <p className="text-sm text-slate-700">{selectedRecord.rawMaterial6Name} ({selectedRecord.rawMaterial6Qty})</p>
+                                        </div>
+                                    )}
+                                    {selectedRecord.rawMaterial7Name && (
+                                        <div>
+                                            <p className="text-xs text-slate-400 font-medium">Raw Material 7</p>
+                                            <p className="text-sm text-slate-700">{selectedRecord.rawMaterial7Name} ({selectedRecord.rawMaterial7Qty})</p>
+                                        </div>
+                                    )}
+                                    {selectedRecord.rawMaterial8Name && (
+                                        <div>
+                                            <p className="text-xs text-slate-400 font-medium">Raw Material 8</p>
+                                            <p className="text-sm text-slate-700">{selectedRecord.rawMaterial8Name} ({selectedRecord.rawMaterial8Qty})</p>
+                                        </div>
+                                    )}
+                                    {selectedRecord.rawMaterial9Name && (
+                                        <div>
+                                            <p className="text-xs text-slate-400 font-medium">Raw Material 9</p>
+                                            <p className="text-sm text-slate-700">{selectedRecord.rawMaterial9Name} ({selectedRecord.rawMaterial9Qty})</p>
+                                        </div>
+                                    )}
+                                    {selectedRecord.rawMaterial10Name && (
+                                        <div>
+                                            <p className="text-xs text-slate-400 font-medium">Raw Material 10</p>
+                                            <p className="text-sm text-slate-700">{selectedRecord.rawMaterial10Name} ({selectedRecord.rawMaterial10Qty})</p>
                                         </div>
                                     )}
                                 </div>

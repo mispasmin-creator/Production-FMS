@@ -176,7 +176,7 @@ export default function KycProductTable() {
           }
         }
 
-        for (let i = 1; i <= 5; i++) {
+        for (let i = 1; i <= 10; i++) {
           const rmName = normProd(row[`Raw Material Name ${i}`]);
           const cost = Number(row[`Processing Cost ${i}`] || 0);
           if (rmName && cost > 0) {

@@ -37,7 +37,7 @@ import {
 // ==================== CONSTANTS ====================
 const SEMI_FINISHED_BUCKET = "Semi Finished";
 const SEMI_FINISHED_FOLDER = "Semi Finished Images";
-const MAX_RAW_MATERIALS = 5;
+const MAX_RAW_MATERIALS = 10;
 
 // ==================== TYPE DEFINITIONS ====================
 interface SemiJobCardRecord {
@@ -84,6 +84,21 @@ interface SemiActualRecord {
     rawMaterial5Name: string;
     rawMaterial5Qty: number;
     rawMaterial5Rate: number;
+    rawMaterial6Name: string;
+    rawMaterial6Qty: number;
+    rawMaterial6Rate: number;
+    rawMaterial7Name: string;
+    rawMaterial7Qty: number;
+    rawMaterial7Rate: number;
+    rawMaterial8Name: string;
+    rawMaterial8Qty: number;
+    rawMaterial8Rate: number;
+    rawMaterial9Name: string;
+    rawMaterial9Qty: number;
+    rawMaterial9Rate: number;
+    rawMaterial10Name: string;
+    rawMaterial10Qty: number;
+    rawMaterial10Rate: number;
     isAnyEndProduct: string;
     endProductRawMaterialName: string;
     endProductQty: number;
@@ -476,9 +491,9 @@ export default function SemiActualProductionPage() {
             }
             setIsUploading(false);
 
-            // Pad raw material rows to 5
+            // Pad raw material rows to MAX_RAW_MATERIALS
             const paddedRM = [...rawMaterialRows];
-            while (paddedRM.length < 5) paddedRM.push({ name: '', qty: '' });
+            while (paddedRM.length < MAX_RAW_MATERIALS) paddedRM.push({ name: '', qty: '' });
 
             const calculatedMachineHours = (Number(formData.endingReading) - Number(formData.startingReading)) || 0;
             const machineHours = formData.machineRunningHour !== ''
@@ -504,6 +519,16 @@ export default function SemiActualProductionPage() {
                 "Quantity Of Raw Material 4": Number(paddedRM[3].qty) || 0,
                 "Raw Material Name 5": paddedRM[4].name || '',
                 "Quantity Of Raw Material 5": Number(paddedRM[4].qty) || 0,
+                "Raw Material Name 6": paddedRM[5].name || '',
+                "Quantity Of Raw Material 6": Number(paddedRM[5].qty) || 0,
+                "Raw Material Name 7": paddedRM[6].name || '',
+                "Quantity Of Raw Material 7": Number(paddedRM[6].qty) || 0,
+                "Raw Material Name 8": paddedRM[7].name || '',
+                "Quantity Of Raw Material 8": Number(paddedRM[7].qty) || 0,
+                "Raw Material Name 9": paddedRM[8].name || '',
+                "Quantity Of Raw Material 9": Number(paddedRM[8].qty) || 0,
+                "Raw Material Name 10": paddedRM[9].name || '',
+                "Quantity Of Raw Material 10": Number(paddedRM[9].qty) || 0,
                 "Is Any End Product": formData.isAnyEndProduct === "Yes",
                 "End Product Name": formData.endProductRawMaterialName || '',
                 "End Product Qty": Number(formData.endProductQty) || 0,
@@ -600,6 +625,11 @@ export default function SemiActualProductionPage() {
                 rawMaterial3Name: '', rawMaterial3Qty: 0, rawMaterial3Rate: 0,
                 rawMaterial4Name: '', rawMaterial4Qty: 0, rawMaterial4Rate: 0,
                 rawMaterial5Name: '', rawMaterial5Qty: 0, rawMaterial5Rate: 0,
+                rawMaterial6Name: '', rawMaterial6Qty: 0, rawMaterial6Rate: 0,
+                rawMaterial7Name: '', rawMaterial7Qty: 0, rawMaterial7Rate: 0,
+                rawMaterial8Name: '', rawMaterial8Qty: 0, rawMaterial8Rate: 0,
+                rawMaterial9Name: '', rawMaterial9Qty: 0, rawMaterial9Rate: 0,
+                rawMaterial10Name: '', rawMaterial10Qty: 0, rawMaterial10Rate: 0,
                 isAnyEndProduct: 'No',
                 endProductRawMaterialName: '',
                 endProductQty: 0,
@@ -741,6 +771,11 @@ export default function SemiActualProductionPage() {
                 { name: run.rawMaterial3Name, qty: run.rawMaterial3Qty },
                 { name: run.rawMaterial4Name, qty: run.rawMaterial4Qty },
                 { name: run.rawMaterial5Name, qty: run.rawMaterial5Qty },
+                { name: run.rawMaterial6Name, qty: run.rawMaterial6Qty },
+                { name: run.rawMaterial7Name, qty: run.rawMaterial7Qty },
+                { name: run.rawMaterial8Name, qty: run.rawMaterial8Qty },
+                { name: run.rawMaterial9Name, qty: run.rawMaterial9Qty },
+                { name: run.rawMaterial10Name, qty: run.rawMaterial10Qty },
             ];
 
             if (summaryMaterial !== "ALL") {
@@ -790,6 +825,11 @@ export default function SemiActualProductionPage() {
                 { name: run.rawMaterial3Name, qty: run.rawMaterial3Qty },
                 { name: run.rawMaterial4Name, qty: run.rawMaterial4Qty },
                 { name: run.rawMaterial5Name, qty: run.rawMaterial5Qty },
+                { name: run.rawMaterial6Name, qty: run.rawMaterial6Qty },
+                { name: run.rawMaterial7Name, qty: run.rawMaterial7Qty },
+                { name: run.rawMaterial8Name, qty: run.rawMaterial8Qty },
+                { name: run.rawMaterial9Name, qty: run.rawMaterial9Qty },
+                { name: run.rawMaterial10Name, qty: run.rawMaterial10Qty },
             ];
             rmList.forEach((rm) => {
                 const matName = String(rm.name || "").trim();
@@ -1860,6 +1900,11 @@ export default function SemiActualProductionPage() {
                                     { name: selectedActual.rawMaterial3Name, qty: selectedActual.rawMaterial3Qty },
                                     { name: selectedActual.rawMaterial4Name, qty: selectedActual.rawMaterial4Qty },
                                     { name: selectedActual.rawMaterial5Name, qty: selectedActual.rawMaterial5Qty },
+                                    { name: selectedActual.rawMaterial6Name, qty: selectedActual.rawMaterial6Qty },
+                                    { name: selectedActual.rawMaterial7Name, qty: selectedActual.rawMaterial7Qty },
+                                    { name: selectedActual.rawMaterial8Name, qty: selectedActual.rawMaterial8Qty },
+                                    { name: selectedActual.rawMaterial9Name, qty: selectedActual.rawMaterial9Qty },
+                                    { name: selectedActual.rawMaterial10Name, qty: selectedActual.rawMaterial10Qty },
                                 ].filter(rm => rm.name && rm.qty > 0).length > 0 ? (
                                     <div className="space-y-2">
                                         {[
@@ -1868,6 +1913,11 @@ export default function SemiActualProductionPage() {
                                             { name: selectedActual.rawMaterial3Name, qty: selectedActual.rawMaterial3Qty },
                                             { name: selectedActual.rawMaterial4Name, qty: selectedActual.rawMaterial4Qty },
                                             { name: selectedActual.rawMaterial5Name, qty: selectedActual.rawMaterial5Qty },
+                                            { name: selectedActual.rawMaterial6Name, qty: selectedActual.rawMaterial6Qty },
+                                            { name: selectedActual.rawMaterial7Name, qty: selectedActual.rawMaterial7Qty },
+                                            { name: selectedActual.rawMaterial8Name, qty: selectedActual.rawMaterial8Qty },
+                                            { name: selectedActual.rawMaterial9Name, qty: selectedActual.rawMaterial9Qty },
+                                            { name: selectedActual.rawMaterial10Name, qty: selectedActual.rawMaterial10Qty },
                                         ].filter(rm => rm.name && rm.qty > 0).map((rm, i) => (
                                             <div key={i} className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-slate-100">
                                                 <span className="text-xs font-medium text-slate-700">{rm.name}</span>
