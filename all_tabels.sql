@@ -365,6 +365,9 @@ CREATE TABLE public.semi_actual (
   Time Delay2 integer,
   Status1 text,
   Final Qty numeric,
+  Semi Job Card Id bigint,
+  Semi Production Id bigint,
+  firm_name text,
   CONSTRAINT semi_actual_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.semi_job_card (
@@ -382,6 +385,8 @@ CREATE TABLE public.semi_job_card (
   Planned date,
   Actual date,
   Time Delay integer,
+  Semi Production Id bigint,
+  Firm Name text,
   CONSTRAINT semi_job_card_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.semi_production (

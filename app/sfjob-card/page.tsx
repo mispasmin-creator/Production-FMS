@@ -51,6 +51,7 @@ interface SemiProductionRecord {
 
 interface SemiJobCardRecord {
     _rowIndex: number;
+    productionId?: number | null;
     timestamp: string;
     sjcSrNo: string;
     sfSrNo: string;
@@ -160,7 +161,9 @@ export default function SFJobCardPage() {
 
             const productions = await fetchSemiProductionRows();
             const productionFirmByNo = new Map<string, string>();
+            const productionById = new Map<number, any>();
             productions.forEach((row) => {
+                productionById.set(row._rowIndex, row);
                 const compositeKey = `${row.sfSrNo}::${String(row.nameOfSemiFinished || "").toLowerCase().trim()}`;
                 productionFirmByNo.set(compositeKey, row.firmName);
                 productionFirmByNo.set(row.sfSrNo, row.firmName);
@@ -224,9 +227,11 @@ export default function SFJobCardPage() {
                 .filter((row: any) => row.sjcSrNo && /^SJC-\d+/.test(row.sjcSrNo))
                 .map((row: any) => {
                     const compositeKey = `${row.sfSrNo}::${String(row.productName || "").toLowerCase().trim()}`;
+                    const linkedProduction = row.productionId ? productionById.get(row.productionId) : undefined;
                     return {
                         ...row,
-                        firmName: productionFirmByNo.get(compositeKey) || productionFirmByNo.get(row.sfSrNo) || ""
+                        productionId: linkedProduction?._rowIndex || row.productionId || null,
+                        firmName: row.firmName || linkedProduction?.firmName || productionFirmByNo.get(compositeKey) || productionFirmByNo.get(row.sfSrNo) || ""
                     };
                 });
 
@@ -292,6 +297,8 @@ export default function SFJobCardPage() {
                 "Timestamp": new Date().toISOString(),
                 "SJC-Sr No.": sjcSrNo,
                 "Semi Finished Production No.": selectedProd.sfSrNo,
+                "Semi Production Id": selectedProd._rowIndex,
+                "Firm Name": selectedProd.firmName,
                 "Supervisor Name": formData.supervisorName,
                 "Product Name": selectedProd.nameOfSemiFinished,
                 "Qty": plannedQty,

@@ -42,6 +42,7 @@ const MAX_RAW_MATERIALS = 10;
 // ==================== TYPE DEFINITIONS ====================
 interface SemiJobCardRecord {
     _rowIndex: number;
+    productionId?: number | null;
     timestamp: string;
     sjcSrNo: string;
     sfSrNo: string;
@@ -63,6 +64,8 @@ interface SemiJobCardRecord {
 
 interface SemiActualRecord {
     _rowIndex: number;
+    jobCardId?: number | null;
+    productionId?: number | null;
     timestamp: string;
     semiFinishedJobCardNo: string;
     supervisorName: string;
@@ -269,7 +272,9 @@ export default function SemiActualProductionPage() {
             ]);
 
             const productionByNo = new Map<string, any>();
+            const productionById = new Map<number, any>();
             productionTable.forEach((row: any) => {
+                productionById.set(row._rowIndex, row);
                 const compositeKey = `${row.sfSrNo}::${String(row.nameOfSemiFinished || "").toLowerCase().trim()}`;
                 productionByNo.set(compositeKey, row);
                 productionByNo.set(row.sfSrNo, row);
@@ -293,7 +298,9 @@ export default function SemiActualProductionPage() {
                 .filter((row: any) => row.sjcSrNo && row.sjcSrNo.startsWith('SJC-'))
                 .map((row: any) => {
                     const compositeKey = `${row.sfSrNo}::${String(row.productName || "").toLowerCase().trim()}`;
-                    const parentProd = productionByNo.get(compositeKey) || productionByNo.get(row.sfSrNo);
+                    const parentProd = (row.productionId ? productionById.get(row.productionId) : undefined)
+                        || productionByNo.get(compositeKey)
+                        || productionByNo.get(row.sfSrNo);
                     const parentCancelQty = Number(parentProd?.cancelOrder || 0);
                     const parentPending = Number(parentProd?.pending ?? row.pending ?? 0);
                     const statusStr = String(row.status || '').toLowerCase().trim();
@@ -301,7 +308,8 @@ export default function SemiActualProductionPage() {
 
                     return {
                         ...row,
-                        firmName: parentProd?.firmName || "",
+                        productionId: parentProd?._rowIndex || row.productionId || null,
+                        firmName: row.firmName || parentProd?.firmName || "",
                         status: isCancelled ? 'cancelled' : row.status,
                         isParentCancelled: parentCancelQty > 0 && parentPending <= 0,
                         parentCancelOrder: parentCancelQty,
@@ -310,14 +318,23 @@ export default function SemiActualProductionPage() {
                 });
             setJobCardData(filterByFirm(jobCards).sort((a, b) => b._rowIndex - a._rowIndex));
 
+            const jobCardById = new Map<number, SemiJobCardRecord>();
+            jobCards.forEach((row) => jobCardById.set(row._rowIndex, row));
+
             const actuals: SemiActualRecord[] = actualTable
                 .filter((row: any) => row.sNo && row.sNo.startsWith('SA-'))
                 .map((row: any) => {
                     const compositeKey = `${row.sfProductionNo}::${String(row.productName || "").toLowerCase().trim()}`;
-                    const parentProd = productionByNo.get(compositeKey) || productionByNo.get(row.sfProductionNo);
+                    const linkedJobCard = row.jobCardId ? jobCardById.get(row.jobCardId) : undefined;
+                    const parentProd = (row.productionId ? productionById.get(row.productionId) : undefined)
+                        || (linkedJobCard?.productionId ? productionById.get(linkedJobCard.productionId) : undefined)
+                        || productionByNo.get(compositeKey)
+                        || productionByNo.get(row.sfProductionNo);
                     return {
                         ...row,
-                        firmName: parentProd?.firmName || ""
+                        jobCardId: linkedJobCard?._rowIndex || row.jobCardId || null,
+                        productionId: parentProd?._rowIndex || row.productionId || linkedJobCard?.productionId || null,
+                        firmName: row.firmName || linkedJobCard?.firmName || parentProd?.firmName || ""
                     };
                 });
             setSemiActualData(filterByFirm(actuals).sort((a, b) => b._rowIndex - a._rowIndex));
@@ -504,6 +521,9 @@ export default function SemiActualProductionPage() {
             const { error: insertError } = await supabase.from(SEMI_ACTUAL_TABLE).insert({
                 "Timestamp": new Date().toISOString(),
                 "Semi Finished Job Card No.": selectedSjc.sjcSrNo,
+                "Semi Job Card Id": selectedSjc._rowIndex,
+                "Semi Production Id": selectedSjc.productionId,
+                "firm_name": selectedSjc.firmName || '',
                 "Supervisor Name": selectedSjc.supervisorName,
                 "Date Of Production": toSupabaseDate(formData.dateOfProduction),
                 "Product Name": selectedSjc.productName,
@@ -562,11 +582,13 @@ export default function SemiActualProductionPage() {
             // the "Produced" column on Semi Finished Production page and
             // the "Total Made" column on Semi Job Card Management page show correct data.
             if (selectedSjc.sfSrNo) {
-                const { data: spRows, error: spFetchErr } = await supabase
+                let spQuery = supabase
                     .from(SEMI_PRODUCTION_TABLE)
-                    .select("id, \"Total Made\"")
-                    .eq("SF-Sr No.", selectedSjc.sfSrNo)
-                    .limit(1);
+                    .select("id, \"Total Made\"");
+                spQuery = selectedSjc.productionId
+                    ? spQuery.eq("id", selectedSjc.productionId)
+                    : spQuery.eq("SF-Sr No.", selectedSjc.sfSrNo);
+                const { data: spRows, error: spFetchErr } = await spQuery.limit(1);
                 if (!spFetchErr && spRows && spRows.length > 0) {
                     const spRow = spRows[0];
                     const newTotalMade = Number(spRow["Total Made"] || 0) + madeQty;

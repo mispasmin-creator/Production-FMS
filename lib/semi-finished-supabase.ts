@@ -59,6 +59,7 @@ export const mapSemiProduction = (row: any) => ({
 
 export const mapSemiJobCard = (row: any) => ({
   _rowIndex: Number(row.id || 0),
+  productionId: row["Semi Production Id"] === null || row["Semi Production Id"] === undefined ? null : Number(row["Semi Production Id"]),
   timestamp: toDisplayTimestamp(row["Timestamp"]),
   sjcSrNo: String(row["SJC-Sr No."] || ""),
   sfSrNo: String(row["Semi Finished Production No."] || ""),
@@ -71,11 +72,14 @@ export const mapSemiJobCard = (row: any) => ({
   actualMade: toNumber(row["Actual Made"]),
   pending: toNumber(row["Pending"]),
   status: String(row["Status"] || ""),
+  firmName: String(row["firm_name"] || row["Firm Name"] || ""),
   cancelRemarks: String(row["Cancel Remarks"] || ""),
 });
 
 export const mapSemiActual = (row: any) => ({
   _rowIndex: Number(row.id || 0),
+  jobCardId: row["Semi Job Card Id"] === null || row["Semi Job Card Id"] === undefined ? null : Number(row["Semi Job Card Id"]),
+  productionId: row["Semi Production Id"] === null || row["Semi Production Id"] === undefined ? null : Number(row["Semi Production Id"]),
   timestamp: toDisplayTimestamp(row["Timestamp"]),
   semiFinishedJobCardNo: String(row["Semi Finished Job Card No."] || ""),
   supervisorName: String(row["Supervisor Name"] || ""),
@@ -137,6 +141,7 @@ export const mapSemiActual = (row: any) => ({
   timeDelay2: String(row["Time Delay2"] || ""),
   actualQty2: toNumber(row["Final Qty"]),
   finalQty: toNumber(row["Final Qty"]),
+  firmName: String(row["firm_name"] || row["Firm Name"] || ""),
 });
 
 export const fetchSemiProductionRows = async () => {
