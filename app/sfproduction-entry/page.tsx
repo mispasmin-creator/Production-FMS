@@ -277,7 +277,11 @@ export default function SemiActualProductionPage() {
                 productionById.set(row._rowIndex, row);
                 const compositeKey = `${row.sfSrNo}::${String(row.nameOfSemiFinished || "").toLowerCase().trim()}`;
                 productionByNo.set(compositeKey, row);
-                productionByNo.set(row.sfSrNo, row);
+                // NOTE: no bare-sfSrNo fallback key here on purpose — SF-Sr No. values are
+                // not unique (the same number has been reused across firms/products due to
+                // a serial-generation bug), so matching by number alone silently picks an
+                // arbitrary unrelated row and mislabels the firm. Matching requires either
+                // an explicit productionId link or an exact SF No. + product name match.
             });
             
             // Filter by Firm
@@ -299,8 +303,7 @@ export default function SemiActualProductionPage() {
                 .map((row: any) => {
                     const compositeKey = `${row.sfSrNo}::${String(row.productName || "").toLowerCase().trim()}`;
                     const parentProd = (row.productionId ? productionById.get(row.productionId) : undefined)
-                        || productionByNo.get(compositeKey)
-                        || productionByNo.get(row.sfSrNo);
+                        || productionByNo.get(compositeKey);
                     const parentCancelQty = Number(parentProd?.cancelOrder || 0);
                     const parentPending = Number(parentProd?.pending ?? row.pending ?? 0);
                     const statusStr = String(row.status || '').toLowerCase().trim();
@@ -328,8 +331,7 @@ export default function SemiActualProductionPage() {
                     const linkedJobCard = row.jobCardId ? jobCardById.get(row.jobCardId) : undefined;
                     const parentProd = (row.productionId ? productionById.get(row.productionId) : undefined)
                         || (linkedJobCard?.productionId ? productionById.get(linkedJobCard.productionId) : undefined)
-                        || productionByNo.get(compositeKey)
-                        || productionByNo.get(row.sfProductionNo);
+                        || productionByNo.get(compositeKey);
                     return {
                         ...row,
                         jobCardId: linkedJobCard?._rowIndex || row.jobCardId || null,
