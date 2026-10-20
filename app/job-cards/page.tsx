@@ -702,6 +702,28 @@ export default function JobCardsPage() {
 
       if (updateError) throw updateError
 
+      // Cancelling a pending Order (not an individual Job Card) never created a
+      // jobcards row, so it used to vanish with no trace anywhere. Log a
+      // placeholder record here purely so it shows up in the History tab below,
+      // mirroring how an individual Job Card cancellation already appears there.
+      // Prefix is "CNL-" (not "JC-") so it's never mistaken for a real job card
+      // by other pages that count/parse "JC-" numbers (e.g. the dashboard).
+      const { error: logError } = await supabase.from(JOBCARDS_TABLE).insert({
+        "Timestamp": new Date().toISOString(),
+        "JC-Job Card Number": `CNL-${selectedOrder.deliveryOrderNo}-${Date.now()}`,
+        "Firm Name": selectedOrder.firmName,
+        "Delivery Order No.": selectedOrder.deliveryOrderNo,
+        "Party Name": selectedOrder.partyName,
+        "Product Name": selectedOrder.productName,
+        "Quantity": Number(cancelOrderQty),
+        "Total Made": 0,
+        "Status": "cancelled",
+        "Cancel Qty": Number(cancelOrderQty),
+        "Cancel Remarks": cancelOrderRemarks,
+        "Production Id": selectedOrder.productionId,
+      })
+      if (logError) console.error("Failed to log cancelled order to history:", logError)
+
       alert(`Order for DO: ${selectedOrder.deliveryOrderNo} cancelled successfully!`)
       setIsCancelOrderDialogOpen(false)
       setIsDialogOpen(false)
