@@ -306,7 +306,15 @@ export default function OrdersPage() {
               quantityDelivered: String(row["Delivered"] ?? ""),
               quantityInStock: row["In Stock Or Not"] || "",
               planningPending: matchingProd ? String(matchingProd["Planning Pending"] ?? "") : "",
-              productionPending: String(row["Pending Qty"] ?? ""),
+              // "Prod Pend." reflects production's own pending (Order Qty - Actual
+              // Production Done), not the dispatch team's "Pending Qty" (which tracks
+              // delivery, not production, and was showing a stale/unrelated number here).
+              productionPending: String(
+                Math.max(
+                  0,
+                  Number(row["Quantity"] || 0) - (matchingProd ? Number(matchingProd["Actual Production Done"] || 0) : 0)
+                )
+              ),
               status: isCancel ? "Cancelled" : (isComplete ? "Completed" : "Pending"),
               dateOfCompletePlanning: row["Complete Date"] || "",
               cancelReason: matchingProd ? (matchingProd["Reason"] || "") : "",

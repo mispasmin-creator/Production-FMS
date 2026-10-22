@@ -99,6 +99,7 @@ const PENDING_ORDERS_COLUMNS_META = [
   { header: "Product Name", dataKey: "productName", toggleable: true },
   { header: "Order Quantity", dataKey: "orderQuantity", toggleable: true },
   { header: "Total Made", dataKey: "totalMade", toggleable: true },
+  { header: "Cancel Qty", dataKey: "cancelQty", toggleable: true },
   { header: "Pending", dataKey: "pending", toggleable: true },
   { header: "Planned Date", dataKey: "plannedDate", toggleable: true },
   { header: "Expected Delivery Date", dataKey: "expectedDeliveryDate", toggleable: true },
