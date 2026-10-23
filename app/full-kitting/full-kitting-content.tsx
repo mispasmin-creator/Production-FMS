@@ -1493,10 +1493,16 @@ export default function CheckPage() {
     try {
       // 1. Mark order as cancelled in production table (if productionId exists)
       if (cancelConfirmItem.productionId) {
-        await supabase
+        const { data: cancelledProduction, error: cancelProductionErr } = await supabase
           .from(PRODUCTION_TABLE)
           .update({ "Order Cancel": true })
-          .eq("id", cancelConfirmItem.productionId);
+          .eq("id", cancelConfirmItem.productionId)
+          .select("id")
+          .maybeSingle();
+        if (cancelProductionErr) throw cancelProductionErr;
+        if (!cancelledProduction) {
+          throw new Error("Production order could not be marked as cancelled.");
+        }
       }
 
       // 2. Insert a "Cancelled" record in costing_response so it shows in History tab
@@ -1505,6 +1511,7 @@ export default function CheckPage() {
         "product name": cancelConfirmItem.productName,
         "Firm Name": cancelConfirmItem.firmName || null,
         "Party Name": cancelConfirmItem.partyName || null,
+        "Order Receipt Id": cancelConfirmItem.orderReceiptId || null,
         "Status": "Cancelled",
         "Remarks": cancelRemark.trim() || null,
         alumina: 0,

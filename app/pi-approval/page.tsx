@@ -106,6 +106,7 @@ interface LabItem {
   actual2: string | null;
   // approval
   piApprovalStatus: string;
+  status: string;
   piRemarks: string;
   piApprovedAt: string | null;
   firmName: string;
@@ -314,6 +315,7 @@ export default function PIApprovalPage() {
           planned1: row["Planned 1"] ? format(new Date(row["Planned 1"]), "dd/MM/yy") : null,
           actual2: row["Actual 2"] ? format(new Date(row["Actual 2"]), "dd/MM/yy HH:mm") : null,
           piApprovalStatus: row["PI Approval Status"] || "",
+          status: String(row["Status"] || ""),
           piRemarks: row["PI Remarks"] || "",
           piApprovedAt: row["PI Approved At"]
             ? format(new Date(row["PI Approved At"]), "dd/MM/yy HH:mm")
@@ -338,7 +340,11 @@ export default function PIApprovalPage() {
       });
 
       // Pending = no PI decision yet; History = has a PI decision
-      setPendingItems(filtered.filter((i) => !i.piApprovalStatus));
+      setPendingItems(
+        filtered.filter(
+          (i) => !i.piApprovalStatus && normalizeKey(i.status) !== "cancelled",
+        ),
+      );
       setHistoryItems(filtered.filter((i) => !!i.piApprovalStatus));
     } catch (err: any) {
       setError(`Failed to load data: ${err.message}`);
