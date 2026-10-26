@@ -30,6 +30,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu"
 
 // --- Constants ---
 const COSTING_RESPONSE_TABLE = "costing_response"
@@ -45,6 +46,7 @@ interface SampleItem {
   compositionNo: string
   orderNo: string
   partyName: string
+  firmName: string
   productName: string
   orderQuantity: number
   status: string
@@ -65,28 +67,44 @@ export default function SampleTestPage() {
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("pending")
   const [searchQuery, setSearchQuery] = useState("")
+  const [firmFilter, setFirmFilter] = useState<string[]>([])
+
+  const uniqueFirms = useMemo(() => {
+    const firms = new Set<string>()
+    pendingItems.forEach((item) => { if (item.firmName) firms.add(item.firmName) })
+    historyItems.forEach((item) => { if (item.firmName) firms.add(item.firmName) })
+    return Array.from(firms).sort()
+  }, [pendingItems, historyItems])
 
   const filteredPending = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
-    if (!q) return pendingItems
-    return pendingItems.filter(item =>
-      (item.compositionNo || "").toLowerCase().includes(q) ||
-      (item.orderNo || "").toLowerCase().includes(q) ||
-      (item.partyName || "").toLowerCase().includes(q) ||
-      (item.productName || "").toLowerCase().includes(q)
-    )
-  }, [pendingItems, searchQuery])
+    return pendingItems.filter(item => {
+      if (firmFilter.length > 0 && (!item.firmName || !firmFilter.includes(item.firmName))) return false
+      if (!q) return true
+      return (
+        (item.compositionNo || "").toLowerCase().includes(q) ||
+        (item.orderNo || "").toLowerCase().includes(q) ||
+        (item.partyName || "").toLowerCase().includes(q) ||
+        (item.firmName || "").toLowerCase().includes(q) ||
+        (item.productName || "").toLowerCase().includes(q)
+      )
+    })
+  }, [pendingItems, searchQuery, firmFilter])
 
   const filteredHistory = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
-    if (!q) return historyItems
-    return historyItems.filter(item =>
-      (item.compositionNo || "").toLowerCase().includes(q) ||
-      (item.orderNo || "").toLowerCase().includes(q) ||
-      (item.partyName || "").toLowerCase().includes(q) ||
-      (item.productName || "").toLowerCase().includes(q)
-    )
-  }, [historyItems, searchQuery])
+    return historyItems.filter(item => {
+      if (firmFilter.length > 0 && (!item.firmName || !firmFilter.includes(item.firmName))) return false
+      if (!q) return true
+      return (
+        (item.compositionNo || "").toLowerCase().includes(q) ||
+        (item.orderNo || "").toLowerCase().includes(q) ||
+        (item.partyName || "").toLowerCase().includes(q) ||
+        (item.firmName || "").toLowerCase().includes(q) ||
+        (item.productName || "").toLowerCase().includes(q)
+      )
+    })
+  }, [historyItems, searchQuery, firmFilter])
 
   // Modal / Action state
   const [selectedItem, setSelectedItem] = useState<SampleItem | null>(null)
@@ -111,25 +129,26 @@ export default function SampleTestPage() {
           .order("id", { ascending: false }),
         supabase
           .from(PRODUCTION_TABLE)
-          .select('id, "Delivery Order No.", "Product Name", "Party Name", "Order Quantity", "Order Receipt Id"'),
+          .select('id, "Delivery Order No.", "Product Name", "Party Name", "Firm Name", "Order Quantity", "Order Receipt Id"'),
       ])
 
       if (dbErr) throw dbErr
       if (prodErr) throw prodErr
 
-      const productionMeta = new Map<string, { productionId?: number | string; partyName: string; orderQuantity: number }>()
+      const productionMeta = new Map<string, { productionId?: number | string; partyName: string; firmName: string; orderQuantity: number }>()
       // A DO+product can have more than one production row (a split-quantity
       // order line by line), which the DO+product map above can't tell apart.
       // When a costing row recorded exactly which order-receipt line it came
       // from ("Order Receipt Id"), prefer the production row stamped with that
       // same id instead — that pairing is unambiguous.
-      const productionByOrderReceiptId = new Map<number, { productionId?: number | string; partyName: string; orderQuantity: number }>()
+      const productionByOrderReceiptId = new Map<number, { productionId?: number | string; partyName: string; firmName: string; orderQuantity: number }>()
       ;(prodData || []).forEach((p: any) => {
         const orderNo = String(p["Delivery Order No."] || "").trim()
         const productName = String(p["Product Name"] || "").trim()
         const meta = {
           productionId: p.id,
           partyName: String(p["Party Name"] || ""),
+          firmName: String(p["Firm Name"] || ""),
           orderQuantity: Number(p["Order Quantity"] || 0),
         }
         if (orderNo) {
@@ -170,6 +189,7 @@ export default function SampleTestPage() {
           compositionNo: row["Composition No."] || "",
           orderNo,
           partyName: meta?.partyName || "",
+          firmName: row["Firm Name"] || meta?.firmName || "",
           productName,
           orderQuantity: meta?.orderQuantity || 0,
           status: row.Status || "",
@@ -317,14 +337,42 @@ export default function SampleTestPage() {
                   Test History
                 </TabsTrigger>
               </TabsList>
-              <div className="relative w-full sm:w-[300px]">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search sample tests..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 focus-visible:ring-olive-500"
-                />
+              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                <div className="relative w-full sm:w-[300px]">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search sample tests..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 focus-visible:ring-olive-500"
+                  />
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="h-10 rounded-xl border-gray-200 justify-between font-normal text-muted-foreground hover:bg-transparent min-w-[140px]">
+                      {firmFilter.length === 0 ? "All Firms" : `${firmFilter.length} Firm${firmFilter.length > 1 ? 's' : ''} Selected`}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-56 rounded-xl">
+                    <DropdownMenuLabel>Filter by Firm</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {uniqueFirms.map((firm) => (
+                      <DropdownMenuCheckboxItem
+                        key={firm}
+                        checked={firmFilter.includes(firm)}
+                        onCheckedChange={(checked: boolean) => {
+                          if (checked) {
+                            setFirmFilter([...firmFilter, firm])
+                          } else {
+                            setFirmFilter(firmFilter.filter((f) => f !== firm))
+                          }
+                        }}
+                      >
+                        {firm}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
 
@@ -344,6 +392,7 @@ export default function SampleTestPage() {
                          <TableHead>Composition No.</TableHead>
                          <TableHead>ID</TableHead>
                          <TableHead>Order No.</TableHead>
+                         <TableHead>Firm Name</TableHead>
                          <TableHead>Party Name</TableHead>
                          <TableHead>Product Name</TableHead>
                          <TableHead>Qty</TableHead>
@@ -356,11 +405,12 @@ export default function SampleTestPage() {
                            <TableCell className="font-bold text-olive-600">{item.compositionNo}</TableCell>
                            <TableCell className="font-medium text-slate-700">{item.productionId || "-"}</TableCell>
                            <TableCell className="font-medium text-slate-700">{item.orderNo}</TableCell>
+                           <TableCell className="font-medium text-slate-700">{item.firmName || "-"}</TableCell>
                            <TableCell className="font-medium text-slate-700">{item.partyName || "-"}</TableCell>
                            <TableCell className="font-semibold text-slate-900">{item.productName}</TableCell>
                            <TableCell className="font-medium text-slate-700">{item.orderQuantity || "-"}</TableCell>
                            <TableCell className="text-right">
-                             <Button 
+                             <Button
                                onClick={() => openTestDialog(item)}
                                className="bg-olive-600 hover:bg-olive-700 text-white shadow-lg shadow-olive-100"
                              >
@@ -383,6 +433,7 @@ export default function SampleTestPage() {
                        <TableHead>Composition No.</TableHead>
                        <TableHead>ID</TableHead>
                        <TableHead>Order No.</TableHead>
+                       <TableHead>Firm Name</TableHead>
                        <TableHead>Party Name</TableHead>
                        <TableHead>Product Name</TableHead>
                        <TableHead>Qty</TableHead>
@@ -394,7 +445,7 @@ export default function SampleTestPage() {
                    <TableBody>
                      {filteredHistory.length === 0 ? (
                        <TableRow>
-                         <TableCell colSpan={9} className="text-center py-12 text-sm text-slate-400 italic">
+                         <TableCell colSpan={10} className="text-center py-12 text-sm text-slate-400 italic">
                            No test history found.
                          </TableCell>
                        </TableRow>
@@ -404,6 +455,7 @@ export default function SampleTestPage() {
                            <TableCell className="font-bold text-slate-600">{item.compositionNo}</TableCell>
                            <TableCell className="text-slate-600">{item.productionId || "-"}</TableCell>
                            <TableCell className="text-slate-600">{item.orderNo}</TableCell>
+                           <TableCell className="text-slate-600">{item.firmName || "-"}</TableCell>
                            <TableCell className="text-slate-600">{item.partyName || "-"}</TableCell>
                            <TableCell className="font-medium text-slate-700">{item.productName}</TableCell>
                            <TableCell className="text-slate-600">{item.orderQuantity || "-"}</TableCell>
