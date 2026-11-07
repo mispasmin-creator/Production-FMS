@@ -53,6 +53,14 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuCheckboxItem,
+} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/components/ui/use-toast";
@@ -122,6 +130,7 @@ const PENDING_COLUMNS_META = [
   { header: "Order Line ID", dataKey: "orderReceiptId", toggleable: true },
   { header: "Composition No.", dataKey: "compositionNo", toggleable: true },
   { header: "Order No.", dataKey: "orderNo", toggleable: true },
+  { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
   { header: "Qty", dataKey: "orderQuantity", toggleable: true },
@@ -139,6 +148,7 @@ const HISTORY_COLUMNS_META = [
   { header: "Decision", dataKey: "piApprovalStatus", toggleable: true },
   { header: "Composition No.", dataKey: "compositionNo", toggleable: true },
   { header: "Order No.", dataKey: "orderNo", toggleable: true },
+  { header: "Firm Name", dataKey: "firmName", toggleable: true },
   { header: "Party Name", dataKey: "partyName", toggleable: true },
   { header: "Product Name", dataKey: "productName", toggleable: true },
   { header: "Qty", dataKey: "orderQuantity", toggleable: true },
@@ -158,29 +168,48 @@ export default function PIApprovalPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("pending");
   const [searchQuery, setSearchQuery] = useState("");
+  const [firmFilter, setFirmFilter] = useState<string[]>([]);
+
+  const uniqueFirms = useMemo(() => {
+    const set = new Set<string>();
+    [...pendingItems, ...historyItems].forEach((item) => {
+      if (item.firmName) set.add(item.firmName);
+    });
+    return Array.from(set).sort();
+  }, [pendingItems, historyItems]);
 
   const filteredPending = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    if (!q) return pendingItems;
-    return pendingItems.filter(item =>
-      (item.compositionNo || "").toLowerCase().includes(q) ||
-      (item.orderNo || "").toLowerCase().includes(q) ||
-      (item.partyName || "").toLowerCase().includes(q) ||
-      (item.productName || "").toLowerCase().includes(q)
-    );
-  }, [pendingItems, searchQuery]);
-
-  const filteredHistory = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
-    if (!q) return historyItems;
-    return historyItems.filter(item =>
+    let base = pendingItems;
+    if (firmFilter.length > 0) {
+      base = base.filter((item) => firmFilter.includes(item.firmName));
+    }
+    if (!q) return base;
+    return base.filter(item =>
       (item.compositionNo || "").toLowerCase().includes(q) ||
       (item.orderNo || "").toLowerCase().includes(q) ||
       (item.partyName || "").toLowerCase().includes(q) ||
       (item.productName || "").toLowerCase().includes(q) ||
-      (item.piApprovalStatus || "").toLowerCase().includes(q)
+      (item.firmName || "").toLowerCase().includes(q)
     );
-  }, [historyItems, searchQuery]);
+  }, [pendingItems, searchQuery, firmFilter]);
+
+  const filteredHistory = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    let base = historyItems;
+    if (firmFilter.length > 0) {
+      base = base.filter((item) => firmFilter.includes(item.firmName));
+    }
+    if (!q) return base;
+    return base.filter(item =>
+      (item.compositionNo || "").toLowerCase().includes(q) ||
+      (item.orderNo || "").toLowerCase().includes(q) ||
+      (item.partyName || "").toLowerCase().includes(q) ||
+      (item.productName || "").toLowerCase().includes(q) ||
+      (item.piApprovalStatus || "").toLowerCase().includes(q) ||
+      (item.firmName || "").toLowerCase().includes(q)
+    );
+  }, [historyItems, searchQuery, firmFilter]);
 
   // Approval dialog (also captures lab results)
   const [selectedItem, setSelectedItem] = useState<LabItem | null>(null);
@@ -613,14 +642,43 @@ export default function PIApprovalPage() {
                   </Badge>
                 </TabsTrigger>
               </TabsList>
-              <div className="relative w-full sm:w-[300px]">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search approvals..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 focus-visible:ring-olive-500"
-                />
+              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="w-full sm:w-[180px] justify-between">
+                      {firmFilter.length === 0
+                        ? "All Firms"
+                        : `${firmFilter.length} Firm${firmFilter.length > 1 ? "s" : ""} Selected`}
+                      <ChevronDown className="h-4 w-4 ml-2 opacity-50" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-[220px]">
+                    <DropdownMenuLabel>Filter by Firm</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {uniqueFirms.map((firm) => (
+                      <DropdownMenuCheckboxItem
+                        key={firm}
+                        checked={firmFilter.includes(firm)}
+                        onCheckedChange={(checked) => {
+                          setFirmFilter((prev) =>
+                            checked ? [...prev, firm] : prev.filter((f) => f !== firm)
+                          );
+                        }}
+                      >
+                        {firm}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <div className="relative w-full sm:w-[300px]">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search approvals..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 focus-visible:ring-olive-500"
+                  />
+                </div>
               </div>
             </div>
 

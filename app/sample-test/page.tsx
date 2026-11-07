@@ -31,6 +31,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu"
+import { useAuth, FIRM_MAP } from "@/lib/auth"
 
 // --- Constants ---
 const COSTING_RESPONSE_TABLE = "costing_response"
@@ -61,6 +62,7 @@ interface SampleItem {
 
 export default function SampleTestPage() {
   const { toast } = useToast()
+  const { user } = useAuth()
   const [pendingItems, setPendingItems] = useState<SampleItem[]>([])
   const [historyItems, setHistoryItems] = useState<SampleItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -69,16 +71,39 @@ export default function SampleTestPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [firmFilter, setFirmFilter] = useState<string[]>([])
 
+  // Restrict visible data to the logged-in user's own firm(s); admins see everything.
+  const hasFirmAccess = useCallback((firmName: string) => {
+    const isAdmin = user?.role?.toLowerCase() === "admin"
+    if (isAdmin) return true
+    if (!user?.firm) return true
+    const userFirms = user.firm.split(',').map(f => f.trim()).filter(Boolean)
+    const fName = (firmName || "").toLowerCase()
+    return userFirms.some(uf => {
+      const mappedFirm = (FIRM_MAP[uf] || uf).toLowerCase()
+      const firmSearch = uf.toLowerCase()
+      return fName.includes(firmSearch) || fName.includes(mappedFirm)
+    })
+  }, [user?.firm, user?.role])
+
+  const accessiblePending = useMemo(
+    () => pendingItems.filter(item => hasFirmAccess(item.firmName)),
+    [pendingItems, hasFirmAccess]
+  )
+  const accessibleHistory = useMemo(
+    () => historyItems.filter(item => hasFirmAccess(item.firmName)),
+    [historyItems, hasFirmAccess]
+  )
+
   const uniqueFirms = useMemo(() => {
     const firms = new Set<string>()
-    pendingItems.forEach((item) => { if (item.firmName) firms.add(item.firmName) })
-    historyItems.forEach((item) => { if (item.firmName) firms.add(item.firmName) })
+    accessiblePending.forEach((item) => { if (item.firmName) firms.add(item.firmName) })
+    accessibleHistory.forEach((item) => { if (item.firmName) firms.add(item.firmName) })
     return Array.from(firms).sort()
-  }, [pendingItems, historyItems])
+  }, [accessiblePending, accessibleHistory])
 
   const filteredPending = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
-    return pendingItems.filter(item => {
+    return accessiblePending.filter(item => {
       if (firmFilter.length > 0 && (!item.firmName || !firmFilter.includes(item.firmName))) return false
       if (!q) return true
       return (
@@ -89,11 +114,11 @@ export default function SampleTestPage() {
         (item.productName || "").toLowerCase().includes(q)
       )
     })
-  }, [pendingItems, searchQuery, firmFilter])
+  }, [accessiblePending, searchQuery, firmFilter])
 
   const filteredHistory = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
-    return historyItems.filter(item => {
+    return accessibleHistory.filter(item => {
       if (firmFilter.length > 0 && (!item.firmName || !firmFilter.includes(item.firmName))) return false
       if (!q) return true
       return (
@@ -104,7 +129,7 @@ export default function SampleTestPage() {
         (item.productName || "").toLowerCase().includes(q)
       )
     })
-  }, [historyItems, searchQuery, firmFilter])
+  }, [accessibleHistory, searchQuery, firmFilter])
 
   // Modal / Action state
   const [selectedItem, setSelectedItem] = useState<SampleItem | null>(null)
